@@ -42,12 +42,13 @@
             background: var(--card-bg);
             margin-bottom: 2rem;
             border: 1px solid rgba(255,255,255,0.2);
+            padding: 2px;
         }
         
         .card-header {
             background: linear-gradient(135deg, var(--primary-color) 0%, var(--black-accent) 100%);
             color: var(--text-light);
-            border-radius: 16px 16px 0 0 !important;
+            border-radius: 12px 12px 12px 12px !important;
             border: none;
             padding: 1.5rem;
             position: relative;
@@ -90,48 +91,6 @@
             font-size: 2.5rem;
             font-weight: bold;
             margin-bottom: 0.5rem;
-        }
-        
-        .back-link {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            background: linear-gradient(135deg, var(--primary-color) 0%, var(--black-accent) 100%);
-            color: var(--text-light);
-            padding: 12px 18px;
-            border-radius: 25px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            z-index: 1000;
-            box-shadow: 0 4px 15px rgba(183, 28, 28, 0.3);
-        }
-        
-        .back-link:hover {
-            color: var(--text-light);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(183, 28, 28, 0.4);
-        }
-        
-        .scoreboard-link {
-            position: fixed;
-            top: 20px;
-            left: 180px;
-            background: linear-gradient(135deg, var(--accent-color) 0%, var(--secondary-color) 100%);
-            color: var(--text-light);
-            padding: 12px 18px;
-            border-radius: 25px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(255, 82, 82, 0.3);
-            z-index: 1000;
-        }
-        
-        .scoreboard-link:hover {
-            color: var(--text-light);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(255, 82, 82, 0.4);
         }
         
         .table-responsive {
@@ -268,10 +227,7 @@
         
         /* Red and black team themed accents */
         .admin-title {
-            background: linear-gradient(45deg, var(--accent-color), var(--primary-color));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--text-light);
             font-weight: 800;
             text-shadow: none;
         }
@@ -284,20 +240,6 @@
         @media (max-width: 768px) {
             .main-container {
                 margin: 1rem;
-            }
-            
-            .back-link {
-                top: 10px;
-                left: 10px;
-                padding: 10px 14px;
-                font-size: 0.9rem;
-            }
-            
-            .scoreboard-link {
-                top: 60px;
-                left: 10px;
-                padding: 10px 14px;
-                font-size: 0.9rem;
             }
             
             .stats-card h3 {
@@ -350,14 +292,6 @@
     </style>
 </head>
 <body>
-    <a href="/" class="back-link">
-        <i class="fas fa-arrow-left"></i> Back to Tracker
-    </a>
-    
-    <a href="/scoreboard" class="scoreboard-link">
-        <i class="fas fa-clock"></i> Leaderboard
-    </a>
-
     <div class="container-fluid">
         <div class="main-container">
             <!-- Header -->
@@ -366,8 +300,8 @@
                     <div class="row align-items-center">
                         <div class="col">
                             <h1 class="mb-0 admin-title">
-                                <i class="fas fa-rocket"></i>
-                                Mars Wars Admin
+                                <i class="fas fa-cog"></i>
+                                MARS/WARS Attendance Admin Dashboard
                             </h1>
                             <p class="mb-0 mt-2">Team attendance command center</p>
                         </div>
@@ -495,7 +429,6 @@
                                 <tr>
                                     <th>Timestamp</th>
                                     <th>Name</th>
-                                    <th>Email</th>
                                     <th>Action</th>
                                     <th>Duration</th>
                                     <th>Notes</th>
@@ -509,7 +442,6 @@
                                     <td>
                                         <strong>{{ record['Name'] or record.get('name', '-') }}</strong>
                                     </td>
-                                    <td>{{ record['Email'] or record.get('email', '-') }}</td>
                                     <td>
                                         {% if record['Action'] == 'check-in' or record.get('action') == 'check-in' %}
                                             <span class="badge badge-check-in">
@@ -628,7 +560,10 @@
             // Load initial data
             loadCurrentNames();
 
-            // Auto-refresh every minute
+            // Setup real-time updates for admin dashboard
+            setupAdminRealTimeUpdates();
+
+            // Auto-refresh every minute (fallback)
             setInterval(refreshData, 60000);
         });
 
@@ -787,7 +722,6 @@
                     attendanceTable.row.add([
                         record.Timestamp || '-',
                         `<strong>${record.Name || '-'}</strong>`,
-                        record.Email || '-',
                         actionBadge,
                         duration,
                         `<small>${record.Notes || '-'}</small>`,
@@ -875,6 +809,51 @@
             toastElement.addEventListener('hidden.bs.toast', () => {
                 toastElement.remove();
             });
+        }
+
+        // Real-time updates for admin dashboard
+        function setupAdminRealTimeUpdates() {
+            // Try to setup SSE for global updates
+            try {
+                const eventSource = new EventSource('/api/global-status-stream');
+                
+                eventSource.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.type === 'summary_update') {
+                            updateDashboardSummary(data.summary);
+                        }
+                    } catch (error) {
+                        console.error('Error parsing admin SSE data:', error);
+                    }
+                };
+                
+                eventSource.onerror = function(error) {
+                    console.log('Admin SSE connection failed');
+                    eventSource.close();
+                };
+                
+            } catch (error) {
+                console.log('SSE not supported for admin dashboard');
+            }
+        }
+        
+        function updateDashboardSummary(summary) {
+            // Update summary cards if they exist
+            const totalCheckIns = document.getElementById('totalCheckIns');
+            const totalCheckOuts = document.getElementById('totalCheckOuts');
+            const uniqueUsers = document.getElementById('uniqueUsers');
+            
+            if (totalCheckIns) totalCheckIns.textContent = summary.total_check_ins || 0;
+            if (totalCheckOuts) totalCheckOuts.textContent = summary.total_check_outs || 0;
+            if (uniqueUsers) uniqueUsers.textContent = summary.unique_users || 0;
+            
+            // Optionally refresh the records table
+            if (summary.records && summary.records.length > 0) {
+                // Could refresh DataTable here if needed
+                console.log('New records available for refresh');
+            }
         }
     </script>
 </body>

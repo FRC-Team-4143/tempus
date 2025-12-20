@@ -215,48 +215,6 @@
             display: inline-block;
         }
         
-        .admin-link {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: linear-gradient(135deg, var(--primary-color) 0%, var(--black-accent) 100%);
-            color: var(--text-light);
-            padding: 12px 18px;
-            border-radius: 25px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(183, 28, 28, 0.3);
-            z-index: 1000;
-        }
-        
-        .admin-link:hover {
-            color: var(--text-light);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(183, 28, 28, 0.4);
-        }
-        
-        .scoreboard-link {
-            position: fixed;
-            top: 20px;
-            right: 170px;
-            background: linear-gradient(135deg, var(--accent-color) 0%, var(--secondary-color) 100%);
-            color: var(--text-light);
-            padding: 12px 18px;
-            border-radius: 25px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(255, 82, 82, 0.3);
-            z-index: 1000;
-        }
-        
-        .scoreboard-link:hover {
-            color: var(--text-light);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(255, 82, 82, 0.4);
-        }
-        
         .records-today {
             background: rgba(255,255,255,0.9);
             border-radius: 12px;
@@ -280,6 +238,45 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.15);
         }
         
+        .status-indicator {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+            padding: 16px 12px;
+            margin: 2px 0;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            font-size: 0.9rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 70px;
+            height: 70px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        
+        .status-indicator.checked-in {
+            border-color: var(--success-color);
+            background: rgba(76, 175, 80, 0.1);
+        }
+        
+        .status-indicator.checked-out {
+            border-color: #6c757d;
+            background: rgba(108, 117, 125, 0.1);
+        }
+        
+        .status-indicator:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        
+        .last-updated {
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+        
         .loading {
             display: none;
         }
@@ -295,34 +292,79 @@
                 padding: 1rem;
             }
             
-            .admin-link {
-                top: 10px;
-                right: 10px;
-                padding: 10px 14px;
-                font-size: 0.9rem;
-            }
-            
-            .scoreboard-link {
-                top: 60px;
-                right: 10px;
-                padding: 10px 14px;
-                font-size: 0.9rem;
-            }
-            
             .name-toggle-btn {
                 min-height: 60px;
                 font-size: 1rem;
+            }
+            
+            /* Force proper mobile status indicator styling */
+            #statusGrid .status-indicator {
+                padding: 12px 8px !important;
+                min-height: 65px !important;
+                height: 65px !important;
+                font-size: 0.85rem !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: center !important;
+                text-align: center !important;
+                background: rgba(255, 255, 255, 0.9) !important;
+                border-radius: 8px !important;
+                border: 2px solid transparent !important;
+            }
+            
+            #statusGrid .status-indicator.checked-in {
+                border-color: var(--success-color) !important;
+                background: rgba(76, 175, 80, 0.1) !important;
+            }
+            
+            #statusGrid .status-indicator.checked-out {
+                border-color: #6c757d !important;
+                background: rgba(108, 117, 125, 0.1) !important;
+            }
+            
+            #statusGrid .status-indicator .fw-semibold,
+            #statusGrid .status-indicator span {
+                font-size: 0.85rem !important;
+                line-height: 1.2 !important;
+                text-align: center !important;
+                width: 100% !important;
+                display: block !important;
+            }
+            
+            #statusGrid .status-indicator .text-muted,
+            #statusGrid .status-indicator .small {
+                font-size: 0.7rem !important;
+                text-align: center !important;
+                width: 100% !important;
+                display: block !important;
+                margin-top: 2px !important;
+            }
+            
+            #statusGrid .status-indicator div {
+                width: 100% !important;
+                text-align: center !important;
+            }
+            
+            /* Remove any potential conflicting background colors */
+            #statusGrid .col-6 .status-indicator {
+                background-color: rgba(255, 255, 255, 0.9) !important;
+            }
+            
+            #statusGrid .col-6 .status-indicator.checked-in {
+                background-color: rgba(76, 175, 80, 0.1) !important;
+            }
+            
+            #statusGrid .col-6 .status-indicator.checked-out {
+                background-color: rgba(108, 117, 125, 0.1) !important;
             }
         }
         
         /* Red and black team inspired accent elements */
         .team-title {
-            background: linear-gradient(45deg, var(--accent-color), var(--primary-color));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: white !important;
             font-weight: 800;
-            text-shadow: none;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         }
         
         .tech-border {
@@ -333,23 +375,14 @@
     </style>
 </head>
 <body>
-    <a href="/admin" class="admin-link">
-        <i class="fas fa-chart-line"></i> Admin Dashboard
-    </a>
-    
-    <a href="/scoreboard" class="scoreboard-link">
-        <i class="fas fa-clock"></i> Leaderboard
-    </a>
-
     <div class="container-fluid">
         <div class="main-container">
             <div class="card">
                 <div class="card-header">
                     <h1 class="mb-0 team-title">
-                        <i class="fas fa-rocket"></i>
+                        <i class="fas fa-robot"></i>
                         MARS/WARS Attendance
                     </h1>
-                    <p class="mb-0 mt-2">Track your team presence</p>
                 </div>
                 <div class="card-body p-4">
                     <!-- Status Display -->
@@ -361,13 +394,21 @@
                         </div>
                     </div>
 
-                    <!-- Preset Names Toggle Interface -->
-                    <div id="nameToggleInterface">
+                    <!-- Global Real-time Status Board -->
+                    <div id="globalStatusBoard">
                         <h5 class="text-center mb-4">
-                            <i class="fas fa-users"></i> Team Attendance
+                            <i class="fas fa-users"></i> Team Status 
+                            <span class="badge bg-secondary" id="lastUpdated">Loading...</span>
                         </h5>
-                        <div class="row g-3" id="nameButtonsContainer">
-                            <!-- Name buttons will be loaded here -->
+                        <div class="row g-2" id="statusGrid">
+                            <!-- Status indicators will be loaded here -->
+                        </div>
+                        
+                        <div class="text-center mt-3">
+                            <small class="text-muted">
+                                <i class="fas fa-circle text-success"></i> Checked In 
+                                <i class="fas fa-circle text-secondary ms-2"></i> Checked Out
+                            </small>
                         </div>
                     </div>
 
@@ -396,6 +437,11 @@
                             <small class="text-muted">Unique Users</small>
                         </div>
                     </div>
+                    <div class="mt-3">
+                        <button class="btn btn-warning" onclick="signOutAll()" style="background: linear-gradient(135deg, #ff9800 0%, #ff8f00 100%); border: none; border-radius: 12px; padding: 12px 20px; color: white; font-weight: 600; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3); transition: all 0.3s ease;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(255, 152, 0, 0.4)'" onmouseout="this.style.transform='translateY(0px)'; this.style.boxShadow='0 4px 15px rgba(255, 152, 0, 0.3)'">
+                            <i class="fas fa-sign-out-alt"></i> Sign Out All
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -404,145 +450,193 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Global variables
-        let presetNames = [];
-        let nameStatuses = {};
+        let globalStatusData = {};
 
         // Load and initialize
         window.onload = function() {
-            loadPresetNames();
+            console.log('🚀 Page loaded, starting initialization...');
+            loadGlobalStatus();
             loadTodaySummary();
+            
+            // Auto-refresh every 10 seconds for real-time sync
+            setInterval(() => {
+                loadGlobalStatus();
+                loadTodaySummary();
+            }, 10000);
+            
+            // More aggressive polling when tab is visible (every 5 seconds)
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) {
+                    // Tab became visible, refresh immediately
+                    loadGlobalStatus();
+                    loadTodaySummary();
+                }
+            });
+            
+            // Additional fast polling when page is visible
+            setInterval(() => {
+                if (!document.hidden) {
+                    loadGlobalStatus();
+                }
+            }, 5000);
         };
 
-        async function loadPresetNames() {
+        async function loadGlobalStatus() {
+            console.log('🔄 Loading global status...');
+            
             try {
-                const response = await fetch('/api/names');
-                presetNames = await response.json();
-                await loadNameStatuses();
-                renderNameButtons();
-            } catch (error) {
-                console.error('Error loading preset names:', error);
-                showAlert('Error loading preset names. Please refresh the page.', 'danger');
-            }
-        }
-
-        async function loadNameStatuses() {
-            nameStatuses = {};
-            
-            for (const name of presetNames) {
-                try {
-                    const response = await fetch(`/api/status/${encodeURIComponent(name)}`);
-                    const data = await response.json();
-                    nameStatuses[name] = data.status;
-                } catch (error) {
-                    console.error(`Error loading status for ${name}:`, error);
-                    nameStatuses[name] = 'not-checked-in';
+                const statusGrid = document.getElementById('statusGrid');
+                const lastUpdatedElement = document.getElementById('lastUpdated');
+                if (!statusGrid) {
+                    console.error('statusGrid element not found');
+                    return;
                 }
+                
+                // Add subtle sync indicator instead of replacing content
+                if (lastUpdatedElement) {
+                    lastUpdatedElement.innerHTML = '<i class="fas fa-sync fa-spin"></i> Syncing...';
+                }
+                
+                // Only show full loading state if grid is empty
+                if (!statusGrid.hasChildNodes() || statusGrid.children.length === 0) {
+                    statusGrid.innerHTML = '<div class="col-12 text-center p-4"><i class="fas fa-spinner fa-spin"></i> Loading team status...</div>';
+                }
+                
+                // Load actual Google Sheets data directly
+                const response = await fetch('/api/global-status');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('✅ Received', data.users.length, 'users');
+                
+                globalStatusData = data;
+                displayGlobalStatus(data);
+                
+            } catch (error) {
+                console.error('❌ Error loading status:', error);
+                const statusGrid = document.getElementById('statusGrid');
+                statusGrid.innerHTML = '<div class="col-12 text-center p-4 text-danger"><i class="fas fa-exclamation-triangle"></i> Error loading status</div>';
             }
         }
-
-        function renderNameButtons() {
-            const container = document.getElementById('nameButtonsContainer');
-            container.innerHTML = '';
+        function displayGlobalStatus(data) {
+            console.log('🎨 Displaying', data.users.length, 'users');
             
-            presetNames.forEach(name => {
-                const status = nameStatuses[name] || 'not-checked-in';
-                const isCheckedIn = status === 'checked-in';
-                
-                const buttonCol = document.createElement('div');
-                buttonCol.className = 'col-md-4 col-sm-6 mb-3';
-                
-                const button = document.createElement('button');
-                button.className = `btn name-toggle-btn ${isCheckedIn ? 'checked-in' : 'checked-out'}`;
-                button.onclick = () => toggleAttendance(name);
-                
-                button.innerHTML = `
-                    <i class="fas ${isCheckedIn ? 'fa-check-circle' : 'fa-circle'} status-icon"></i>
-                    <span class="spinner-border btn-spinner" role="status"></span>
-                    <span class="name-text">${name}</span>
-                    <div class="small mt-1">${isCheckedIn ? 'Checked In' : 'Check In'}</div>
-                `;
-                
-                buttonCol.appendChild(button);
-                container.appendChild(buttonCol);
-            });
-        }
-
-        async function toggleAttendance(name) {
-            const button = event.currentTarget;
+            const container = document.getElementById('statusGrid');
+            const lastUpdatedElement = document.getElementById('lastUpdated');
             
-            // Prevent double-clicks
-            if (button.classList.contains('loading')) {
-                console.log('Request already in progress for', name);
+            if (!container || !lastUpdatedElement) {
+                console.error('Required DOM elements not found');
                 return;
             }
             
-            // Show loading state and disable button
-            button.classList.add('loading');
-            button.style.pointerEvents = 'none';
+            // Update last updated time
+            const lastUpdated = new Date(data.last_updated);
+            lastUpdatedElement.textContent = lastUpdated.toLocaleTimeString();
             
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+            // Clear existing content (except the load button)
+            const existingButtons = container.querySelectorAll('button');
+            container.innerHTML = '';
+            
+            // Create status indicators for each user
+            data.users.forEach((user, index) => {
+                const statusDiv = document.createElement('div');
+                statusDiv.className = 'col-6 col-md-4 col-lg-3 mb-2';
                 
-                const response = await fetch('/api/toggle-attendance', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ name }),
-                    signal: controller.signal
-                });
+                const statusClass = user.status;
+                let dotColor = '#6c757d'; // default gray
+                if (user.status === 'checked-in') dotColor = '#4caf50';
+                else if (user.status === 'checked-out') dotColor = '#6c757d';
                 
-                clearTimeout(timeoutId);
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                let lastActionText = '';
+                if (user.last_timestamp) {
+                    const time = new Date(user.last_timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    lastActionText = `<div class="text-muted small">${time}</div>`;
                 }
-
-                const data = await response.json();
                 
-                if (data.success) {
-                    // Update local status
-                    nameStatuses[name] = data.new_status;
-                    
-                    // Update button appearance
-                    const isCheckedIn = data.new_status === 'checked-in';
-                    button.className = `btn name-toggle-btn ${isCheckedIn ? 'checked-in' : 'checked-out'}`;
-                    
-                    const statusIcon = button.querySelector('.status-icon');
-                    const statusText = button.querySelector('.small');
-                    statusIcon.className = `fas ${isCheckedIn ? 'fa-check-circle' : 'fa-circle'} status-icon`;
-                    statusText.textContent = isCheckedIn ? 'Checked In' : 'Check In';
-                    
-                    // Show success message
-                    showAlert(`${name} ${data.action.replace('-', ' ')} successful!`, 'success');
-                    
-                    // Refresh summary
-                    loadTodaySummary();
-                } else {
-                    showAlert(data.message || 'Unknown error occurred', 'danger');
-                }
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    showAlert(`Request timed out for ${name}. Please try again.`, 'warning');
-                } else {
-                    showAlert(`Error updating attendance for ${name}. Please try again.`, 'danger');
-                }
-                console.error('Toggle attendance error:', error);
-            } finally {
-                // Remove loading state and re-enable button
-                button.classList.remove('loading');
-                button.style.pointerEvents = 'auto';
-            }
+                statusDiv.innerHTML = `
+                    <div class="status-indicator ${statusClass}" onclick="toggleUserStatus('${user.name}')">
+                        <div>
+                            <span class="fw-semibold">${user.name}</span>
+                        </div>
+                        ${lastActionText}
+                    </div>
+                `;
+                
+                container.appendChild(statusDiv);
+            });
+            
+            console.log('✅ Global status displayed successfully');
         }
 
+        // Track pending requests to prevent rapid clicking
+        const pendingToggles = new Set();
+        let lastRequestTime = 0;
+        const MIN_REQUEST_INTERVAL = 100; // Minimum 100ms between any requests
+
+        async function toggleUserStatus(name) {
+            // Prevent multiple simultaneous requests for the same user
+            if (pendingToggles.has(name)) {
+                console.log(`Request already pending for ${name}`);
+                return;
+            }
+            
+            // Add minimal global throttling
+            const now = Date.now();
+            const timeSinceLastRequest = now - lastRequestTime;
+            if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+                await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL - timeSinceLastRequest));
+            }
+            lastRequestTime = Date.now();
+            
+            pendingToggles.add(name);
+            
+            // Find and disable the button
+            const statusButtons = document.querySelectorAll('.status-indicator');
+            let targetButton = null;
+            statusButtons.forEach(btn => {
+                if (btn.textContent.includes(name)) {
+                    targetButton = btn;
+                    btn.style.opacity = '0.6';
+                    btn.style.pointerEvents = 'none';
+                }
+            });
+            
+            try {
+                const response = await fetch('/api/toggle-attendance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    console.log(`${name} ${result.action} successful`);
+                    // Immediately refresh status to sync across devices
+                    loadGlobalStatus();
+                    loadTodaySummary();
+                } else {
+                    showAlert(result.message || 'Action failed', 'danger');
+                    console.error(`Failed to toggle ${name}:`, result.message);
+                }
+            } catch (error) {
+                console.error('Toggle error:', error);
+                showAlert('Network error. Please try again.', 'danger');
+            } finally {
+                // Re-enable the button and remove from pending set
+                pendingToggles.delete(name);
+                if (targetButton) {
+                    targetButton.style.opacity = '1';
+                    targetButton.style.pointerEvents = 'auto';
+                }
+            }
+        }
         // Save form data to localStorage
         function saveFormData() {
-            const name = document.getElementById('name').value;
-            const email = document.getElementById('email').value;
+            const name = document.getElementById('name') ? document.getElementById('name').value : '';
             
             if (name) localStorage.setItem('attendanceName', name);
-            if (email) localStorage.setItem('attendanceEmail', email);
         }
 
         function showAlert(message, type = 'info') {
@@ -586,11 +680,10 @@
 
         async function checkIn() {
             const name = document.getElementById('name').value.trim();
-            const email = document.getElementById('email').value.trim();
             const notes = document.getElementById('notes').value.trim();
 
-            if (!name || !email) {
-                showAlert('Please fill in your name and email.', 'warning');
+            if (!name) {
+                showAlert('Please fill in your name.', 'warning');
                 return;
             }
 
@@ -603,7 +696,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ name, email, notes })
+                    body: JSON.stringify({ name, notes })
                 });
 
                 const data = await response.json();
@@ -625,11 +718,10 @@
 
         async function checkOut() {
             const name = document.getElementById('name').value.trim();
-            const email = document.getElementById('email').value.trim();
             const notes = document.getElementById('notes').value.trim();
 
-            if (!name || !email) {
-                showAlert('Please fill in your name and email.', 'warning');
+            if (!name) {
+                showAlert('Please fill in your name.', 'warning');
                 return;
             }
 
@@ -642,7 +734,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ name, email, notes })
+                    body: JSON.stringify({ name, notes })
                 });
 
                 const data = await response.json();
@@ -663,48 +755,20 @@
         }
 
         async function checkStatus() {
-            const email = document.getElementById('email').value.trim();
+            const name = document.getElementById('name') ? document.getElementById('name').value.trim() : '';
             
-            if (!email) {
-                showAlert('Please enter your email to check status.', 'warning');
+            if (!name) {
+                showAlert('Please enter your name to check status.', 'warning');
                 return;
             }
+            
+            // Setup real-time sync for this name
+            setupRealTimeSync(name);
 
             try {
-                const response = await fetch(`/api/status/${encodeURIComponent(email)}`);
+                const response = await fetch(`/api/status/${encodeURIComponent(name)}`);
                 const data = await response.json();
-                
-                const statusDisplay = document.getElementById('statusDisplay');
-                const statusText = document.getElementById('statusText');
-                const recordsToday = document.getElementById('recordsToday');
-                const todayRecordsList = document.getElementById('todayRecordsList');
-                
-                statusDisplay.style.display = 'block';
-                
-                // Update status
-                if (data.status === 'checked-in') {
-                    statusDisplay.className = 'status-card status-checked-in';
-                    statusText.innerHTML = '<i class="fas fa-check-circle"></i> Currently Checked In';
-                } else if (data.status === 'checked-out') {
-                    statusDisplay.className = 'status-card status-checked-out';
-                    statusText.innerHTML = '<i class="fas fa-times-circle"></i> Currently Checked Out';
-                } else {
-                    statusDisplay.className = 'status-card';
-                    statusText.innerHTML = '<i class="fas fa-question-circle"></i> No Check-in Today';
-                }
-                
-                // Show today's records
-                if (data.records_today && data.records_today.length > 0) {
-                    recordsToday.style.display = 'block';
-                    todayRecordsList.innerHTML = data.records_today.map(record => `
-                        <div class="record-item">
-                            <strong>${record.Action}:</strong> ${record.Timestamp}
-                            ${record.Notes ? `<br><small>Notes: ${record.Notes}</small>` : ''}
-                        </div>
-                    `).join('');
-                } else {
-                    recordsToday.style.display = 'none';
-                }
+                updateStatusDisplay(data);
                 
             } catch (error) {
                 showAlert('Error checking status. Please try again.', 'danger');
@@ -729,9 +793,174 @@
         // Auto-refresh summary every 30 seconds
         setInterval(loadTodaySummary, 30000);
         
+        // Real-time status synchronization
+        let eventSource = null;
+        let currentName = '';
+        let statusCheckInterval = null;
+        
+        function setupRealTimeSync(name) {
+            // Close existing connection
+            if (eventSource) {
+                console.log('Closing existing SSE connection');
+                eventSource.close();
+                eventSource = null;
+            }
+            
+            // Clear existing polling
+            if (statusCheckInterval) {
+                console.log('Clearing existing polling interval');
+                clearInterval(statusCheckInterval);
+                statusCheckInterval = null;
+            }
+            
+            if (!name) {
+                console.log('No name provided, skipping real-time sync setup');
+                return;
+            }
+            
+            currentName = name;
+            console.log('Setting up real-time sync for:', name);
+            
+            // Try Server-Sent Events first
+            try {
+                console.log('Attempting to establish SSE connection...');
+                eventSource = new EventSource(`/api/status-stream/${encodeURIComponent(name)}`);
+                
+                eventSource.onopen = function(event) {
+                    console.log('SSE connection opened successfully');
+                };
+                
+                eventSource.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('SSE message received:', data);
+                        
+                        if (data.type === 'status_update' || data.type === 'initial_status') {
+                            updateStatusDisplay(data);
+                        } else if (data.type === 'heartbeat') {
+                            // Connection is alive
+                            console.log('SSE heartbeat received');
+                        }
+                    } catch (error) {
+                        console.error('Error parsing SSE data:', error, event.data);
+                    }
+                };
+                
+                eventSource.onerror = function(error) {
+                    console.error('SSE connection error:', error);
+                    console.log('SSE connection failed, falling back to polling');
+                    eventSource.close();
+                    eventSource = null;
+                    // Fall back to polling
+                    setupPolling(name);
+                };
+                
+            } catch (error) {
+                console.error('SSE setup error:', error);
+                console.log('SSE not supported, using polling');
+                setupPolling(name);
+            }
+        }
+        
+        function setupPolling(name) {
+            console.log('Setting up polling for:', name);
+            // Poll for status updates every 5 seconds
+            statusCheckInterval = setInterval(() => {
+                const currentNameInput = document.getElementById('name') ? document.getElementById('name').value.trim() : '';
+                if (currentNameInput === name) {
+                    console.log('Polling status for:', name);
+                    checkStatusSilent(name);
+                } else {
+                    // Name changed, stop polling
+                    console.log('Name changed, stopping polling for:', name);
+                    clearInterval(statusCheckInterval);
+                    statusCheckInterval = null;
+                }
+            }, 5000);
+        }
+        
+        function updateStatusDisplay(data) {
+            console.log('Updating status display with:', data);
+            const statusDisplay = document.getElementById('statusDisplay');
+            const statusText = document.getElementById('statusText');
+            const recordsToday = document.getElementById('recordsToday');
+            const todayRecordsList = document.getElementById('todayRecordsList');
+            
+            if (!statusDisplay) {
+                console.error('Status display elements not found');
+                return;
+            }
+            
+            statusDisplay.style.display = 'block';
+            
+            // Update status based on data
+            const status = data.status || data.type;
+            console.log('Setting status to:', status);
+            if (status === 'checked-in') {
+                statusDisplay.className = 'status-card status-checked-in';
+                statusText.innerHTML = '<i class="fas fa-check-circle"></i> Currently Checked In';
+            } else if (status === 'checked-out') {
+                statusDisplay.className = 'status-card status-checked-out';
+                statusText.innerHTML = '<i class="fas fa-times-circle"></i> Currently Checked Out';
+            } else {
+                statusDisplay.className = 'status-card';
+                statusText.innerHTML = '<i class="fas fa-question-circle"></i> No Check-in Today';
+            }
+            
+            // Show today's records if available
+            const records = data.records_today || [];
+            console.log('Records for today:', records.length);
+            if (records.length > 0) {
+                recordsToday.style.display = 'block';
+                todayRecordsList.innerHTML = records.map(record => `
+                    <div class="record-item">
+                        <strong>${record.Action}:</strong> ${record.Timestamp}
+                        ${record.Notes ? `<br><small>Notes: ${record.Notes}</small>` : ''}
+                    </div>
+                `).join('');
+            } else {
+                recordsToday.style.display = 'none';
+            }
+        }
+        
+        async function checkStatusSilent(name) {
+            try {
+                const response = await fetch(`/api/status/${encodeURIComponent(name)}`);
+                const data = await response.json();
+                updateStatusDisplay(data);
+            } catch (error) {
+                console.error('Silent status check error:', error);
+            }
+        }
+        
         // Auto-save form data when typing
         document.getElementById('name').addEventListener('input', saveFormData);
         document.getElementById('email').addEventListener('input', saveFormData);
+
+        async function signOutAll() {
+            try {
+                const response = await fetch('/api/sign-out-all', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(`Successfully signed out ${data.count} users`, 'success');
+                    // Refresh the global status and summary
+                    loadGlobalStatus();
+                    loadTodaySummary();
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            } catch (error) {
+                console.error('Error signing out all users:', error);
+                showAlert('Error signing out users. Please try again.', 'danger');
+            }
+        }
     </script>
 </body>
 </html>

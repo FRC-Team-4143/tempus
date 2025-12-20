@@ -44,12 +44,13 @@
             background: var(--card-bg);
             margin-bottom: 2rem;
             border: 1px solid rgba(255,255,255,0.2);
+            padding: 2px;
         }
         
         .card-header {
             background: linear-gradient(135deg, var(--primary-color) 0%, var(--black-accent) 100%);
             color: var(--text-light);
-            border-radius: 16px 16px 0 0 !important;
+            border-radius: 12px 12px 12px 12px !important;
             border: none;
             padding: 2rem;
             text-align: center;
@@ -74,33 +75,9 @@
         }
         
         .scoreboard-title {
-            background: linear-gradient(45deg, var(--gold), var(--accent-color));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--text-light);
             font-weight: 800;
             text-shadow: none;
-        }
-        
-        .back-link {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            background: linear-gradient(135deg, var(--primary-color) 0%, var(--black-accent) 100%);
-            color: var(--text-light);
-            padding: 12px 18px;
-            border-radius: 25px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            z-index: 1000;
-            box-shadow: 0 4px 15px rgba(183, 28, 28, 0.3);
-        }
-        
-        .back-link:hover {
-            color: var(--text-light);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(183, 28, 28, 0.4);
         }
         
         .ranking-item {
@@ -122,17 +99,26 @@
         
         .ranking-item.rank-1 {
             border-left-color: var(--gold);
-            background: linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, white 100%);
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.05) 0%, white 100%);
+            border: 2px solid rgba(255, 215, 0, 0.3);
+            color: white;
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.8) 0%, rgba(255, 193, 7, 0.9) 100%);
         }
         
         .ranking-item.rank-2 {
             border-left-color: var(--silver);
-            background: linear-gradient(135deg, rgba(192, 192, 192, 0.1) 0%, white 100%);
+            background: linear-gradient(135deg, rgba(192, 192, 192, 0.05) 0%, white 100%);
+            border: 2px solid rgba(192, 192, 192, 0.3);
+            color: white;
+            background: linear-gradient(135deg, rgba(192, 192, 192, 0.8) 0%, rgba(158, 158, 158, 0.9) 100%);
         }
         
         .ranking-item.rank-3 {
             border-left-color: var(--bronze);
-            background: linear-gradient(135deg, rgba(205, 127, 50, 0.1) 0%, white 100%);
+            background: linear-gradient(135deg, rgba(205, 127, 50, 0.05) 0%, white 100%);
+            border: 2px solid rgba(205, 127, 50, 0.3);
+            color: white;
+            background: linear-gradient(135deg, rgba(205, 127, 50, 0.8) 0%, rgba(184, 115, 51, 0.9) 100%);
         }
         
         .rank-badge {
@@ -154,20 +140,23 @@
         
         .rank-badge.rank-1 {
             background: linear-gradient(135deg, var(--gold) 0%, #ffed4e 100%);
-            color: var(--text-dark);
+            color: #333333;
             box-shadow: 0 6px 20px rgba(255, 215, 0, 0.4);
+            font-weight: 900;
         }
         
         .rank-badge.rank-2 {
-            background: linear-gradient(135deg, var(--silver) 0%, #e0e0e0 100%);
-            color: var(--text-dark);
+            background: linear-gradient(135deg, var(--silver) 0%, #f5f5f5 100%);
+            color: #333333;
             box-shadow: 0 6px 20px rgba(192, 192, 192, 0.4);
+            font-weight: 900;
         }
         
         .rank-badge.rank-3 {
             background: linear-gradient(135deg, var(--bronze) 0%, #deb887 100%);
-            color: var(--text-light);
+            color: #ffffff;
             box-shadow: 0 6px 20px rgba(205, 127, 50, 0.4);
+            font-weight: 900;
         }
         
         .stat-badge {
@@ -234,13 +223,6 @@
                 margin: 1rem;
             }
             
-            .back-link {
-                top: 10px;
-                left: 10px;
-                padding: 10px 14px;
-                font-size: 0.9rem;
-            }
-            
             .ranking-item {
                 padding: 1rem;
             }
@@ -253,10 +235,6 @@
     </style>
 </head>
 <body>
-    <a href="/" class="back-link">
-        <i class="fas fa-arrow-left"></i> Back to Tracker
-    </a>
-
     <div class="container-fluid">
         <div class="main-container">
             <!-- Header -->
@@ -274,7 +252,8 @@
             <!-- Stats Summary -->
             <div class="stats-summary">
                 <h5><i class="fas fa-users"></i> Team Summary</h5>
-                <p class="mb-0">Total Active Members: <strong>{{ total_people }}</strong></p>
+                <p class="mb-1">Total Active Members: <strong>{{ total_people }}</strong></p>
+                <p class="mb-0">Total Team Hours: <strong>{{ "%.1f"|format(total_team_hours|default(0)) }}</strong></p>
                 <small class="text-muted">Ranked by total hours from completed check-in/check-out sessions</small>
             </div>
 
@@ -304,11 +283,9 @@
                                 <h5 class="mb-2">{{ person.name }}</h5>
                                 <div class="stats-row">
                                     <span class="stat-badge hours">{{ person.total_hours }} hours</span>
-                                    <span class="stat-badge sessions">{{ person.sessions_count }} sessions</span>
-                                    <span class="stat-badge avg">{{ person.avg_session_hours }}h avg</span>
                                 </div>
                                 {% if person.last_activity != 'Never' %}
-                                <small class="text-muted d-block mt-2">
+                                <small class="d-block mt-2" style="color: #333333;">
                                     <i class="fas fa-calendar-alt"></i> Last active: {{ person.last_activity }}
                                 </small>
                                 {% endif %}
@@ -325,9 +302,6 @@
                         <i class="fas fa-chart-line" style="font-size: 3rem; color: #ccc; margin-bottom: 1rem;"></i>
                         <h4>No Data Available</h4>
                         <p>No attendance records found. Start tracking attendance to see rankings!</p>
-                        <a href="/" class="btn btn-primary mt-3">
-                            <i class="fas fa-plus"></i> Start Tracking
-                        </a>
                     </div>
                 </div>
             </div>
