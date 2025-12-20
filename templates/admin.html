@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Attendance Tracker</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #b71c1c;
+            --secondary-color: #d32f2f;
+            --accent-color: #ff5252;
+            --background-gradient: linear-gradient(135deg, #000000 0%, #212121 50%, #424242 100%);
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --text-dark: #212121;
+            --text-light: #ffffff;
+            --success-color: #4caf50;
+            --danger-color: #f44336;
+            --warning-color: #ff9800;
+            --black-accent: #000000;
+        }
+        
+        body {
+            background: var(--background-gradient);
+            min-height: 100vh;
+            font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-dark);
+        }
+        
+        .main-container {
+            margin: 2rem;
+            padding: 0;
+        }
+        
+        .card {
+            border: none;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+            background: var(--card-bg);
+            margin-bottom: 2rem;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .card-header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--black-accent) 100%);
+            color: var(--text-light);
+            border-radius: 16px 16px 0 0 !important;
+            border: none;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(255,193,7,0.1) 50%, transparent 70%);
+            animation: shine 3s infinite;
+        }
+        
+        @keyframes shine {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        .stats-card {
+            background: linear-gradient(135deg, var(--success-color) 0%, #66bb6a 100%);
+            color: var(--text-light);
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-align: center;
+            height: 100%;
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .stats-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4);
+        }
+        
+        .stats-card h3 {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        
+        .back-link {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--black-accent) 100%);
+            color: var(--text-light);
+            padding: 12px 18px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(183, 28, 28, 0.3);
+        }
+        
+        .back-link:hover {
+            color: var(--text-light);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(183, 28, 28, 0.4);
+        }
+        
+        .scoreboard-link {
+            position: fixed;
+            top: 20px;
+            left: 180px;
+            background: linear-gradient(135deg, var(--accent-color) 0%, var(--secondary-color) 100%);
+            color: var(--text-light);
+            padding: 12px 18px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 82, 82, 0.3);
+            z-index: 1000;
+        }
+        
+        .scoreboard-link:hover {
+            color: var(--text-light);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 82, 82, 0.4);
+        }
+        
+        .table-responsive {
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .table th {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--black-accent) 100%);
+            color: var(--text-light);
+            border: none;
+            font-weight: 600;
+            padding: 1rem;
+        }
+        
+        .table td {
+            vertical-align: middle;
+            border-color: rgba(0,0,0,0.05);
+            padding: 1rem;
+            background: white;
+        }
+        
+        .badge {
+            font-size: 0.8rem;
+            padding: 0.5rem 0.8rem;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+        
+        .badge-check-in {
+            background: linear-gradient(135deg, var(--success-color) 0%, #66bb6a 100%);
+            color: var(--text-light);
+        }
+        
+        .badge-check-out {
+            background: linear-gradient(135deg, var(--danger-color) 0%, #ef5350 100%);
+            color: var(--text-light);
+        }
+        
+        .refresh-btn {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--black-accent) 100%);
+            border: none;
+            border-radius: 12px;
+            padding: 12px 24px;
+            color: var(--text-light);
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(183, 28, 28, 0.3);
+        }
+        
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(183, 28, 28, 0.4);
+            color: var(--text-light);
+        }
+        
+        .export-btn {
+            background: linear-gradient(135deg, var(--success-color) 0%, #66bb6a 100%);
+            border: none;
+            border-radius: 12px;
+            padding: 12px 24px;
+            color: var(--text-light);
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin-left: 10px;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+        }
+        
+        .export-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+            color: var(--text-light);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--black-accent) 100%);
+            border: none;
+            border-radius: 12px;
+            padding: 12px 24px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(183, 28, 28, 0.3);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(183, 28, 28, 0.4);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, var(--success-color) 0%, #66bb6a 100%);
+            border: none;
+            border-radius: 12px;
+            padding: 12px 24px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, var(--danger-color) 0%, #ef5350 100%);
+            border: none;
+            border-radius: 12px;
+            padding: 8px 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(244, 67, 54, 0.3);
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(244, 67, 54, 0.4);
+        }
+        
+        .form-control {
+            border-radius: 12px;
+            border: 2px solid #e3f2fd;
+            padding: 12px 16px;
+            transition: all 0.3s ease;
+            background: rgba(255,255,255,0.9);
+        }
+        
+        .form-control:focus {
+            border-color: var(--secondary-color);
+            box-shadow: 0 0 0 0.2rem rgba(255, 87, 34, 0.25);
+            background: white;
+        }
+        
+        /* Red and black team themed accents */
+        .admin-title {
+            background: linear-gradient(45deg, var(--accent-color), var(--primary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 800;
+            text-shadow: none;
+        }
+        
+        .tech-accent {
+            border-left: 4px solid var(--primary-color);
+            background: rgba(183, 28, 28, 0.05);
+        }
+        
+        @media (max-width: 768px) {
+            .main-container {
+                margin: 1rem;
+            }
+            
+            .back-link {
+                top: 10px;
+                left: 10px;
+                padding: 10px 14px;
+                font-size: 0.9rem;
+            }
+            
+            .scoreboard-link {
+                top: 60px;
+                left: 10px;
+                padding: 10px 14px;
+                font-size: 0.9rem;
+            }
+            
+            .stats-card h3 {
+                font-size: 2rem;
+            }
+        }
+        
+        .dataTables_wrapper {
+            padding: 0;
+        }
+        
+        .dataTables_filter input {
+            border-radius: 12px;
+            border: 2px solid #e3f2fd;
+            padding: 10px 14px;
+            transition: all 0.3s ease;
+        }
+        
+        .dataTables_filter input:focus {
+            border-color: var(--secondary-color);
+            box-shadow: 0 0 0 0.2rem rgba(255, 87, 34, 0.25);
+        }
+        
+        .dataTables_length select {
+            border-radius: 12px;
+            border: 2px solid #e3f2fd;
+            padding: 8px 12px;
+        }
+        
+        .pagination .page-link {
+            border-radius: 12px;
+            border: none;
+            margin: 0 3px;
+            color: var(--primary-color);
+            background: rgba(255,255,255,0.9);
+            transition: all 0.3s ease;
+        }
+        
+        .pagination .page-link:hover {
+            background: var(--secondary-color);
+            color: var(--text-light);
+            transform: translateY(-1px);
+        }
+        
+        .pagination .page-item.active .page-link {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #303f9f 100%);
+            border: none;
+            color: var(--text-light);
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="back-link">
+        <i class="fas fa-arrow-left"></i> Back to Tracker
+    </a>
+    
+    <a href="/scoreboard" class="scoreboard-link">
+        <i class="fas fa-clock"></i> Leaderboard
+    </a>
+
+    <div class="container-fluid">
+        <div class="main-container">
+            <!-- Header -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h1 class="mb-0 admin-title">
+                                <i class="fas fa-rocket"></i>
+                                Mars Wars Admin
+                            </h1>
+                            <p class="mb-0 mt-2">Team attendance command center</p>
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn refresh-btn" onclick="refreshData()">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            <button class="btn export-btn" onclick="exportToCSV()">
+                                <i class="fas fa-download"></i> Export CSV
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Cards -->
+            <div class="row g-4 mb-4">
+                <div class="col-lg-3 col-md-6">
+                    <div class="stats-card">
+                        <h3 id="todayCheckIns">{{ summary.total_check_ins or 0 }}</h3>
+                        <p class="mb-0">Today's Check-ins</p>
+                        <small>{{ summary.date or 'Today' }}</small>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <div class="stats-card" style="background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);">
+                        <h3 id="todayCheckOuts">{{ summary.total_check_outs or 0 }}</h3>
+                        <p class="mb-0">Today's Check-outs</p>
+                        <small>{{ summary.date or 'Today' }}</small>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <div class="stats-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <h3 id="uniqueUsers">{{ summary.unique_users or 0 }}</h3>
+                        <p class="mb-0">Unique Users</p>
+                        <small>Today</small>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <div class="stats-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <h3 id="totalRecords">{{ records|length or 0 }}</h3>
+                        <p class="mb-0">Total Records</p>
+                        <small>Last 50 entries</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Names Management -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="mb-0">
+                        <i class="fas fa-users-cog"></i>
+                        Manage Team Names
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <!-- CSV Upload -->
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h5>Upload Names from CSV</h5>
+                            <div class="mb-3">
+                                <input type="file" class="form-control" id="csvFileInput" accept=".csv" />
+                                <div class="form-text">
+                                    Upload a CSV file with names in the first column. First row can be a header.
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" onclick="uploadCSV()">
+                                <i class="fas fa-upload"></i> Upload CSV
+                            </button>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>CSV Format Example:</h6>
+                            <div class="bg-light p-3 rounded">
+                                <small class="text-muted">
+                                    Name<br>
+                                    John Smith<br>
+                                    Jane Doe<br>
+                                    Mike Johnson
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4">
+                    
+                    <!-- Current Names List -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5>Current Names List</h5>
+                            <div id="currentNamesList" class="list-group" style="max-height: 300px; overflow-y: auto;">
+                                <!-- Names will be loaded here -->
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h5>Add Individual Name</h5>
+                            <div class="input-group mb-3">
+                                <input type="text" class="form-control" id="newNameInput" placeholder="Enter name">
+                                <button class="btn btn-success" onclick="addName()">
+                                    <i class="fas fa-plus"></i> Add
+                                </button>
+                            </div>
+                            <div class="alert alert-info">
+                                <small>
+                                    <i class="fas fa-info-circle"></i>
+                                    Changes take effect immediately. Users will see the updated list when they refresh.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="mb-0">
+                        <i class="fas fa-history"></i>
+                        Recent Activity
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table id="attendanceTable" class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Action</th>
+                                    <th>Duration</th>
+                                    <th>Notes</th>
+                                    <th>Device IP</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for record in records %}
+                                <tr>
+                                    <td>{{ record['Timestamp'] or record.get('timestamp', '-') }}</td>
+                                    <td>
+                                        <strong>{{ record['Name'] or record.get('name', '-') }}</strong>
+                                    </td>
+                                    <td>{{ record['Email'] or record.get('email', '-') }}</td>
+                                    <td>
+                                        {% if record['Action'] == 'check-in' or record.get('action') == 'check-in' %}
+                                            <span class="badge badge-check-in">
+                                                <i class="fas fa-sign-in-alt"></i> Check In
+                                            </span>
+                                        {% elif record['Action'] == 'check-out' or record.get('action') == 'check-out' %}
+                                            <span class="badge badge-check-out">
+                                                <i class="fas fa-sign-out-alt"></i> Check Out
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">
+                                                {{ record['Action'] or record.get('action', '-') }}
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if record.get('Duration (hours)') or record.get('duration') %}
+                                            <strong>{{ record.get('Duration (hours)') or record.get('duration') }}h</strong>
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small>{{ record['Notes'] or record.get('notes', '-') }}</small>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">{{ record['Device IP'] or record.get('device_ip', '-') }}</small>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Today's Detail -->
+            {% if summary.records %}
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="mb-0">
+                        <i class="fas fa-calendar-day"></i>
+                        Today's Detailed Activity
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Name</th>
+                                    <th>Action</th>
+                                    <th>Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for record in summary.records %}
+                                <tr>
+                                    <td>{{ record.get('Check-in Time') or record.get('Check-out Time', '-') }}</td>
+                                    <td>{{ record['Name'] }}</td>
+                                    <td>
+                                        {% if record['Action'] == 'check-in' %}
+                                            <span class="badge badge-check-in">
+                                                <i class="fas fa-sign-in-alt"></i> Check In
+                                            </span>
+                                        {% else %}
+                                            <span class="badge badge-check-out">
+                                                <i class="fas fa-sign-out-alt"></i> Check Out
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if record.get('Duration (hours)') %}
+                                            <strong>{{ record['Duration (hours)'] }}h</strong>
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
+    
+    <script>
+        let attendanceTable;
+
+        $(document).ready(function() {
+            // Initialize DataTable
+            attendanceTable = $('#attendanceTable').DataTable({
+                order: [[0, 'desc']], // Sort by timestamp descending
+                pageLength: 25,
+                responsive: true,
+                language: {
+                    search: "Search records:",
+                    lengthMenu: "Show _MENU_ records per page",
+                    info: "Showing _START_ to _END_ of _TOTAL_ records",
+                    paginate: {
+                        previous: "Previous",
+                        next: "Next"
+                    }
+                }
+            });
+
+            // Load initial data
+            loadCurrentNames();
+
+            // Auto-refresh every minute
+            setInterval(refreshData, 60000);
+        });
+
+        async function loadCurrentNames() {
+            try {
+                const response = await fetch('/api/names');
+                const names = await response.json();
+                displayNamesList(names);
+            } catch (error) {
+                console.error('Error loading names:', error);
+                showToast('Error loading current names list', 'error');
+            }
+        }
+
+        function displayNamesList(names) {
+            const container = document.getElementById('currentNamesList');
+            container.innerHTML = '';
+            
+            names.forEach(name => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item d-flex justify-content-between align-items-center';
+                item.innerHTML = `
+                    <span>${name}</span>
+                    <button class="btn btn-sm btn-outline-danger" onclick="removeName('${name}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                `;
+                container.appendChild(item);
+            });
+            
+            if (names.length === 0) {
+                container.innerHTML = '<div class="list-group-item text-muted">No names in list</div>';
+            }
+        }
+
+        async function uploadCSV() {
+            const fileInput = document.getElementById('csvFileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showToast('Please select a CSV file to upload', 'error');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch('/api/upload-names', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    displayNamesList(data.names);
+                    fileInput.value = ''; // Clear the file input
+                } else {
+                    showToast(data.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error uploading CSV:', error);
+                showToast('Error uploading file. Please try again.', 'error');
+            }
+        }
+
+        async function addName() {
+            const input = document.getElementById('newNameInput');
+            const name = input.value.trim();
+            
+            if (!name) {
+                showToast('Please enter a name', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/add-name', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    displayNamesList(data.names);
+                    input.value = ''; // Clear the input
+                } else {
+                    showToast(data.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error adding name:', error);
+                showToast('Error adding name. Please try again.', 'error');
+            }
+        }
+
+        async function removeName(name) {
+            if (!confirm(`Are you sure you want to remove "${name}" from the list?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/remove-name', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    displayNamesList(data.names);
+                } else {
+                    showToast(data.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error removing name:', error);
+                showToast('Error removing name. Please try again.', 'error');
+            }
+        }
+
+        async function refreshData() {
+            try {
+                // Update summary
+                const summaryResponse = await fetch('/api/summary');
+                const summaryData = await summaryResponse.json();
+                
+                document.getElementById('todayCheckIns').textContent = summaryData.total_check_ins || 0;
+                document.getElementById('todayCheckOuts').textContent = summaryData.total_check_outs || 0;
+                document.getElementById('uniqueUsers').textContent = summaryData.unique_users || 0;
+
+                // Update records table
+                const recordsResponse = await fetch('/api/records?limit=50');
+                const recordsData = await recordsResponse.json();
+                
+                // Clear and rebuild table
+                attendanceTable.clear();
+                
+                recordsData.forEach(record => {
+                    const actionBadge = record.Action === 'check-in' 
+                        ? '<span class="badge badge-check-in"><i class="fas fa-sign-in-alt"></i> Check In</span>'
+                        : '<span class="badge badge-check-out"><i class="fas fa-sign-out-alt"></i> Check Out</span>';
+                    
+                    const duration = record['Duration (hours)'] 
+                        ? `<strong>${record['Duration (hours)']}h</strong>` 
+                        : '-';
+                    
+                    attendanceTable.row.add([
+                        record.Timestamp || '-',
+                        `<strong>${record.Name || '-'}</strong>`,
+                        record.Email || '-',
+                        actionBadge,
+                        duration,
+                        `<small>${record.Notes || '-'}</small>`,
+                        `<small class="text-muted">${record['Device IP'] || '-'}</small>`
+                    ]);
+                });
+                
+                attendanceTable.draw();
+                document.getElementById('totalRecords').textContent = recordsData.length;
+                
+                // Show success message
+                showToast('Data refreshed successfully!', 'success');
+                
+            } catch (error) {
+                console.error('Error refreshing data:', error);
+                showToast('Error refreshing data. Please try again.', 'error');
+            }
+        }
+
+        function exportToCSV() {
+            const table = document.getElementById('attendanceTable');
+            const rows = table.querySelectorAll('tr');
+            const csvContent = [];
+            
+            rows.forEach(row => {
+                const cols = row.querySelectorAll('td, th');
+                const rowData = [];
+                cols.forEach(col => {
+                    // Clean text content (remove HTML tags)
+                    let text = col.textContent || col.innerText || '';
+                    text = text.replace(/"/g, '""'); // Escape quotes
+                    rowData.push(`"${text}"`);
+                });
+                if (rowData.length > 0) {
+                    csvContent.push(rowData.join(','));
+                }
+            });
+            
+            const csvString = csvContent.join('\n');
+            const blob = new Blob([csvString], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `attendance_records_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            showToast('CSV file exported successfully!', 'success');
+        }
+
+        function showToast(message, type = 'info') {
+            // Create toast container if it doesn't exist
+            let toastContainer = document.getElementById('toastContainer');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'toastContainer';
+                toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+                toastContainer.style.zIndex = '1055';
+                document.body.appendChild(toastContainer);
+            }
+            
+            const toastId = 'toast_' + Date.now();
+            const bgClass = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-primary';
+            
+            const toastHtml = `
+                <div id="${toastId}" class="toast align-items-center ${bgClass} text-white border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            ${message}
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                </div>
+            `;
+            
+            toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+            
+            const toastElement = document.getElementById(toastId);
+            const toast = new bootstrap.Toast(toastElement, { delay: 3000 });
+            toast.show();
+            
+            // Remove toast element after it's hidden
+            toastElement.addEventListener('hidden.bs.toast', () => {
+                toastElement.remove();
+            });
+        }
+    </script>
+</body>
+</html>
