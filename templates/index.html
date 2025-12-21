@@ -28,29 +28,35 @@
         }
         
         .main-container {
-            max-width: 600px;
-            margin: 2rem auto;
+            max-width: 1600px;
+            margin: 1rem auto;
             padding: 2rem;
         }
         
         .card {
             border: none;
-            border-radius: 16px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
             backdrop-filter: blur(10px);
             background: var(--card-bg);
             border: 1px solid rgba(255,255,255,0.2);
+            margin-bottom: 0.5rem;
         }
         
         .card-header {
             background: linear-gradient(135deg, var(--primary-color) 0%, var(--black-accent) 100%);
             color: var(--text-light);
-            border-radius: 16px 16px 0 0 !important;
+            border-radius: 12px 12px 0 0 !important;
             border: none;
             text-align: center;
-            padding: 2rem;
+            padding: 1.5rem;
             position: relative;
             overflow: hidden;
+        }
+        
+        .card-header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0;
         }
         
         .card-header::before {
@@ -72,12 +78,12 @@
         .btn-primary {
             background: linear-gradient(135deg, var(--primary-color) 0%, var(--black-accent) 100%);
             border: none;
-            border-radius: 12px;
-            padding: 14px 28px;
+            border-radius: 14px;
+            padding: 18px 32px;
             font-weight: 600;
-            font-size: 1.1rem;
+            font-size: 1.3rem;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(183, 28, 28, 0.3);
+            box-shadow: 0 6px 20px rgba(183, 28, 28, 0.3);
         }
         
         .btn-primary:hover {
@@ -89,31 +95,31 @@
         .btn-success {
             background: linear-gradient(135deg, var(--success-color) 0%, #66bb6a 100%);
             border: none;
-            border-radius: 12px;
-            padding: 14px 28px;
+            border-radius: 14px;
+            padding: 18px 32px;
             font-weight: 600;
-            font-size: 1.1rem;
+            font-size: 1.3rem;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.3);
         }
         
         .btn-danger {
             background: linear-gradient(135deg, var(--danger-color) 0%, #ef5350 100%);
             border: none;
-            border-radius: 12px;
-            padding: 14px 28px;
+            border-radius: 14px;
+            padding: 18px 32px;
             font-weight: 600;
-            font-size: 1.1rem;
+            font-size: 1.3rem;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(244, 67, 54, 0.3);
+            box-shadow: 0 6px 20px rgba(244, 67, 54, 0.3);
         }
         
         .form-control {
-            border-radius: 12px;
-            border: 2px solid #e3f2fd;
-            padding: 14px 16px;
+            border-radius: 14px;
+            border: 3px solid #e3f2fd;
+            padding: 18px 20px;
             transition: all 0.3s ease;
-            font-size: 1rem;
+            font-size: 1.25rem;
             background: rgba(255,255,255,0.8);
         }
         
@@ -126,16 +132,17 @@
         .status-card {
             background: linear-gradient(135deg, var(--secondary-color) 0%, #ff7043 100%);
             color: var(--text-light);
-            border-radius: 16px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
             text-align: center;
-            box-shadow: 0 6px 20px rgba(255, 87, 34, 0.3);
+            box-shadow: 0 4px 15px rgba(255, 87, 34, 0.3);
         }
         
         .status-checked-in {
-            background: linear-gradient(135deg, var(--success-color) 0%, #66bb6a 100%);
-            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.3);
+            background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
+            box-shadow: 0 6px 20px rgba(27, 94, 32, 0.5);
+            border: 2px solid #0d5b0d;
         }
         
         .status-checked-out {
@@ -145,18 +152,18 @@
         
         .name-toggle-btn {
             width: 100%;
-            min-height: 70px;
-            border-radius: 16px;
+            min-height: 75px;
+            border-radius: 14px;
             border: 3px solid #e3f2fd;
             background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
             color: var(--text-dark);
             font-weight: 600;
-            font-size: 1.1rem;
+            font-size: 1.2rem;
             transition: all 0.4s ease;
             position: relative;
             overflow: hidden;
             cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 3px 14px rgba(0,0,0,0.11);
         }
         
         .name-toggle-btn:hover {
@@ -165,16 +172,23 @@
         }
         
         .name-toggle-btn.checked-in {
-            background: linear-gradient(135deg, var(--success-color) 0%, #66bb6a 100%);
-            border-color: var(--success-color);
+            background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
+            border-color: #0d5b0d;
             color: var(--text-light);
-            box-shadow: 0 6px 25px rgba(76, 175, 80, 0.4);
+            box-shadow: 0 6px 25px rgba(13, 91, 13, 0.6);
             animation: pulse-success 2s infinite;
+            border-width: 4px;
         }
         
         @keyframes pulse-success {
-            0%, 100% { box-shadow: 0 6px 25px rgba(76, 175, 80, 0.4); }
-            50% { box-shadow: 0 6px 30px rgba(76, 175, 80, 0.6); }
+            0%, 100% { 
+                box-shadow: 0 6px 25px rgba(13, 91, 13, 0.6);
+                border-color: #0d5b0d;
+            }
+            50% { 
+                box-shadow: 0 8px 35px rgba(27, 94, 32, 0.8);
+                border-color: #0a4f0a;
+            }
         }
         
         .name-toggle-btn.checked-out {
@@ -240,26 +254,28 @@
         
         .status-indicator {
             background: rgba(255, 255, 255, 0.9);
-            border-radius: 8px;
-            padding: 16px 12px;
-            margin: 2px 0;
-            border: 2px solid transparent;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 4px 0;
+            border: 3px solid transparent;
             transition: all 0.3s ease;
             cursor: pointer;
-            font-size: 0.9rem;
+            font-size: 1.1rem;
+            font-weight: 600;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            min-height: 70px;
-            height: 70px;
+            min-height: 75px;
+            height: 75px;
             box-sizing: border-box;
             text-align: center;
         }
         
         .status-indicator.checked-in {
-            border-color: var(--success-color);
-            background: rgba(76, 175, 80, 0.1);
+            border-color: #1b5e20;
+            background: rgba(27, 94, 32, 0.2);
+            border-width: 3px;
         }
         
         .status-indicator.checked-out {
@@ -270,6 +286,27 @@
         .status-indicator:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        
+        .team-header {
+            background: linear-gradient(135deg, #b71c1c 0%, #000000 100%);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .team-header:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+        }
+        
+        .team-header .badge {
+            font-size: 0.8rem;
         }
         
         .last-updated {
@@ -396,10 +433,15 @@
 
                     <!-- Global Real-time Status Board -->
                     <div id="globalStatusBoard">
-                        <h5 class="text-center mb-4">
-                            <i class="fas fa-users"></i> Team Status 
-                            <span class="badge bg-secondary" id="lastUpdated">Loading...</span>
-                        </h5>
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h5 class="mb-0">
+                                Last Updated:
+                                <span class="badge bg-secondary" id="lastUpdated">Loading...</span>
+                            </h5>
+                            <button class="btn btn-warning" onclick="signOutAll()" style="background: linear-gradient(135deg, #ff9800 0%, #ff8f00 100%); border: none; border-radius: 12px; padding: 12px 20px; color: white; font-weight: 600; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3); transition: all 0.3s ease;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(255, 152, 0, 0.4)'" onmouseout="this.style.transform='translateY(0px)'; this.style.boxShadow='0 4px 15px rgba(255, 152, 0, 0.3)'">
+                                <i class="fas fa-sign-out-alt"></i> Sign Out All
+                            </button>
+                        </div>
                         <div class="row g-2" id="statusGrid">
                             <!-- Status indicators will be loaded here -->
                         </div>
@@ -417,33 +459,6 @@
                 </div>
             </div>
 
-            <!-- Quick Stats -->
-            <div class="card mt-4">
-                <div class="card-body text-center">
-                    <h5 class="card-title">
-                        <i class="fas fa-chart-bar"></i> Today's Summary
-                    </h5>
-                    <div id="todaySummary" class="row g-3">
-                        <div class="col-4">
-                            <div class="h4 mb-0 text-primary" id="totalCheckIns">-</div>
-                            <small class="text-muted">Check-ins</small>
-                        </div>
-                        <div class="col-4">
-                            <div class="h4 mb-0 text-danger" id="totalCheckOuts">-</div>
-                            <small class="text-muted">Check-outs</small>
-                        </div>
-                        <div class="col-4">
-                            <div class="h4 mb-0 text-success" id="uniqueUsers">-</div>
-                            <small class="text-muted">Unique Users</small>
-                        </div>
-                    </div>
-                    <div class="mt-3">
-                        <button class="btn btn-warning" onclick="signOutAll()" style="background: linear-gradient(135deg, #ff9800 0%, #ff8f00 100%); border: none; border-radius: 12px; padding: 12px 20px; color: white; font-weight: 600; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3); transition: all 0.3s ease;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(255, 152, 0, 0.4)'" onmouseout="this.style.transform='translateY(0px)'; this.style.boxShadow='0 4px 15px rgba(255, 152, 0, 0.3)'">
-                            <i class="fas fa-sign-out-alt"></i> Sign Out All
-                        </button>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -456,12 +471,10 @@
         window.onload = function() {
             console.log('🚀 Page loaded, starting initialization...');
             loadGlobalStatus();
-            loadTodaySummary();
             
             // Auto-refresh every 10 seconds for real-time sync
             setInterval(() => {
                 loadGlobalStatus();
-                loadTodaySummary();
             }, 10000);
             
             // More aggressive polling when tab is visible (every 5 seconds)
@@ -469,7 +482,6 @@
                 if (!document.hidden) {
                     // Tab became visible, refresh immediately
                     loadGlobalStatus();
-                    loadTodaySummary();
                 }
             });
             
@@ -502,14 +514,15 @@
                     statusGrid.innerHTML = '<div class="col-12 text-center p-4"><i class="fas fa-spinner fa-spin"></i> Loading team status...</div>';
                 }
                 
-                // Load actual Google Sheets data directly
+                // Load actual data from new team-based API
                 const response = await fetch('/api/global-status');
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
                 
                 const data = await response.json();
-                console.log('✅ Received', data.users.length, 'users');
+                const totalUsers = Object.values(data.teams || {}).reduce((sum, team) => sum + team.length, 0);
+                console.log('✅ Received', totalUsers, 'users in teams');
                 
                 globalStatusData = data;
                 displayGlobalStatus(data);
@@ -521,7 +534,7 @@
             }
         }
         function displayGlobalStatus(data) {
-            console.log('🎨 Displaying', data.users.length, 'users');
+            console.log('🎨 Displaying teams data');
             
             const container = document.getElementById('statusGrid');
             const lastUpdatedElement = document.getElementById('lastUpdated');
@@ -535,39 +548,107 @@
             const lastUpdated = new Date(data.last_updated);
             lastUpdatedElement.textContent = lastUpdated.toLocaleTimeString();
             
-            // Clear existing content (except the load button)
-            const existingButtons = container.querySelectorAll('button');
+            // Clear existing content
             container.innerHTML = '';
             
-            // Create status indicators for each user
-            data.users.forEach((user, index) => {
-                const statusDiv = document.createElement('div');
-                statusDiv.className = 'col-6 col-md-4 col-lg-3 mb-2';
+            // Create team sections
+            const teams = data.teams;
+            
+            // Create main row for side-by-side layout
+            const mainRow = document.createElement('div');
+            mainRow.className = 'row';
+            
+            // Team 4143 section (Left Column)
+            if (teams['4143'] && teams['4143'].length > 0) {
+                const team4143Column = document.createElement('div');
+                team4143Column.className = 'col-lg-6 col-md-12 mb-4';
                 
-                const statusClass = user.status;
-                let dotColor = '#6c757d'; // default gray
-                if (user.status === 'checked-in') dotColor = '#4caf50';
-                else if (user.status === 'checked-out') dotColor = '#6c757d';
-                
-                let lastActionText = '';
-                if (user.last_timestamp) {
-                    const time = new Date(user.last_timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                    lastActionText = `<div class="text-muted small">${time}</div>`;
-                }
-                
-                statusDiv.innerHTML = `
-                    <div class="status-indicator ${statusClass}" onclick="toggleUserStatus('${user.name}')">
-                        <div>
-                            <span class="fw-semibold">${user.name}</span>
-                        </div>
-                        ${lastActionText}
+                const team4143Header = document.createElement('div');
+                team4143Header.className = 'mb-1';
+                team4143Header.innerHTML = `
+                    <div class="team-header" style="background: linear-gradient(135deg, #b71c1c 0%, #0d47a1 100%); color: white; padding: 12px 16px; border-radius: 10px; font-weight: 600; text-align: center; margin-bottom: 12px; font-size: 1.1rem;">
+                        <i class="fas fa-users"></i> Team 4143 
+                        <span class="badge bg-light text-dark ms-2">${data.summary.team_4143_checked_in}/${data.summary.team_4143_total} checked in</span>
                     </div>
                 `;
+                team4143Column.appendChild(team4143Header);
                 
-                container.appendChild(statusDiv);
-            });
+                // Create inner row for Team 4143 users
+                const team4143Row = document.createElement('div');
+                team4143Row.className = 'row g-2';
+                
+                // Add Team 4143 users
+                teams['4143'].forEach(user => {
+                    const statusDiv = createUserStatusDiv(user);
+                    statusDiv.className = 'col-4 col-xl-3 mb-2';
+                    team4143Row.appendChild(statusDiv);
+                });
+                
+                team4143Column.appendChild(team4143Row);
+                mainRow.appendChild(team4143Column);
+            }
+            
+            // Team 4423 section (Right Column)
+            if (teams['4423'] && teams['4423'].length > 0) {
+                const team4423Column = document.createElement('div');
+                team4423Column.className = 'col-lg-6 col-md-12 mb-4';
+                
+                const team4423Header = document.createElement('div');
+                team4423Header.className = 'mb-1';
+                team4423Header.innerHTML = `
+                    <div class="team-header" style="background: linear-gradient(135deg, #e65100 0%, #6a1b9a 100%); color: white; padding: 12px 16px; border-radius: 10px; font-weight: 600; text-align: center; margin-bottom: 12px; font-size: 1.1rem;">
+                        <i class="fas fa-users"></i> Team 4423 
+                        <span class="badge bg-light text-dark ms-2">${data.summary.team_4423_checked_in}/${data.summary.team_4423_total} checked in</span>
+                    </div>
+                `;
+                team4423Column.appendChild(team4423Header);
+                
+                // Create inner row for Team 4423 users
+                const team4423Row = document.createElement('div');
+                team4423Row.className = 'row g-2';
+                
+                // Add Team 4423 users
+                teams['4423'].forEach(user => {
+                    const statusDiv = createUserStatusDiv(user);
+                    statusDiv.className = 'col-4 col-xl-3 mb-2';
+                    team4423Row.appendChild(statusDiv);
+                });
+                
+                team4423Column.appendChild(team4423Row);
+                mainRow.appendChild(team4423Column);
+            }
+            
+            // Add the main row to container
+            container.appendChild(mainRow);
             
             console.log('✅ Global status displayed successfully');
+        }
+        
+        function createUserStatusDiv(user) {
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'col-6 col-md-4 col-lg-3 mb-2';
+            
+            const statusClass = user.status;
+            let dotColor = '#6c757d'; // default gray
+            if (user.status === 'checked-in') dotColor = '#4caf50';
+            else if (user.status === 'checked-out') dotColor = '#6c757d';
+            
+            let lastActionText = '';
+            if (user.last_timestamp) {
+                const time = new Date(user.last_timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                lastActionText = `<div class="text-muted small">${time}</div>`;
+            }
+            
+            statusDiv.innerHTML = `
+                <div class="status-indicator ${statusClass}" onclick="toggleUserStatus('${user.name}')">
+                    <div>
+                        <span class="fw-semibold">${user.name}</span>
+                    </div>
+                    ${lastActionText}
+                </div>
+            `;
+            
+            return statusDiv;
         }
 
         // Track pending requests to prevent rapid clicking
@@ -615,7 +696,6 @@
                     console.log(`${name} ${result.action} successful`);
                     // Immediately refresh status to sync across devices
                     loadGlobalStatus();
-                    loadTodaySummary();
                 } else {
                     showAlert(result.message || 'Action failed', 'danger');
                     console.error(`Failed to toggle ${name}:`, result.message);
@@ -704,7 +784,6 @@
                 if (data.success) {
                     showAlert(`Welcome, ${name}! You have successfully checked in.`, 'success');
                     checkStatus(); // Refresh status
-                    loadTodaySummary(); // Refresh summary
                 } else {
                     showAlert(data.message, 'danger');
                 }
@@ -742,7 +821,6 @@
                 if (data.success) {
                     showAlert(`Goodbye, ${name}! You have successfully checked out.`, 'success');
                     checkStatus(); // Refresh status
-                    loadTodaySummary(); // Refresh summary
                 } else {
                     showAlert(data.message, 'danger');
                 }
@@ -776,23 +854,6 @@
             }
         }
 
-        async function loadTodaySummary() {
-            try {
-                const response = await fetch('/api/summary');
-                const data = await response.json();
-                
-                document.getElementById('totalCheckIns').textContent = data.total_check_ins || 0;
-                document.getElementById('totalCheckOuts').textContent = data.total_check_outs || 0;
-                document.getElementById('uniqueUsers').textContent = data.unique_users || 0;
-                
-            } catch (error) {
-                console.error('Error loading summary:', error);
-            }
-        }
-
-        // Auto-refresh summary every 30 seconds
-        setInterval(loadTodaySummary, 30000);
-        
         // Real-time status synchronization
         let eventSource = null;
         let currentName = '';

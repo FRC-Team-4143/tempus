@@ -300,10 +300,47 @@ PRESET_NAMES = [
 ]
 
 def load_names_from_file():
-    """Load names from file if it exists"""
+    """Load names from file with team numbers and group by team"""
     global PRESET_NAMES
     try:
-        if os.path.exists('names_list.csv'):
+        # Load from team_roster.csv and group by team
+        if os.path.exists('team_roster.csv'):
+            with open('team_roster.csv', 'r', encoding='utf-8') as f:
+                team_4143_names = []
+                team_4423_names = []
+                
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        # Parse CSV line: "Name","TeamNumber"
+                        parts = [part.strip('"') for part in line.split(',')]
+                        if len(parts) >= 2:
+                            name = parts[0]
+                            team = parts[1]
+                            
+                            if team == '4143':
+                                team_4143_names.append(name)
+                            elif team == '4423':
+                                team_4423_names.append(name)
+                
+                # Sort names within each team
+                team_4143_names.sort()
+                team_4423_names.sort()
+                
+                # Combine with team headers
+                grouped_names = []
+                if team_4143_names:
+                    grouped_names.append('--- Team 4143 ---')
+                    grouped_names.extend(team_4143_names)
+                if team_4423_names:
+                    grouped_names.append('--- Team 4423 ---')
+                    grouped_names.extend(team_4423_names)
+                
+                if grouped_names:
+                    PRESET_NAMES = grouped_names
+                    logger.info(f'Loaded {len(team_4143_names)} Team 4143 names and {len(team_4423_names)} Team 4423 names from team_roster.csv')
+        elif os.path.exists('names_list.csv'):
+            # Fallback to simple names list if team_roster.csv doesn't exist
             with open('names_list.csv', 'r', encoding='utf-8') as f:
                 file_names = []
                 for line in f:
@@ -315,6 +352,24 @@ def load_names_from_file():
                     logger.info(f'Loaded {len(file_names)} names from names_list.csv')
     except Exception as e:
         logger.warning(f'Could not load names from file: {e}')
+
+def get_team_roster_mapping():
+    """Get a mapping of names to team numbers from team_roster.csv"""
+    team_mapping = {}
+    try:
+        if os.path.exists('team_roster.csv'):
+            with open('team_roster.csv', 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        parts = [part.strip('"') for part in line.split(',')]
+                        if len(parts) >= 2:
+                            name = parts[0]
+                            team = parts[1]
+                            team_mapping[name] = team
+    except Exception as e:
+        logger.warning(f'Could not load team roster mapping: {e}')
+    return team_mapping
 
 # Load names on startup
 load_names_from_file()
@@ -720,10 +775,13 @@ def quick_status():
 
 @app.route('/api/global-status')
 def global_status():
-    """Get current status of all users - now uses local database"""
+    """Get current status of all users grouped by team - now uses local database"""
     start_time = time.time()
     try:
         logger.info("Global status request started")
+        
+        # Get team roster mapping
+        team_mapping = get_team_roster_mapping()
         
         # Get today's records from local database
         today = datetime.now().strftime('%Y-%m-%d')
@@ -742,16 +800,18 @@ def global_status():
             action = record.get('Action')
             timestamp = record.get('Timestamp')
             
-            if not name:
+            if not name or name.startswith('--- Team'):  # Skip team headers
                 continue
             
             if name not in user_status:
+                team_number = team_mapping.get(name, '4143')  # Default to 4143
                 user_status[name] = {
                     'name': name,
                     'email': name,  # Use name as identifier
                     'status': 'checked-out',
                     'last_action': None,
-                    'last_timestamp': None
+                    'last_timestamp': None,
+                    'team': team_number
                 }
             
             # Update with latest action
@@ -760,33 +820,50 @@ def global_status():
                 user_status[name]['last_timestamp'] = timestamp
                 user_status[name]['status'] = 'checked-in' if action == 'check-in' else 'checked-out'
         
-        # Convert to list and add preset names that haven't checked in
-        status_list = list(user_status.values())
-        
         # Add preset names that haven't appeared in records today
-        existing_names = {user['name'] for user in status_list}
+        existing_names = {user['name'] for user in user_status.values()}
         for preset_name in PRESET_NAMES:
-            if preset_name not in existing_names:
-                status_list.append({
+            if preset_name not in existing_names and not preset_name.startswith('--- Team'):
+                team_number = team_mapping.get(preset_name, '4143')  # Default to 4143
+                user_status[preset_name] = {
                     'name': preset_name,
                     'email': preset_name,  # Use name as identifier
                     'status': 'checked-out',
                     'last_action': None,
-                    'last_timestamp': None
-                })
+                    'last_timestamp': None,
+                    'team': team_number
+                }
         
-        # Sort by name
-        status_list.sort(key=lambda x: x['name'])
+        # Group users by team and sort
+        team_4143_users = []
+        team_4423_users = []
+        
+        for user in user_status.values():
+            if user['team'] == '4143':
+                team_4143_users.append(user)
+            elif user['team'] == '4423':
+                team_4423_users.append(user)
+        
+        # Sort within each team
+        team_4143_users.sort(key=lambda x: x['name'])
+        team_4423_users.sort(key=lambda x: x['name'])
         
         logger.info(f"Processing completed in {time.time() - process_start:.3f}s")
         logger.info(f"Total global status request time: {time.time() - start_time:.3f}s")
         
         return jsonify({
-            'users': status_list,
+            'teams': {
+                '4143': team_4143_users,
+                '4423': team_4423_users
+            },
             'summary': {
-                'total_users': len(status_list),
-                'checked_in': sum(1 for u in status_list if u['status'] == 'checked-in'),
-                'checked_out': sum(1 for u in status_list if u['status'] == 'checked-out')
+                'total_users': len(team_4143_users) + len(team_4423_users),
+                'team_4143_checked_in': sum(1 for u in team_4143_users if u['status'] == 'checked-in'),
+                'team_4143_total': len(team_4143_users),
+                'team_4423_checked_in': sum(1 for u in team_4423_users if u['status'] == 'checked-in'),
+                'team_4423_total': len(team_4423_users),
+                'checked_in': sum(1 for users in [team_4143_users, team_4423_users] for u in users if u['status'] == 'checked-in'),
+                'checked_out': sum(1 for users in [team_4143_users, team_4423_users] for u in users if u['status'] == 'checked-out')
             },
             'last_updated': datetime.now().isoformat()
         })
@@ -858,7 +935,7 @@ def get_preset_names():
 
 @app.route('/api/upload-names', methods=['POST'])
 def upload_names():
-    """Upload CSV file to update names list"""
+    """Upload CSV file with team numbers to update names list"""
     global PRESET_NAMES
     
     if 'file' not in request.files:
@@ -876,19 +953,43 @@ def upload_names():
         content = file.read().decode('utf-8')
         lines = content.strip().split('\n')
         
-        # Extract names (assume first column is names, skip header if present)
-        new_names = []
+        team_4143_names = []
+        team_4423_names = []
+        
         for i, line in enumerate(lines):
             if line.strip():
-                # Split by comma and take first column
-                name = line.split(',')[0].strip().strip('"')
+                # Parse CSV line: "Name","TeamNumber"
+                parts = [part.strip().strip('"') for part in line.split(',')]
                 
                 # Skip header row if it looks like a header
-                if i == 0 and (name.lower() in ['name', 'names', 'full name', 'employee']):
+                if i == 0 and len(parts) > 0 and parts[0].lower() in ['name', 'names', 'full name', 'employee']:
                     continue
+                
+                if len(parts) >= 2:
+                    name = parts[0]
+                    team = parts[1]
                     
-                if name and name not in new_names:
-                    new_names.append(name)
+                    if name and name not in [n for sublist in [team_4143_names, team_4423_names] for n in sublist]:
+                        if team == '4143':
+                            team_4143_names.append(name)
+                        elif team == '4423':
+                            team_4423_names.append(name)
+                        else:
+                            # Default to 4143 if team number is unrecognized
+                            team_4143_names.append(name)
+        
+        # Sort names within each team
+        team_4143_names.sort()
+        team_4423_names.sort()
+        
+        # Group with team headers
+        new_names = []
+        if team_4143_names:
+            new_names.append('--- Team 4143 ---')
+            new_names.extend(team_4143_names)
+        if team_4423_names:
+            new_names.append('--- Team 4423 ---')
+            new_names.extend(team_4423_names)
         
         if not new_names:
             return jsonify({'success': False, 'message': 'No valid names found in CSV file'})
@@ -896,19 +997,33 @@ def upload_names():
         # Update the global names list
         PRESET_NAMES = new_names
         
-        # Save to a file for persistence (optional)
+        # Save files
         try:
+            # Save as team_roster.csv with team numbers
+            with open('team_roster.csv', 'w', encoding='utf-8') as f:
+                for name in team_4143_names:
+                    f.write(f'"{name}","4143"\n')
+                for name in team_4423_names:
+                    f.write(f'"{name}","4423"\n')
+            
+            # Save grouped names to names_list.csv for backwards compatibility
             with open('names_list.csv', 'w', encoding='utf-8') as f:
-                for name in PRESET_NAMES:
+                for name in new_names:
                     f.write(f'"{name}"\n')
         except Exception as e:
             logger.warning(f'Could not save names list to file: {e}')
         
-        logger.info(f'Updated names list with {len(new_names)} names')
+        total_count = len(team_4143_names) + len(team_4423_names)
+        message = f'Successfully uploaded {total_count} names ({len(team_4143_names)} Team 4143, {len(team_4423_names)} Team 4423)'
+        
+        logger.info(f'Processed CSV with team numbers: {len(team_4143_names)} Team 4143, {len(team_4423_names)} Team 4423')
+        
         return jsonify({
             'success': True, 
-            'message': f'Successfully uploaded {len(new_names)} names',
-            'names': new_names
+            'message': message,
+            'names': new_names,
+            'team_4143_count': len(team_4143_names),
+            'team_4423_count': len(team_4423_names)
         })
         
     except Exception as e:
@@ -976,6 +1091,10 @@ def toggle_attendance():
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'})
     
+    # Skip team header entries
+    if name.startswith('--- Team'):
+        return jsonify({'success': False, 'message': 'Cannot check in team headers'})
+    
     if name not in PRESET_NAMES:
         return jsonify({'success': False, 'message': 'Name not in preset list'})
     
@@ -1027,13 +1146,12 @@ def sign_out_all():
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
-            # Get latest record for each user
+            # Get latest record for each user (check all records, not just today)
             cursor.execute("""
                 WITH latest_records AS (
                     SELECT name, action, timestamp, 
                            ROW_NUMBER() OVER (PARTITION BY name ORDER BY timestamp DESC) as rn
                     FROM attendance_records 
-                    WHERE date(timestamp) = date('now')
                 )
                 SELECT name FROM latest_records 
                 WHERE rn = 1 AND action = 'check-in'
