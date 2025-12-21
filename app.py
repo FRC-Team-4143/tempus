@@ -611,17 +611,6 @@ def admin():
     today_summary = tracker.get_daily_summary()
     return render_template('admin.html', records=records, summary=today_summary)
 
-@app.route('/sync-test')
-def sync_test():
-    """Real-time sync test page"""
-    return render_template('sync-test.html')
-
-@app.route('/test.html')
-def test_page():
-    """Test page for debugging JavaScript"""
-    from flask import send_from_directory
-    return send_from_directory('.', 'test.html')
-
 @app.route('/leaderboard')
 def leaderboard():
     """Display attendance leaderboard with total hours"""

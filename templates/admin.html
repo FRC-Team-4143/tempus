@@ -862,30 +862,46 @@
                 };
                 
                 eventSource.onerror = function(error) {
-                    console.log('Admin SSE connection failed');
+                    // Admin SSE connection failed
                     eventSource.close();
                 };
                 
             } catch (error) {
-                console.log('SSE not supported for admin dashboard');
+                // SSE not supported for admin dashboard
             }
         }
 
         // Hour adjustment functions
         async function loadUsersForAdjustment() {
             try {
-                const response = await fetch('/api/user-hours-summary');
-                const data = await response.json();
-                
-                if (data.success) {
+                // Fetch all names (roster) and user hours in parallel
+                const [namesRes, hoursRes] = await Promise.all([
+                    fetch('/api/names'),
+                    fetch('/api/user-hours-summary')
+                ]);
+                const namesData = await namesRes.json();
+                const hoursData = await hoursRes.json();
+
+                if (namesData.success && namesData.names) {
                     const userSelect = document.getElementById('userSelect');
                     userSelect.innerHTML = '<option value="">Choose a user...</option>';
-                    
-                    data.users.forEach(user => {
+
+                    // Map of user hours for quick lookup
+                    const userHoursMap = {};
+                    if (hoursData.success && hoursData.users) {
+                        hoursData.users.forEach(user => {
+                            userHoursMap[user.name] = user.total_hours;
+                        });
+                    }
+
+                    namesData.names.forEach(item => {
+                        const name = item.name || item; // support both formats
+                        if (name.startsWith('--- Team')) return; // skip headers
+                        const hours = userHoursMap[name] || 0;
                         const option = document.createElement('option');
-                        option.value = user.name;
-                        option.textContent = `${user.name} (${user.total_hours}h)`;
-                        option.dataset.hours = user.total_hours;
+                        option.value = name;
+                        option.textContent = `${name} (${hours}h)`;
+                        option.dataset.hours = hours;
                         userSelect.appendChild(option);
                     });
                 } else {
@@ -1007,7 +1023,7 @@
             // Optionally refresh the records table
             if (summary.records && summary.records.length > 0) {
                 // Could refresh DataTable here if needed
-                console.log('New records available for refresh');
+                // New records available for refresh
             }
         }
 

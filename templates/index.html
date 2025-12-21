@@ -469,7 +469,7 @@
 
         // Load and initialize
         window.onload = function() {
-            console.log('🚀 Page loaded, starting initialization...');
+            // 🚀 Page loaded, starting initialization...
             loadGlobalStatus();
             
             // Auto-refresh every 10 seconds for real-time sync
@@ -494,7 +494,7 @@
         };
 
         async function loadGlobalStatus() {
-            console.log('🔄 Loading global status...');
+            // 🔄 Loading global status...
             
             try {
                 const statusGrid = document.getElementById('statusGrid');
@@ -522,7 +522,7 @@
                 
                 const data = await response.json();
                 const totalUsers = Object.values(data.teams || {}).reduce((sum, team) => sum + team.length, 0);
-                console.log('✅ Received', totalUsers, 'users in teams');
+                // ✅ Received users in teams
                 
                 globalStatusData = data;
                 displayGlobalStatus(data);
@@ -534,7 +534,7 @@
             }
         }
         function displayGlobalStatus(data) {
-            console.log('🎨 Displaying teams data');
+            // 🎨 Displaying teams data
             
             const container = document.getElementById('statusGrid');
             const lastUpdatedElement = document.getElementById('lastUpdated');
@@ -621,7 +621,7 @@
             // Add the main row to container
             container.appendChild(mainRow);
             
-            console.log('✅ Global status displayed successfully');
+            // ✅ Global status displayed successfully
         }
         
         function createUserStatusDiv(user) {
@@ -659,7 +659,7 @@
         async function toggleUserStatus(name) {
             // Prevent multiple simultaneous requests for the same user
             if (pendingToggles.has(name)) {
-                console.log(`Request already pending for ${name}`);
+                // Request already pending for user
                 return;
             }
             
@@ -693,7 +693,7 @@
                 
                 const result = await response.json();
                 if (result.success) {
-                    console.log(`${name} ${result.action} successful`);
+                    // User action successful
                     // Immediately refresh status to sync across devices
                     loadGlobalStatus();
                 } else {
@@ -862,45 +862,45 @@
         function setupRealTimeSync(name) {
             // Close existing connection
             if (eventSource) {
-                console.log('Closing existing SSE connection');
+                // Closing existing SSE connection
                 eventSource.close();
                 eventSource = null;
             }
             
             // Clear existing polling
             if (statusCheckInterval) {
-                console.log('Clearing existing polling interval');
+                // Clearing existing polling interval
                 clearInterval(statusCheckInterval);
                 statusCheckInterval = null;
             }
             
             if (!name) {
-                console.log('No name provided, skipping real-time sync setup');
+                // No name provided, skipping real-time sync setup
                 return;
             }
             
             currentName = name;
-            console.log('Setting up real-time sync for:', name);
+            // Setting up real-time sync for user
             
             // Try Server-Sent Events first
             try {
-                console.log('Attempting to establish SSE connection...');
+                // Attempting to establish SSE connection...
                 eventSource = new EventSource(`/api/status-stream/${encodeURIComponent(name)}`);
                 
                 eventSource.onopen = function(event) {
-                    console.log('SSE connection opened successfully');
+                    // SSE connection opened successfully
                 };
                 
                 eventSource.onmessage = function(event) {
                     try {
                         const data = JSON.parse(event.data);
-                        console.log('SSE message received:', data);
+                        // SSE message received
                         
                         if (data.type === 'status_update' || data.type === 'initial_status') {
                             updateStatusDisplay(data);
                         } else if (data.type === 'heartbeat') {
                             // Connection is alive
-                            console.log('SSE heartbeat received');
+                            // SSE heartbeat received
                         }
                     } catch (error) {
                         console.error('Error parsing SSE data:', error, event.data);
@@ -909,7 +909,7 @@
                 
                 eventSource.onerror = function(error) {
                     console.error('SSE connection error:', error);
-                    console.log('SSE connection failed, falling back to polling');
+                    // SSE connection failed, falling back to polling
                     eventSource.close();
                     eventSource = null;
                     // Fall back to polling
@@ -918,22 +918,22 @@
                 
             } catch (error) {
                 console.error('SSE setup error:', error);
-                console.log('SSE not supported, using polling');
+                // SSE not supported, using polling
                 setupPolling(name);
             }
         }
         
         function setupPolling(name) {
-            console.log('Setting up polling for:', name);
+            // Setting up polling for user
             // Poll for status updates every 5 seconds
             statusCheckInterval = setInterval(() => {
                 const currentNameInput = document.getElementById('name') ? document.getElementById('name').value.trim() : '';
                 if (currentNameInput === name) {
-                    console.log('Polling status for:', name);
+                    // Polling status for user
                     checkStatusSilent(name);
                 } else {
                     // Name changed, stop polling
-                    console.log('Name changed, stopping polling for:', name);
+                    // Name changed, stopping polling for user
                     clearInterval(statusCheckInterval);
                     statusCheckInterval = null;
                 }
@@ -941,7 +941,7 @@
         }
         
         function updateStatusDisplay(data) {
-            console.log('Updating status display with:', data);
+            // Updating status display with data
             const statusDisplay = document.getElementById('statusDisplay');
             const statusText = document.getElementById('statusText');
             const recordsToday = document.getElementById('recordsToday');
