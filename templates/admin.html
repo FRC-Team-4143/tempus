@@ -414,121 +414,133 @@
                 </div>
             </div>
 
-            <!-- Recent Activity -->
+            <!-- Hour Adjustment -->
             <div class="card">
                 <div class="card-header">
                     <h3 class="mb-0">
-                        <i class="fas fa-history"></i>
-                        Recent Activity
+                        <i class="fas fa-clock"></i>
+                        Manual Hour Adjustment
                     </h3>
                 </div>
                 <div class="card-body">
-                    <div class="table-responsive">
-                        <table id="attendanceTable" class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Timestamp</th>
-                                    <th>Name</th>
-                                    <th>Action</th>
-                                    <th>Duration</th>
-                                    <th>Notes</th>
-                                    <th>Device IP</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for record in records %}
-                                <tr>
-                                    <td>{{ record['Timestamp'] or record.get('timestamp', '-') }}</td>
-                                    <td>
-                                        <strong>{{ record['Name'] or record.get('name', '-') }}</strong>
-                                    </td>
-                                    <td>
-                                        {% if record['Action'] == 'check-in' or record.get('action') == 'check-in' %}
-                                            <span class="badge badge-check-in">
-                                                <i class="fas fa-sign-in-alt"></i> Check In
-                                            </span>
-                                        {% elif record['Action'] == 'check-out' or record.get('action') == 'check-out' %}
-                                            <span class="badge badge-check-out">
-                                                <i class="fas fa-sign-out-alt"></i> Check Out
-                                            </span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">
-                                                {{ record['Action'] or record.get('action', '-') }}
-                                            </span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if record.get('Duration (hours)') or record.get('duration') %}
-                                            <strong>{{ record.get('Duration (hours)') or record.get('duration') }}h</strong>
-                                        {% else %}
-                                            -
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <small>{{ record['Notes'] or record.get('notes', '-') }}</small>
-                                    </td>
-                                    <td>
-                                        <small class="text-muted">{{ record['Device IP'] or record.get('device_ip', '-') }}</small>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h5>Adjust User Hours</h5>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="userSelect" class="form-label">Select User</label>
+                                        <select class="form-control" id="userSelect">
+                                            <option value="">Choose a user...</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="currentHours" class="form-label">Current Hours</label>
+                                        <input type="text" class="form-control" id="currentHours" readonly>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="adjustmentType" class="form-label">Adjustment Type</label>
+                                        <select class="form-control" id="adjustmentType">
+                                            <option value="add">Add Hours</option>
+                                            <option value="subtract">Subtract Hours</option>
+                                            <option value="set">Set Total Hours</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="adjustmentHours" class="form-label">Hours</label>
+                                        <input type="number" class="form-control" id="adjustmentHours" min="0" step="0.5" placeholder="Enter hours">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="adjustmentReason" class="form-label">Reason (Optional)</label>
+                                <input type="text" class="form-control" id="adjustmentReason" placeholder="e.g., Manual correction, Event attendance">
+                            </div>
+                            <button class="btn btn-warning" onclick="adjustHours()">
+                                <i class="fas fa-edit"></i> Adjust Hours
+                            </button>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="alert alert-warning">
+                                <h6><i class="fas fa-exclamation-triangle"></i> Important Notes:</h6>
+                                <ul class="mb-0">
+                                    <li>This will create a manual adjustment record</li>
+                                    <li>Changes are permanent and logged</li>
+                                    <li>Use "Set Total" to override current hours completely</li>
+                                    <li>Add/Subtract will modify existing hours</li>
+                                </ul>
+                            </div>
+                            <div class="alert alert-info">
+                                <h6><i class="fas fa-info-circle"></i> Examples:</h6>
+                                <ul class="mb-0">
+                                    <li><strong>Add 2:</strong> 10h → 12h</li>
+                                    <li><strong>Subtract 1:</strong> 10h → 9h</li>
+                                    <li><strong>Set 15:</strong> 10h → 15h</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Today's Detail -->
-            {% if summary.records %}
+            <!-- Hours Overview -->
             <div class="card">
                 <div class="card-header">
                     <h3 class="mb-0">
-                        <i class="fas fa-calendar-day"></i>
-                        Today's Detailed Activity
+                        <i class="fas fa-clock"></i>
+                        Hours Overview
                     </h3>
                 </div>
                 <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <button class="btn btn-primary" onclick="loadHoursOverview()">
+                                <i class="fas fa-sync-alt"></i> Refresh Hours
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-search"></i>
+                                </span>
+                                <input type="text" class="form-control" id="hoursSearchInput" placeholder="Search by name..." onkeyup="filterHoursTable()">
+                            </div>
+                        </div>
+                    </div>
                     <div class="table-responsive">
-                        <table class="table table-sm">
+                        <table id="hoursOverviewTable" class="table table-hover table-striped">
                             <thead>
                                 <tr>
-                                    <th>Time</th>
-                                    <th>Name</th>
-                                    <th>Action</th>
-                                    <th>Duration</th>
+                                    <th style="cursor: pointer;" onclick="sortHoursTable(0)">
+                                        Name <i class="fas fa-sort"></i>
+                                    </th>
+                                    <th style="cursor: pointer;" onclick="sortHoursTable(1)">
+                                        Total Hours <i class="fas fa-sort"></i>
+                                    </th>
+                                    <th style="cursor: pointer;" onclick="sortHoursTable(2)">
+                                        Team <i class="fas fa-sort"></i>
+                                    </th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                {% for record in summary.records %}
+                            <tbody id="hoursOverviewBody">
                                 <tr>
-                                    <td>{{ record.get('Check-in Time') or record.get('Check-out Time', '-') }}</td>
-                                    <td>{{ record['Name'] }}</td>
-                                    <td>
-                                        {% if record['Action'] == 'check-in' %}
-                                            <span class="badge badge-check-in">
-                                                <i class="fas fa-sign-in-alt"></i> Check In
-                                            </span>
-                                        {% else %}
-                                            <span class="badge badge-check-out">
-                                                <i class="fas fa-sign-out-alt"></i> Check Out
-                                            </span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if record.get('Duration (hours)') %}
-                                            <strong>{{ record['Duration (hours)'] }}h</strong>
-                                        {% else %}
-                                            -
-                                        {% endif %}
+                                    <td colspan="3" class="text-center text-muted">
+                                        <i class="fas fa-spinner fa-spin"></i> Loading hours data...
                                     </td>
                                 </tr>
-                                {% endfor %}
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
-            {% endif %}
         </div>
     </div>
 
@@ -538,6 +550,7 @@
     <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
     
     <script>
+                // ...existing code...
         let attendanceTable;
 
         $(document).ready(function() {
@@ -570,8 +583,15 @@
         async function loadCurrentNames() {
             try {
                 const response = await fetch('/api/names');
-                const names = await response.json();
-                displayNamesList(names);
+                const data = await response.json();
+                
+                if (data.success && data.names) {
+                    // Extract just the names from the objects for display
+                    const namesList = data.names.map(item => item.name);
+                    displayNamesList(namesList);
+                } else {
+                    showToast('Error loading names list', 'error');
+                }
             } catch (error) {
                 console.error('Error loading names:', error);
                 showToast('Error loading current names list', 'error');
@@ -582,7 +602,19 @@
             const container = document.getElementById('currentNamesList');
             container.innerHTML = '';
             
-            names.forEach(name => {
+            // Handle both old format (array of strings) and new format (array of objects)
+            let nameList = names;
+            if (names && names.length > 0 && typeof names[0] === 'object' && names[0].name) {
+                // New format: array of {name, team} objects
+                nameList = names.map(item => item.name);
+            }
+            
+            nameList.forEach(name => {
+                // Skip team header lines
+                if (name.startsWith('--- Team')) {
+                    return;
+                }
+                
                 const item = document.createElement('div');
                 item.className = 'list-group-item d-flex justify-content-between align-items-center';
                 item.innerHTML = `
@@ -594,7 +626,7 @@
                 container.appendChild(item);
             });
             
-            if (names.length === 0) {
+            if (nameList.length === 0) {
                 container.innerHTML = '<div class="list-group-item text-muted">No names in list</div>';
             }
         }
@@ -838,8 +870,131 @@
                 console.log('SSE not supported for admin dashboard');
             }
         }
-        
-        function updateDashboardSummary(summary) {
+
+        // Hour adjustment functions
+        async function loadUsersForAdjustment() {
+            try {
+                const response = await fetch('/api/user-hours-summary');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const userSelect = document.getElementById('userSelect');
+                    userSelect.innerHTML = '<option value="">Choose a user...</option>';
+                    
+                    data.users.forEach(user => {
+                        const option = document.createElement('option');
+                        option.value = user.name;
+                        option.textContent = `${user.name} (${user.total_hours}h)`;
+                        option.dataset.hours = user.total_hours;
+                        userSelect.appendChild(option);
+                    });
+                } else {
+                    showToast('Error loading user data', 'error');
+                }
+            } catch (error) {
+                console.error('Error loading users:', error);
+                showToast('Error loading user data', 'error');
+            }
+        }
+
+        async function adjustHours() {
+            const userSelect = document.getElementById('userSelect');
+            const adjustmentType = document.getElementById('adjustmentType').value;
+            const adjustmentHours = parseFloat(document.getElementById('adjustmentHours').value);
+            const reason = document.getElementById('adjustmentReason').value.trim();
+            
+            const selectedUser = userSelect.value;
+            
+            if (!selectedUser) {
+                showToast('Please select a user', 'error');
+                return;
+            }
+            
+            if (isNaN(adjustmentHours) || adjustmentHours < 0) {
+                showToast('Please enter valid hours (0 or greater)', 'error');
+                return;
+            }
+            
+            const currentHours = parseFloat(userSelect.selectedOptions[0].dataset.hours || 0);
+            
+            // Calculate new hours based on adjustment type
+            let newHours;
+            switch (adjustmentType) {
+                case 'add':
+                    newHours = currentHours + adjustmentHours;
+                    break;
+                case 'subtract':
+                    newHours = Math.max(0, currentHours - adjustmentHours);
+                    break;
+                case 'set':
+                    newHours = adjustmentHours;
+                    break;
+                default:
+                    showToast('Invalid adjustment type', 'error');
+                    return;
+            }
+            
+            const confirmMessage = `Are you sure you want to adjust hours for ${selectedUser}?\n\nCurrent: ${currentHours}h\nNew: ${newHours}h\nType: ${adjustmentType.toUpperCase()}\nAmount: ${adjustmentHours}h${reason ? `\nReason: ${reason}` : ''}`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/adjust-hours', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: selectedUser,
+                        adjustment_type: adjustmentType,
+                        hours: adjustmentHours,
+                        reason: reason || 'Manual adjustment'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(`Hours adjusted successfully! ${selectedUser}: ${currentHours}h → ${data.new_hours}h`, 'success');
+                    
+                    // Reset form
+                    document.getElementById('userSelect').selectedIndex = 0;
+                    document.getElementById('currentHours').value = '';
+                    document.getElementById('adjustmentHours').value = '';
+                    document.getElementById('adjustmentReason').value = '';
+                    
+                    // Reload users to reflect changes
+                    loadUsersForAdjustment();
+                } else {
+                    showToast(data.message || 'Error adjusting hours', 'error');
+                }
+            } catch (error) {
+                console.error('Error adjusting hours:', error);
+                showToast('Error adjusting hours. Please try again.', 'error');
+            }
+        }
+
+        // Update current hours display when user changes
+        document.addEventListener('DOMContentLoaded', function() {
+            const userSelect = document.getElementById('userSelect');
+            const currentHours = document.getElementById('currentHours');
+            
+            userSelect.addEventListener('change', function() {
+                if (this.selectedOptions[0] && this.selectedOptions[0].dataset.hours) {
+                    currentHours.value = this.selectedOptions[0].dataset.hours + ' hours';
+                } else {
+                    currentHours.value = '';
+                }
+            });
+            
+            // Load users when page loads
+            loadUsersForAdjustment();
+        });
+
+        // Real-time updates for admin dashboard
+        function setupAdminRealTimeUpdates() {
             // Update summary cards if they exist
             const totalCheckIns = document.getElementById('totalCheckIns');
             const totalCheckOuts = document.getElementById('totalCheckOuts');
@@ -855,6 +1010,147 @@
                 console.log('New records available for refresh');
             }
         }
+
+        // Hours overview functions
+        let hoursData = [];
+        let sortDirection = 1; // 1 for ascending, -1 for descending
+
+        async function loadHoursOverview() {
+            const tbody = document.getElementById('hoursOverviewBody');
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted"><i class="fas fa-spinner fa-spin"></i> Loading hours data...</td></tr>';
+            
+            try {
+                const [usersResponse, rosterResponse] = await Promise.all([
+                    fetch('/api/user-hours-summary'),
+                    fetch('/api/names')
+                ]);
+                
+                const usersData = await usersResponse.json();
+                const rosterData = await rosterResponse.json();
+                
+                if (usersData.success && rosterData.success) {
+                    // Create team mapping
+                    const teamMap = {};
+                    if (rosterData.names) {
+                        rosterData.names.forEach(member => {
+                            if (member.team && member.name) {
+                                teamMap[member.name] = member.team;
+                            }
+                        });
+                    }
+                    
+                    // Add team information to users data
+                    hoursData = usersData.users.map(user => ({
+                        name: user.name,
+                        hours: user.total_hours,
+                        team: teamMap[user.name] || 'Unknown'
+                    }));
+                    
+                    // Sort by hours (descending) by default
+                    hoursData.sort((a, b) => b.hours - a.hours);
+                    
+                    renderHoursTable();
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Error loading data</td></tr>';
+                    showToast('Error loading hours data', 'error');
+                }
+            } catch (error) {
+                console.error('Error loading hours overview:', error);
+                tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Error loading data</td></tr>';
+                showToast('Error loading hours data', 'error');
+            }
+        }
+
+        function renderHoursTable() {
+            const tbody = document.getElementById('hoursOverviewBody');
+            
+            if (hoursData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No hours data available</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = '';
+            
+            hoursData.forEach((user, index) => {
+                const row = document.createElement('tr');
+                
+                row.innerHTML = `
+                    <td>
+                        <strong>${user.name}</strong>
+                    </td>
+                    <td>
+                        <strong>${user.hours}h</strong>
+                        <div class="progress mt-1" style="height: 5px;">
+                            <div class="progress-bar bg-primary" 
+                                 style="width: ${Math.min(100, (user.hours / Math.max(...hoursData.map(u => u.hours))) * 100)}%"></div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge ${user.team === '4143' ? 'bg-primary' : user.team === '4423' ? 'bg-secondary' : 'bg-dark'}">
+                            Team ${user.team}
+                        </span>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        function sortHoursTable(columnIndex) {
+            if (hoursData.length === 0) return;
+            
+            sortDirection *= -1; // Toggle sort direction
+            
+            hoursData.sort((a, b) => {
+                let valueA, valueB;
+                
+                switch (columnIndex) {
+                    case 0: // Name
+                        valueA = a.name.toLowerCase();
+                        valueB = b.name.toLowerCase();
+                        return sortDirection * valueA.localeCompare(valueB);
+                    case 1: // Hours
+                        valueA = a.hours;
+                        valueB = b.hours;
+                        return sortDirection * (valueA - valueB);
+                    case 2: // Team
+                        valueA = a.team;
+                        valueB = b.team;
+                        return sortDirection * valueA.localeCompare(valueB);
+                    default:
+                        return 0;
+                }
+            });
+            
+            renderHoursTable();
+            
+            // Update sort icons
+            document.querySelectorAll('#hoursOverviewTable th i').forEach(icon => {
+                icon.className = 'fas fa-sort';
+            });
+            
+            const sortIcon = document.querySelectorAll('#hoursOverviewTable th i')[columnIndex];
+            sortIcon.className = sortDirection === 1 ? 'fas fa-sort-up' : 'fas fa-sort-down';
+        }
+
+        function filterHoursTable() {
+            const searchTerm = document.getElementById('hoursSearchInput').value.toLowerCase();
+            const tbody = document.getElementById('hoursOverviewBody');
+            const rows = tbody.querySelectorAll('tr');
+            
+            rows.forEach(row => {
+                const nameCell = row.querySelector('td:first-child');
+                if (nameCell) {
+                    const name = nameCell.textContent.toLowerCase();
+                    row.style.display = name.includes(searchTerm) ? '' : 'none';
+                }
+            });
+        }
+
+        // Load hours overview when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadHoursOverview();
+        });
     </script>
 </body>
 </html>

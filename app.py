@@ -930,8 +930,33 @@ def status_stream(name):
 
 @app.route('/api/names')
 def get_preset_names():
-    """Get preset names list"""
-    return jsonify(PRESET_NAMES)
+    """Get preset names list with team information"""
+    try:
+        team_mapping = get_team_roster_mapping()
+        
+        # Convert PRESET_NAMES to format with team information
+        names_with_teams = []
+        for name in PRESET_NAMES:
+            # Skip team header lines
+            if name.startswith('--- Team'):
+                continue
+                
+            team_number = team_mapping.get(name, 'Unknown')
+            names_with_teams.append({
+                'name': name,
+                'team': team_number
+            })
+        
+        return jsonify({
+            'success': True,
+            'names': names_with_teams
+        })
+    except Exception as e:
+        logger.error(f"Error getting names with teams: {e}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        })
 
 @app.route('/api/upload-names', methods=['POST'])
 def upload_names():
@@ -1165,6 +1190,26 @@ def sign_out_all():
         device_ip = request.remote_addr
         
         for name in checked_in_users:
+            # Ensure last_checkin is set in user_hours for this user
+            with db_lock:
+                conn = sqlite3.connect(local_db.db_path)
+                cursor = conn.cursor()
+                cursor.execute('SELECT last_checkin FROM user_hours WHERE name = ?', (name,))
+                row = cursor.fetchone()
+                if not row or not row[0]:
+                    # Find the timestamp of the most recent check-in record
+                    cursor.execute('''
+                        SELECT timestamp FROM attendance_records
+                        WHERE name = ? AND action = 'check-in'
+                        ORDER BY timestamp DESC LIMIT 1
+                    ''', (name,))
+                    checkin_row = cursor.fetchone()
+                    if checkin_row:
+                        last_checkin_time = checkin_row[0]
+                        cursor.execute('UPDATE user_hours SET last_checkin = ? WHERE name = ?', (last_checkin_time, name))
+                        conn.commit()
+                conn.close()
+
             success, message = tracker.add_attendance_record(name, 'check-out', 'Mass sign-out by admin', device_ip)
             if success:
                 checked_out_count += 1
@@ -1196,6 +1241,135 @@ def api_manual_sync():
     except Exception as e:
         logger.error(f"Error during manual sync: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/user-hours-summary', methods=['GET'])
+def api_user_hours_summary():
+    """Get summary of all users and their total hours"""
+    try:
+        with db_lock:
+            db = LocalDatabase()
+            conn = sqlite3.connect(db.db_path)
+            cursor = conn.cursor()
+            
+            # Get total hours for each user (including manual adjustments)
+            cursor.execute('''
+                SELECT name, SUM(duration_hours) as total_hours
+                FROM attendance_records 
+                WHERE (action = 'check-out' AND duration_hours > 0) 
+                   OR action = 'manual-adjustment'
+                GROUP BY name
+                ORDER BY total_hours DESC
+            ''')
+            
+            users = []
+            for row in cursor.fetchall():
+                users.append({
+                    'name': row[0],
+                    'total_hours': round(row[1], 2)
+                })
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'users': users
+            })
+            
+    except Exception as e:
+        logger.error(f"Error getting user hours summary: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error loading user data: {str(e)}'
+        })
+
+@app.route('/api/adjust-hours', methods=['POST'])
+def api_adjust_hours():
+    """Manually adjust hours for a user"""
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        adjustment_type = data.get('adjustment_type', '')
+        hours = float(data.get('hours', 0))
+        reason = data.get('reason', 'Manual adjustment')
+        
+        if not name:
+            return jsonify({'success': False, 'message': 'Name is required'})
+            
+        if adjustment_type not in ['add', 'subtract', 'set']:
+            return jsonify({'success': False, 'message': 'Invalid adjustment type'})
+            
+        if hours < 0:
+            return jsonify({'success': False, 'message': 'Hours must be positive'})
+        
+        with db_lock:
+            db = LocalDatabase()
+            conn = sqlite3.connect(db.db_path)
+            cursor = conn.cursor()
+            
+            # Get current total hours (including manual adjustments)
+            cursor.execute('''
+                SELECT COALESCE(SUM(duration_hours), 0) as total_hours
+                FROM attendance_records 
+                WHERE name = ? AND ((action = 'check-out' AND duration_hours > 0) 
+                                 OR action = 'manual-adjustment')
+            ''', (name,))
+            
+            current_total = cursor.fetchone()[0]
+            
+            # Calculate new total based on adjustment type
+            if adjustment_type == 'add':
+                adjustment_hours = hours
+                new_total = current_total + hours
+            elif adjustment_type == 'subtract':
+                adjustment_hours = -hours
+                new_total = max(0, current_total - hours)
+            else:  # set
+                adjustment_hours = hours - current_total
+                new_total = hours
+            
+            # Create adjustment record
+            timestamp = datetime.now().isoformat()
+            cursor.execute('''
+                INSERT INTO attendance_records 
+                (timestamp, name, action, duration_hours, synced)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (timestamp, name, 'manual-adjustment', adjustment_hours, 0))
+
+            # Update user_hours table to reflect new total
+            cursor.execute('SELECT session_count, last_activity FROM user_hours WHERE name = ?', (name,))
+            user_row = cursor.fetchone()
+            if user_row:
+                session_count, last_activity = user_row
+                cursor.execute('''
+                    UPDATE user_hours SET total_hours = ?, last_activity = ? WHERE name = ?
+                ''', (new_total, last_activity, name))
+            else:
+                # If user doesn't exist in user_hours, create entry
+                cursor.execute('''
+                    INSERT INTO user_hours (name, total_hours, session_count, last_activity) VALUES (?, ?, ?, ?)
+                ''', (name, new_total, 0, timestamp[:10]))
+
+            conn.commit()
+            conn.close()
+
+            logger.info(f"📝 Manual hour adjustment: {name} - {adjustment_type} {hours}h (total: {current_total}h → {new_total}h) - {reason}")
+
+            return jsonify({
+                'success': True,
+                'message': f'Hours adjusted successfully',
+                'old_hours': round(current_total, 2),
+                'new_hours': round(new_total, 2),
+                'adjustment': round(adjustment_hours, 2)
+            })
+            
+    except ValueError as e:
+        return jsonify({'success': False, 'message': 'Invalid hours value'})
+    except Exception as e:
+        logger.error(f"Error adjusting hours: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error adjusting hours: {str(e)}'
+        })
 
 if __name__ == '__main__':
     # Get host and port from environment or use defaults

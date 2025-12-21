@@ -140,9 +140,9 @@
         }
         
         .status-checked-in {
-            background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
-            box-shadow: 0 6px 20px rgba(27, 94, 32, 0.5);
-            border: 2px solid #0d5b0d;
+            background: linear-gradient(135deg, #81c784 0%, #b9f6ca 100%);
+            box-shadow: 0 6px 20px rgba(129, 199, 132, 0.4);
+            border: 2px solid #81c784;
         }
         
         .status-checked-out {
@@ -172,10 +172,10 @@
         }
         
         .name-toggle-btn.checked-in {
-            background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
-            border-color: #0d5b0d;
-            color: var(--text-light);
-            box-shadow: 0 6px 25px rgba(13, 91, 13, 0.6);
+            background: linear-gradient(135deg, #81c784 0%, #b9f6ca 100%);
+            border-color: #81c784;
+            color: var(--text-dark);
+            box-shadow: 0 6px 25px rgba(129, 199, 132, 0.4);
             animation: pulse-success 2s infinite;
             border-width: 4px;
         }
@@ -999,27 +999,31 @@
         document.getElementById('email').addEventListener('input', saveFormData);
 
         async function signOutAll() {
+            const btn = document.querySelector('.btn-warning[onclick*="signOutAll"]');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing Out...';
+            }
             try {
                 const response = await fetch('/api/sign-out-all', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
+                    headers: { 'Content-Type': 'application/json' }
                 });
-                
                 const data = await response.json();
-                
                 if (data.success) {
                     showAlert(`Successfully signed out ${data.count} users`, 'success');
-                    // Refresh the global status and summary
                     loadGlobalStatus();
-                    loadTodaySummary();
                 } else {
-                    showAlert(data.message, 'danger');
+                    showAlert(data.message || 'Error signing out users. Please try again.', 'danger');
                 }
             } catch (error) {
                 console.error('Error signing out all users:', error);
                 showAlert('Error signing out users. Please try again.', 'danger');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-sign-out-alt"></i> Sign Out All';
+                }
             }
         }
     </script>

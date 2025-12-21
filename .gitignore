@@ -145,3 +145,6 @@ Thumbs.db
 # Backup files
 *.bak
 *.backup
+
+# Database files
+*.db
