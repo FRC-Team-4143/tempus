@@ -422,15 +422,6 @@
                     </h1>
                 </div>
                 <div class="card-body p-4">
-                    <!-- Status Display -->
-                    <div id="statusDisplay" class="status-card" style="display: none;">
-                        <h4 id="statusText"></h4>
-                        <div id="recordsToday" class="records-today" style="display: none;">
-                            <h6 class="text-dark">Today's Records:</h6>
-                            <div id="todayRecordsList"></div>
-                        </div>
-                    </div>
-
                     <!-- Global Real-time Status Board -->
                     <div id="globalStatusBoard">
                         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -453,9 +444,6 @@
                             </small>
                         </div>
                     </div>
-
-                    <!-- Alert Messages -->
-                    <div id="alertContainer" class="mt-3"></div>
                 </div>
             </div>
 
@@ -697,12 +685,12 @@
                     // Immediately refresh status to sync across devices
                     loadGlobalStatus();
                 } else {
-                    showAlert(result.message || 'Action failed', 'danger');
+                    showToast(result.message || 'Action failed', 'danger');
                     console.error(`Failed to toggle ${name}:`, result.message);
                 }
             } catch (error) {
                 console.error('Toggle error:', error);
-                showAlert('Network error. Please try again.', 'danger');
+                showToast('Network error. Please try again.', 'danger');
             } finally {
                 // Re-enable the button and remove from pending set
                 pendingToggles.delete(name);
@@ -712,30 +700,42 @@
                 }
             }
         }
-        // Save form data to localStorage
-        function saveFormData() {
-            const name = document.getElementById('name') ? document.getElementById('name').value : '';
+        
+        function showToast(message, type = 'info') {
+            // Create toast container if it doesn't exist
+            let toastContainer = document.getElementById('toastContainer');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'toastContainer';
+                toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+                toastContainer.style.zIndex = '1055';
+                document.body.appendChild(toastContainer);
+            }
             
-            if (name) localStorage.setItem('attendanceName', name);
-        }
-
-        function showAlert(message, type = 'info') {
-            const alertContainer = document.getElementById('alertContainer');
-            const alertHtml = `
-                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                    ${message}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            const toastId = 'toast_' + Date.now();
+            const bgClass = type === 'success' ? 'bg-success' : (type === 'error' || type === 'danger') ? 'bg-danger' : 'bg-primary';
+            
+            const toastHtml = `
+                <div id="${toastId}" class="toast align-items-center ${bgClass} text-white border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            ${message}
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
                 </div>
             `;
-            alertContainer.innerHTML = alertHtml;
             
-            // Auto-dismiss after 5 seconds
-            setTimeout(() => {
-                const alert = alertContainer.querySelector('.alert');
-                if (alert) {
-                    bootstrap.Alert.getOrCreateInstance(alert).close();
-                }
-            }, 5000);
+            toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+            
+            const toastElement = document.getElementById(toastId);
+            const toast = new bootstrap.Toast(toastElement, { delay: 3000 });
+            toast.show();
+            
+            // Remove toast element after it's hidden
+            toastElement.addEventListener('hidden.bs.toast', () => {
+                toastElement.remove();
+            });
         }
 
         function showLoading(buttonId) {
@@ -758,246 +758,6 @@
             btn.disabled = false;
         }
 
-        async function checkIn() {
-            const name = document.getElementById('name').value.trim();
-            const notes = document.getElementById('notes').value.trim();
-
-            if (!name) {
-                showAlert('Please fill in your name.', 'warning');
-                return;
-            }
-
-            saveFormData();
-            showLoading('checkInBtn');
-
-            try {
-                const response = await fetch('/api/check-in', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ name, notes })
-                });
-
-                const data = await response.json();
-                
-                if (data.success) {
-                    showAlert(`Welcome, ${name}! You have successfully checked in.`, 'success');
-                    checkStatus(); // Refresh status
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            } catch (error) {
-                showAlert('Error checking in. Please try again.', 'danger');
-                console.error('Check-in error:', error);
-            } finally {
-                hideLoading('checkInBtn');
-            }
-        }
-
-        async function checkOut() {
-            const name = document.getElementById('name').value.trim();
-            const notes = document.getElementById('notes').value.trim();
-
-            if (!name) {
-                showAlert('Please fill in your name.', 'warning');
-                return;
-            }
-
-            saveFormData();
-            showLoading('checkOutBtn');
-
-            try {
-                const response = await fetch('/api/check-out', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ name, notes })
-                });
-
-                const data = await response.json();
-                
-                if (data.success) {
-                    showAlert(`Goodbye, ${name}! You have successfully checked out.`, 'success');
-                    checkStatus(); // Refresh status
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            } catch (error) {
-                showAlert('Error checking out. Please try again.', 'danger');
-                console.error('Check-out error:', error);
-            } finally {
-                hideLoading('checkOutBtn');
-            }
-        }
-
-        async function checkStatus() {
-            const name = document.getElementById('name') ? document.getElementById('name').value.trim() : '';
-            
-            if (!name) {
-                showAlert('Please enter your name to check status.', 'warning');
-                return;
-            }
-            
-            // Setup real-time sync for this name
-            setupRealTimeSync(name);
-
-            try {
-                const response = await fetch(`/api/status/${encodeURIComponent(name)}`);
-                const data = await response.json();
-                updateStatusDisplay(data);
-                
-            } catch (error) {
-                showAlert('Error checking status. Please try again.', 'danger');
-                console.error('Status check error:', error);
-            }
-        }
-
-        // Real-time status synchronization
-        let eventSource = null;
-        let currentName = '';
-        let statusCheckInterval = null;
-        
-        function setupRealTimeSync(name) {
-            // Close existing connection
-            if (eventSource) {
-                // Closing existing SSE connection
-                eventSource.close();
-                eventSource = null;
-            }
-            
-            // Clear existing polling
-            if (statusCheckInterval) {
-                // Clearing existing polling interval
-                clearInterval(statusCheckInterval);
-                statusCheckInterval = null;
-            }
-            
-            if (!name) {
-                // No name provided, skipping real-time sync setup
-                return;
-            }
-            
-            currentName = name;
-            // Setting up real-time sync for user
-            
-            // Try Server-Sent Events first
-            try {
-                // Attempting to establish SSE connection...
-                eventSource = new EventSource(`/api/status-stream/${encodeURIComponent(name)}`);
-                
-                eventSource.onopen = function(event) {
-                    // SSE connection opened successfully
-                };
-                
-                eventSource.onmessage = function(event) {
-                    try {
-                        const data = JSON.parse(event.data);
-                        // SSE message received
-                        
-                        if (data.type === 'status_update' || data.type === 'initial_status') {
-                            updateStatusDisplay(data);
-                        } else if (data.type === 'heartbeat') {
-                            // Connection is alive
-                            // SSE heartbeat received
-                        }
-                    } catch (error) {
-                        console.error('Error parsing SSE data:', error, event.data);
-                    }
-                };
-                
-                eventSource.onerror = function(error) {
-                    console.error('SSE connection error:', error);
-                    // SSE connection failed, falling back to polling
-                    eventSource.close();
-                    eventSource = null;
-                    // Fall back to polling
-                    setupPolling(name);
-                };
-                
-            } catch (error) {
-                console.error('SSE setup error:', error);
-                // SSE not supported, using polling
-                setupPolling(name);
-            }
-        }
-        
-        function setupPolling(name) {
-            // Setting up polling for user
-            // Poll for status updates every 5 seconds
-            statusCheckInterval = setInterval(() => {
-                const currentNameInput = document.getElementById('name') ? document.getElementById('name').value.trim() : '';
-                if (currentNameInput === name) {
-                    // Polling status for user
-                    checkStatusSilent(name);
-                } else {
-                    // Name changed, stop polling
-                    // Name changed, stopping polling for user
-                    clearInterval(statusCheckInterval);
-                    statusCheckInterval = null;
-                }
-            }, 5000);
-        }
-        
-        function updateStatusDisplay(data) {
-            // Updating status display with data
-            const statusDisplay = document.getElementById('statusDisplay');
-            const statusText = document.getElementById('statusText');
-            const recordsToday = document.getElementById('recordsToday');
-            const todayRecordsList = document.getElementById('todayRecordsList');
-            
-            if (!statusDisplay) {
-                console.error('Status display elements not found');
-                return;
-            }
-            
-            statusDisplay.style.display = 'block';
-            
-            // Update status based on data
-            const status = data.status || data.type;
-            console.log('Setting status to:', status);
-            if (status === 'checked-in') {
-                statusDisplay.className = 'status-card status-checked-in';
-                statusText.innerHTML = '<i class="fas fa-check-circle"></i> Currently Checked In';
-            } else if (status === 'checked-out') {
-                statusDisplay.className = 'status-card status-checked-out';
-                statusText.innerHTML = '<i class="fas fa-times-circle"></i> Currently Checked Out';
-            } else {
-                statusDisplay.className = 'status-card';
-                statusText.innerHTML = '<i class="fas fa-question-circle"></i> No Check-in Today';
-            }
-            
-            // Show today's records if available
-            const records = data.records_today || [];
-            console.log('Records for today:', records.length);
-            if (records.length > 0) {
-                recordsToday.style.display = 'block';
-                todayRecordsList.innerHTML = records.map(record => `
-                    <div class="record-item">
-                        <strong>${record.Action}:</strong> ${record.Timestamp}
-                        ${record.Notes ? `<br><small>Notes: ${record.Notes}</small>` : ''}
-                    </div>
-                `).join('');
-            } else {
-                recordsToday.style.display = 'none';
-            }
-        }
-        
-        async function checkStatusSilent(name) {
-            try {
-                const response = await fetch(`/api/status/${encodeURIComponent(name)}`);
-                const data = await response.json();
-                updateStatusDisplay(data);
-            } catch (error) {
-                console.error('Silent status check error:', error);
-            }
-        }
-        
-        // Auto-save form data when typing
-        document.getElementById('name').addEventListener('input', saveFormData);
-        document.getElementById('email').addEventListener('input', saveFormData);
-
         async function signOutAll() {
             const btn = document.querySelector('.btn-warning[onclick*="signOutAll"]');
             if (btn) {
@@ -1011,14 +771,14 @@
                 });
                 const data = await response.json();
                 if (data.success) {
-                    showAlert(`Successfully signed out ${data.count} users`, 'success');
+                    showToast(`Successfully signed out ${data.count} users`, 'success');
                     loadGlobalStatus();
                 } else {
-                    showAlert(data.message || 'Error signing out users. Please try again.', 'danger');
+                    showToast(data.message || 'Error signing out users. Please try again.', 'danger');
                 }
             } catch (error) {
                 console.error('Error signing out all users:', error);
-                showAlert('Error signing out users. Please try again.', 'danger');
+                showToast('Error signing out users. Please try again.', 'danger');
             } finally {
                 if (btn) {
                     btn.disabled = false;

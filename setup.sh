@@ -15,15 +15,15 @@ fi
 echo "✅ Python found: $(python3 --version)"
 
 # Create virtual environment if it doesn't exist
-if [ ! -d "venv" ]; then
+if [ ! -d "../venv" ]; then
     echo "📦 Creating virtual environment..."
-    python3 -m venv venv
+    python3 -m venv ../venv
     echo "✅ Virtual environment created"
 fi
 
 # Activate virtual environment
 echo "🔄 Activating virtual environment..."
-source venv/bin/activate
+source ../venv/bin/activate
 
 # Install dependencies
 echo "📚 Installing Python dependencies..."
@@ -42,19 +42,35 @@ if [ ! -f ".env" ]; then
     echo "⚙️ Creating .env configuration file..."
     cp .env.example .env
     echo "✅ .env file created from template"
-    echo "📝 Please edit .env file with your settings"
+    echo "📝 Please edit config/.env file with your settings"
 else
     echo "✅ .env file already exists"
 fi
 
+# Initialize database and user records
+echo "🗄️ Initializing database..."
+python3 -c "
+import sys
+sys.path.append('../app')
+from database import LocalDatabase
+from utils import PRESET_NAMES
+db = LocalDatabase()
+db.initialize_user_hours(PRESET_NAMES)
+print('✅ Database initialized with user records')
+"
+
 # Check for credentials file
 if [ ! -f "credentials.json" ]; then
     echo "⚠️ Google Sheets credentials file (credentials.json) not found"
-    echo "📋 Please follow the setup instructions in README.md to:"
-    echo "   1. Create a Google Cloud Project"
-    echo "   2. Enable Google Sheets and Drive APIs"
-    echo "   3. Create service account credentials"
-    echo "   4. Download credentials.json to this directory"
+    echo "📋 To set up Google Sheets integration:"
+    echo "   1. Go to Google Cloud Console (console.cloud.google.com)"
+    echo "   2. Create a new project or select existing one"
+    echo "   3. Enable Google Sheets API and Google Drive API"
+    echo "   4. Create a Service Account with Editor permissions"
+    echo "   5. Generate and download JSON key"
+    echo "   6. Rename the downloaded file to 'credentials.json'"
+    echo "   7. Copy credentials.json to this config/ directory"
+    echo "   📄 See credentials.json.example for the expected format"
     echo ""
 fi
 
@@ -66,8 +82,8 @@ echo "🎉 Setup complete!"
 echo "=================="
 echo ""
 echo "🚀 To start the attendance tracker:"
-echo "   source venv/bin/activate  # Activate virtual environment"
-echo "   python app.py             # Start the application"
+echo "   cd ../app"
+echo "   ./start.sh"
 echo ""
 echo "🌐 Access URLs:"
 echo "   Local:   http://localhost:5000"
@@ -77,7 +93,7 @@ echo "📱 Share the network URL with other devices on your network"
 echo ""
 echo "⚙️ Don't forget to:"
 echo "   1. Configure your .env file"
-echo "   2. Add your Google Sheets credentials.json"
+echo "   2. Add your Google Sheets credentials.json to config/"
 echo "   3. Create and share your Google Sheets spreadsheet"
 echo ""
-echo "📖 See README.md for detailed setup instructions"
+echo "📖 See GOOGLE_SHEETS_SETUP.md for detailed setup instructions"

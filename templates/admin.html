@@ -349,6 +349,26 @@
                 </div>
             </div>
 
+            <!-- Attendance Records -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="mb-0">
+                        <i class="fas fa-list"></i>
+                        Recent Attendance Records
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table id="attendanceTable" class="table table-hover table-striped">
+                            <thead>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <!-- Names Management -->
             <div class="card">
                 <div class="card-header">
@@ -556,6 +576,14 @@
         $(document).ready(function() {
             // Initialize DataTable
             attendanceTable = $('#attendanceTable').DataTable({
+                columns: [
+                    { title: 'Timestamp' },
+                    { title: 'Name' },
+                    { title: 'Action' },
+                    { title: 'Duration' },
+                    { title: 'Notes' },
+                    { title: 'Device IP' }
+                ],
                 order: [[0, 'desc']], // Sort by timestamp descending
                 pageLength: 25,
                 responsive: true,
@@ -576,13 +604,16 @@
             // Setup real-time updates for admin dashboard
             setupAdminRealTimeUpdates();
 
+            // Load initial data
+            refreshData();
+
             // Auto-refresh every minute (fallback)
             setInterval(refreshData, 60000);
         });
 
         async function loadCurrentNames() {
             try {
-                const response = await fetch('/api/names');
+                const response = await fetch('/api/preset-names');
                 const data = await response.json();
                 
                 if (data.success && data.names) {
@@ -742,7 +773,7 @@
                 // Clear and rebuild table
                 attendanceTable.clear();
                 
-                recordsData.forEach(record => {
+                recordsData.records.forEach(record => {
                     const actionBadge = record.Action === 'check-in' 
                         ? '<span class="badge badge-check-in"><i class="fas fa-sign-in-alt"></i> Check In</span>'
                         : '<span class="badge badge-check-out"><i class="fas fa-sign-out-alt"></i> Check Out</span>';
@@ -762,7 +793,7 @@
                 });
                 
                 attendanceTable.draw();
-                document.getElementById('totalRecords').textContent = recordsData.length;
+                document.getElementById('totalRecords').textContent = recordsData.records.length;
                 
                 // Show success message
                 showToast('Data refreshed successfully!', 'success');
@@ -876,7 +907,7 @@
             try {
                 // Fetch all names (roster) and user hours in parallel
                 const [namesRes, hoursRes] = await Promise.all([
-                    fetch('/api/names'),
+                    fetch('/api/preset-names'),
                     fetch('/api/user-hours-summary')
                 ]);
                 const namesData = await namesRes.json();
@@ -957,7 +988,7 @@
             }
             
             try {
-                const response = await fetch('/api/adjust-hours', {
+                const response = await fetch('/api/adjust-user-hours', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1038,7 +1069,7 @@
             try {
                 const [usersResponse, rosterResponse] = await Promise.all([
                     fetch('/api/user-hours-summary'),
-                    fetch('/api/names')
+                    fetch('/api/preset-names')
                 ]);
                 
                 const usersData = await usersResponse.json();
