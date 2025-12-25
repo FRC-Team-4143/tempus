@@ -10,12 +10,13 @@ from flask import Flask
 from dotenv import load_dotenv
 
 # Import modules
-from database import LocalDatabase
-from routes import (
+from .database import LocalDatabase
+from .routes import (
     index, admin, leaderboard, check_in, check_out, get_status, get_summary,
     get_records, health_check, quick_status, global_status, status_stream,
     get_preset_names, upload_names, add_name, remove_name, toggle_attendance,
-    sign_out_all, api_manual_sync, api_user_hours_summary, api_adjust_user_hours
+    sign_out_all, api_manual_sync, api_user_hours_summary, api_adjust_user_hours,
+    api_weekly_attendance
 )
 
 # Load environment variables
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 db = LocalDatabase()
 
 # Initialize user hours for all names from CSV
-from utils import PRESET_NAMES
+from .utils import PRESET_NAMES
 db.initialize_user_hours(PRESET_NAMES)
 
 # Create Flask app
@@ -58,6 +59,7 @@ app.add_url_rule('/api/sign-out-all', 'sign_out_all', sign_out_all, methods=['PO
 app.add_url_rule('/api/manual-sync', 'api_manual_sync', api_manual_sync, methods=['POST'])
 app.add_url_rule('/api/user-hours-summary', 'api_user_hours_summary', api_user_hours_summary, methods=['GET'])
 app.add_url_rule('/api/adjust-user-hours', 'api_adjust_user_hours', api_adjust_user_hours, methods=['POST'])
+app.add_url_rule('/api/weekly-attendance', 'api_weekly_attendance', api_weekly_attendance, methods=['GET'])
 
 if __name__ == '__main__':
     # Run the Flask app

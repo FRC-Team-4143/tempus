@@ -41,9 +41,18 @@ class LocalDatabase:
                     name TEXT NOT NULL,
                     action TEXT NOT NULL,
                     duration_hours REAL DEFAULT 0,
+                    notes TEXT,
                     synced BOOLEAN DEFAULT 0
                 )
             ''')
+
+            # Migration: Add notes column if it doesn't exist
+            try:
+                cursor.execute("SELECT notes FROM attendance_records LIMIT 1")
+            except sqlite3.OperationalError:
+                # Column doesn't exist, add it
+                cursor.execute("ALTER TABLE attendance_records ADD COLUMN notes TEXT")
+                logger.info("✅ Added notes column to attendance_records table")
 
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS user_hours (
@@ -94,6 +103,38 @@ class LocalDatabase:
             except Exception as e:
                 logger.error(f"❌ Error initializing user hours: {e}")
 
+    def cleanup_old_users(self, current_names: List[str]):
+        """Remove user_hours records for names that are no longer in the current list"""
+        with db_lock:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+
+                # Get all names currently in the database
+                cursor.execute('SELECT name FROM user_hours')
+                db_names = [row[0] for row in cursor.fetchall()]
+
+                # Filter out team headers from current names
+                actual_names = [name for name in current_names if not name.startswith('---')]
+
+                # Find names to remove (in DB but not in current list)
+                names_to_remove = [name for name in db_names if name not in actual_names]
+
+                if names_to_remove:
+                    # Remove from user_hours table
+                    cursor.executemany('DELETE FROM user_hours WHERE name = ?', [(name,) for name in names_to_remove])
+
+                    # Also remove attendance records for these users
+                    cursor.executemany('DELETE FROM attendance_records WHERE name = ?', [(name,) for name in names_to_remove])
+
+                    conn.commit()
+                    logger.info(f"🧹 Cleaned up {len(names_to_remove)} old user records: {', '.join(names_to_remove)}")
+
+                conn.close()
+
+            except Exception as e:
+                logger.error(f"❌ Error cleaning up old users: {e}")
+
     def add_record(self, name: str, action: str) -> bool:
         """Add a record to the local database and update hours tracking"""
         with db_lock:
@@ -142,8 +183,8 @@ class LocalDatabase:
 
                 # Insert attendance record
                 cursor.execute('''
-                    INSERT INTO attendance_records (timestamp, name, action, duration_hours)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO attendance_records (timestamp, name, action, duration_hours, notes)
+                    VALUES (?, ?, ?, ?, NULL)
                 ''', (timestamp, name, action, duration_hours))
 
                 conn.commit()
@@ -273,7 +314,7 @@ class LocalDatabase:
             except Exception as e:
                 logger.error(f"Error marking records as synced: {e}")
 
-    def adjust_user_hours(self, name: str, adjustment_hours: float) -> tuple[bool, str]:
+    def adjust_user_hours(self, name: str, adjustment_hours: float, adjustment_date: str = None, reason: str = None) -> tuple[bool, str]:
         """Adjust a user's total hours"""
         with db_lock:
             try:
@@ -291,7 +332,21 @@ class LocalDatabase:
                 new_total = current_total + adjustment_hours
 
                 # Update the total
-                cursor.execute('UPDATE user_hours SET total_hours = ? WHERE name = ?', (new_total, name))
+                cursor.execute('UPDATE user_hours SET total_hours = ?, last_activity = ? WHERE name = ?', 
+                             (new_total, datetime.now().isoformat(), name))
+
+                # Create an attendance record for the manual adjustment to include it in weekly calculations
+                if adjustment_date:
+                    # Use the specified date with current time
+                    timestamp = f"{adjustment_date}T{datetime.now().strftime('%H:%M:%S.%f')}"
+                else:
+                    # Use current timestamp
+                    timestamp = datetime.now().isoformat()
+                    
+                cursor.execute('''
+                    INSERT INTO attendance_records (timestamp, name, action, duration_hours, notes)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (timestamp, name, 'manual_adjustment', adjustment_hours, reason))
 
                 conn.commit()
                 conn.close()
@@ -301,3 +356,129 @@ class LocalDatabase:
             except Exception as e:
                 logger.error(f"Error adjusting user hours: {e}")
                 return False, str(e)
+
+    def get_weekly_attendance(self, weeks_back: int = 0) -> Dict[str, Dict]:
+        """Get weekly attendance metrics for all users
+        
+        Args:
+            weeks_back: Number of weeks back from current week (0 = current week)
+        
+        Returns:
+            Dict with user names as keys and attendance data as values
+        """
+        with db_lock:
+            try:
+                # Import team mapping here to avoid circular imports
+                from .utils import get_team_roster_mapping, get_category_mapping
+                
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+
+                # Get team mapping
+                team_mapping = get_team_roster_mapping()
+                category_mapping = get_category_mapping()
+
+                # Calculate the week start (Monday) for the requested week
+                today = datetime.now()
+                today = today - timedelta(weeks=weeks_back)
+                
+                # Find Monday of the current week
+                week_start = today - timedelta(days=today.weekday())  # Monday
+                week_start_str = week_start.strftime('%Y-%m-%d')
+                week_end = week_start + timedelta(days=6)  # Sunday
+                week_end_str = week_end.strftime('%Y-%m-%d')
+
+                # Get all attendance records for the week
+                cursor.execute('''
+                    SELECT name, timestamp, action, duration_hours
+                    FROM attendance_records
+                    WHERE date(timestamp) BETWEEN ? AND ?
+                    ORDER BY name, timestamp
+                ''', (week_start_str, week_end_str))
+
+                records = cursor.fetchall()
+
+                # Get total hours for all users
+                cursor.execute('SELECT name, total_hours FROM user_hours')
+                user_total_hours = {name: hours for name, hours in cursor.fetchall()}
+
+                conn.close()
+
+                # Process records by user
+                weekly_data = {}
+                
+                # Group records by user
+                user_records = defaultdict(list)
+                for name, timestamp, action, duration_hours in records:
+                    if name and not name.startswith('---'):
+                        user_records[name].append({
+                            'timestamp': timestamp,
+                            'action': action,
+                            'duration_hours': duration_hours
+                        })
+
+                # Calculate attendance metrics for each user
+                for name, user_recs in user_records.items():
+                    # Calculate total hours for the week
+                    total_weekly_hours = 0
+                    sessions_completed = 0
+                    
+                    # Group by sessions (check-in to check-out pairs)
+                    sessions = []
+                    current_session = None
+                    
+                    for record in user_recs:
+                        if record['action'] == 'check-in':
+                            current_session = {'checkin': record['timestamp'], 'duration': 0}
+                        elif record['action'] == 'check-out' and current_session:
+                            # Calculate session duration
+                            try:
+                                checkin_time = datetime.fromisoformat(current_session['checkin'])
+                                checkout_time = datetime.fromisoformat(record['timestamp'])
+                                duration = (checkout_time - checkin_time).total_seconds() / 3600
+                                
+                                if 0 < duration < 24:  # Sanity check
+                                    current_session['duration'] = duration
+                                    sessions.append(current_session)
+                                    total_weekly_hours += duration
+                                    sessions_completed += 1
+                            except:
+                                pass
+                            
+                            current_session = None
+                        elif record['action'] == 'manual_adjustment':
+                            # Add manual adjustment directly to weekly hours
+                            total_weekly_hours += record['duration_hours']
+
+                    # Calculate attendance percentage
+                    # Required: 2 sessions × 3h = 6h + 1 Saturday × 5h = 5h = 11h total
+                    required_hours = 11.0
+                    attendance_percentage = min(100.0, (total_weekly_hours / required_hours) * 100) if required_hours > 0 else 0
+                    
+                    # Determine status
+                    if attendance_percentage >= 80:
+                        status = 'good'
+                    elif attendance_percentage >= 60:
+                        status = 'warning'
+                    else:
+                        status = 'danger'
+                    
+                    weekly_data[name] = {
+                        'total_hours': round(total_weekly_hours, 2),
+                        'required_hours': required_hours,
+                        'attendance_percentage': round(attendance_percentage, 1),
+                        'sessions_completed': sessions_completed,
+                        'status': status,
+                        'week_start': week_start_str,
+                        'week_end': week_end_str,
+                        'team': team_mapping.get(name, '4143'),  # Add team information
+                        'category': category_mapping.get(name, ''),  # Add category information
+                        'sessions': sessions,
+                        'all_time_hours': round(user_total_hours.get(name, 0), 2)  # Add total hours
+                    }
+
+                return weekly_data
+
+            except Exception as e:
+                logger.error(f"Error calculating weekly attendance: {e}")
+                return {}

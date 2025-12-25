@@ -7,7 +7,7 @@ import os
 import json
 import logging
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import render_template, request, jsonify, redirect, url_for, flash, Response
 import gspread
 from google.oauth2.service_account import Credentials
@@ -15,8 +15,8 @@ from typing import Dict, List, Optional
 import time
 from threading import Lock, Thread
 
-from database import LocalDatabase, db_lock
-from utils import PRESET_NAMES, get_team_roster_mapping, load_names_from_file
+from .database import LocalDatabase, db_lock
+from .utils import PRESET_NAMES, get_team_roster_mapping, load_names_from_file, get_category_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -50,19 +50,14 @@ class AttendanceTracker:
         self.gc = gc
 
     def add_attendance_record(self, name: str, action: str, notes: str = '', device_ip: str = '') -> tuple[bool, str]:
-        """Add an attendance record and sync to Google Sheets"""
+        """Add an attendance record to local database only (Google Sheets sync happens in background)"""
         try:
             # Add to local database
             success = local_db.add_record(name, action)
             if not success:
                 return False, "Failed to add record to local database"
 
-            # Try to sync to Google Sheets
-            try:
-                self.sync_to_google_sheets()
-            except Exception as e:
-                logger.warning(f"Failed to sync to Google Sheets: {e}")
-
+            # Note: Google Sheets sync happens automatically in background every 5 minutes
             return True, f"Successfully recorded {action} for {name}"
 
         except Exception as e:
@@ -70,7 +65,9 @@ class AttendanceTracker:
             return False, str(e)
 
     def sync_to_google_sheets(self):
-        """Sync unsynced records to Google Sheets"""
+        """Sync unsynced records to Google Sheets with enhanced column format:
+        Timestamp | Name | Team | Category | Date | Time | Shift Duration | Total Hours | Notes
+        """
         if not self.gc:
             logger.warning("Google Sheets not available, skipping sync")
             return
@@ -80,38 +77,76 @@ class AttendanceTracker:
                 # Get unsynced records
                 conn = sqlite3.connect(local_db.db_path)
                 cursor = conn.cursor()
-                cursor.execute('SELECT id, timestamp, name, action, duration_hours FROM attendance_records WHERE synced = 0 ORDER BY timestamp')
+                cursor.execute('SELECT id, timestamp, name, action, duration_hours, notes FROM attendance_records WHERE synced = 0 ORDER BY timestamp')
                 unsynced_records = cursor.fetchall()
                 conn.close()
 
                 if not unsynced_records:
                     return
 
+                # Get team mapping and user hours
+                team_mapping = get_team_roster_mapping()
+                category_mapping = get_category_mapping()
+                
+                # Get current total hours for all users
+                conn = sqlite3.connect(local_db.db_path)
+                cursor = conn.cursor()
+                cursor.execute('SELECT name, total_hours FROM user_hours')
+                user_hours_data = cursor.fetchall()
+                conn.close()
+                
+                user_hours = {name: hours for name, hours in user_hours_data}
+
                 # Open spreadsheet
                 spreadsheet = self.gc.open(self.spreadsheet_name)
                 worksheet = spreadsheet.worksheet(self.worksheet_name)
 
-                # Get current row count
-                current_rows = len(worksheet.get_all_values())
+                # Get current values
+                current_values = worksheet.get_all_values()
+                current_rows = len(current_values)
+
+                # Add headers if sheet is empty
+                if current_rows == 0:
+                    headers = ['Timestamp', 'Name', 'Team', 'Category', 'Date', 'Time', 'Shift Duration', 'Total Hours', 'Notes']
+                    worksheet.append_row(headers)
+                    current_rows = 1
+                    logger.info("✅ Added headers to Google Sheets")
+
+                # Prepare data for batch update
 
                 # Prepare data for batch update
                 batch_data = []
                 synced_ids = []
 
                 for record in unsynced_records:
-                    record_id, timestamp, name, action, duration_hours = record
+                    record_id, timestamp, name, action, duration_hours, notes = record
 
-                    # Convert timestamp to readable format
+                    # Convert timestamp to components
                     try:
                         dt = datetime.fromisoformat(timestamp)
-                        readable_time = dt.strftime('%Y-%m-%d %H:%M:%S')
+                        full_timestamp = dt.strftime('%Y-%m-%d %H:%M:%S')
+                        date_only = dt.strftime('%Y-%m-%d')
+                        time_only = dt.strftime('%H:%M:%S')
                     except:
-                        readable_time = timestamp
+                        full_timestamp = timestamp
+                        date_only = timestamp.split(' ')[0] if ' ' in timestamp else timestamp
+                        time_only = timestamp.split(' ')[1] if ' ' in timestamp else ''
 
-                    # Format duration
-                    duration_str = f"{duration_hours:.2f}h" if duration_hours > 0 else ""
+                    # Get team information
+                    team = team_mapping.get(name, 'Unknown')
+                    category = category_mapping.get(name, '')
 
-                    row_data = [readable_time, name, action, duration_str]
+                    # Format shift duration (only show on checkout)
+                    shift_duration = ""
+                    if action == 'check-out' and duration_hours > 0:
+                        shift_duration = f"{duration_hours:.2f}h"
+
+                    # Get total hours for user
+                    total_hours = user_hours.get(name, 0)
+                    total_hours_str = f"{total_hours:.2f}h"
+
+                    # New column format: Timestamp, Name, Team, Category, Date, Time, Shift Duration, Total Hours, Notes
+                    row_data = [full_timestamp, name, team, category, date_only, time_only, shift_duration, total_hours_str, notes or '']
                     batch_data.append(row_data)
                     synced_ids.append(record_id)
 
@@ -123,6 +158,8 @@ class AttendanceTracker:
                     # Mark records as synced
                     local_db.mark_records_synced(synced_ids)
 
+                    logger.info(f"✅ Synced {len(batch_data)} records to Google Sheets with enhanced format")
+
         except Exception as e:
             logger.error(f"❌ Error syncing to Google Sheets: {e}")
             raise
@@ -132,17 +169,96 @@ tracker = AttendanceTracker()
 
 def background_sync():
     """Background thread to periodically sync to Google Sheets"""
+    logger.info("🕐 Background Google Sheets sync thread started - will sync every 5 minutes")
     while True:
         try:
             time.sleep(300)  # Sync every 5 minutes
+            logger.info("🔄 Starting scheduled Google Sheets sync...")
             tracker.sync_to_google_sheets()
+            logger.info("✅ Scheduled Google Sheets sync completed")
         except Exception as e:
-            logger.error(f"Background sync error: {e}")
+            logger.error(f"❌ Background sync error: {e}")
+            time.sleep(60)  # Wait a minute before retrying
+
+def midnight_signout():
+    """Background thread to automatically sign out all users at midnight"""
+    logger.info("🌙 Midnight sign-out thread started - will sign out all users at midnight")
+    last_signout_date = None
+    
+    while True:
+        try:
+            now = datetime.now()
+            current_date = now.date()
+            
+            # Check if it's midnight (between 12:00 AM and 12:01 AM) and we haven't signed out today yet
+            if (now.hour == 0 and now.minute == 0 and 
+                (last_signout_date is None or last_signout_date != current_date)):
+                
+                logger.info("🌙 Midnight reached - automatically signing out all checked-in users")
+                
+                # Get team roster mapping
+                team_mapping = get_team_roster_mapping()
+                
+                # Get today's records to find checked-in users
+                today = current_date.strftime('%Y-%m-%d')
+                all_records = local_db.get_records(date_filter=today)
+                
+                # Calculate current status for each user
+                user_status = {}
+                for record in all_records:
+                    name = record.get('Name')
+                    action = record.get('Action')
+                    timestamp = record.get('Timestamp')
+                    
+                    if not name or name.startswith('--- Team'):
+                        continue
+                    
+                    if name not in user_status:
+                        user_status[name] = {'last_action': None, 'last_timestamp': None}
+                    
+                    # Update with latest action
+                    if not user_status[name]['last_timestamp'] or timestamp > user_status[name]['last_timestamp']:
+                        user_status[name]['last_action'] = action
+                        user_status[name]['last_timestamp'] = timestamp
+                
+                # Find users who are currently checked in
+                checked_in_users = [name for name, status in user_status.items() if status['last_action'] == 'check-in']
+                
+                if checked_in_users:
+                    logger.info(f"🌙 Found {len(checked_in_users)} users still checked in at midnight: {checked_in_users}")
+                    
+                    # Sign out each checked-in user
+                    checked_out_count = 0
+                    
+                    for name in checked_in_users:
+                        # Use local_db.add_record directly to avoid Google Sheets sync for mass operations
+                        success = local_db.add_record(name, 'check-out')
+                        if success:
+                            checked_out_count += 1
+                            logger.info(f"🌙 Midnight sign-out: {name}")
+                        else:
+                            logger.error(f"❌ Failed to sign out {name} at midnight")
+                    
+                    logger.info(f"🌙 Midnight sign-out completed: {checked_out_count}/{len(checked_in_users)} users signed out")
+                    last_signout_date = current_date
+                else:
+                    logger.info("🌙 Midnight check: No users currently checked in")
+                    last_signout_date = current_date
+            
+            # Sleep for 60 seconds before checking again
+            time.sleep(60)
+            
+        except Exception as e:
+            logger.error(f"❌ Error in midnight sign-out thread: {e}")
             time.sleep(60)  # Wait a minute before retrying
 
 # Start background sync thread
 sync_thread = Thread(target=background_sync, daemon=True)
 sync_thread.start()
+
+# Start midnight sign-out thread
+midnight_thread = Thread(target=midnight_signout, daemon=True)
+midnight_thread.start()
 
 # Flask route handlers
 def index():
@@ -151,9 +267,10 @@ def index():
 
 def admin():
     """Admin dashboard"""
-    records = local_db.get_records()
+    today = datetime.now().strftime('%Y-%m-%d')
+    records = local_db.get_records(date_filter=today)
     today_summary = {
-        'date': datetime.now().strftime('%Y-%m-%d'),
+        'date': today,
         'total_check_ins': len([r for r in records if r.get('Action') == 'check-in']),
         'total_check_outs': len([r for r in records if r.get('Action') == 'check-out']),
         'unique_users': len(set(r.get('Name') for r in records if r.get('Name'))),
@@ -233,8 +350,9 @@ def get_summary():
 
         summary = {
             'total_records': len(records),
-            'checked_in': len([r for r in records if r['Action'] == 'check-in']),
-            'checked_out': len([r for r in records if r['Action'] == 'check-out'])
+            'total_check_ins': len([r for r in records if r['Action'] == 'check-in']),
+            'total_check_outs': len([r for r in records if r['Action'] == 'check-out']),
+            'unique_users': len(set(r['Name'] for r in records))
         }
 
         return jsonify({'success': True, 'summary': summary})
@@ -415,14 +533,14 @@ def upload_names():
         return jsonify({'success': False, 'message': 'File must be CSV'})
 
     try:
-        # Save uploaded file
+        # Save uploaded file as users.csv
         data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
-        file.save(os.path.join(data_dir, 'team_roster.csv'))
+        file.save(os.path.join(data_dir, 'users.csv'))
 
         # Reload names
         load_names_from_file()
 
-        return jsonify({'success': True, 'message': 'Names uploaded successfully'})
+        return jsonify({'success': True, 'message': 'Users uploaded successfully', 'names': PRESET_NAMES})
 
     except Exception as e:
         logger.error(f"Error uploading names: {e}")
@@ -529,12 +647,15 @@ def toggle_attendance():
 def sign_out_all():
     """Sign out all currently checked-in users"""
     try:
+        logger.info("Starting mass sign-out operation")
         # Get team roster mapping
         team_mapping = get_team_roster_mapping()
+        logger.info(f"Loaded team mapping with {len(team_mapping)} entries")
 
         # Get today's records to find checked-in users
         today = datetime.now().strftime('%Y-%m-%d')
         all_records = local_db.get_records(date_filter=today)
+        logger.info(f"Retrieved {len(all_records)} records for today")
 
         # Calculate current status for each user
         user_status = {}
@@ -556,8 +677,10 @@ def sign_out_all():
 
         # Find users who are currently checked in
         checked_in_users = [name for name, status in user_status.items() if status['last_action'] == 'check-in']
+        logger.info(f"Found {len(checked_in_users)} users currently checked in: {checked_in_users}")
 
         if not checked_in_users:
+            logger.info("No users to sign out")
             return jsonify({
                 'success': True,
                 'message': 'No users currently checked in',
@@ -566,17 +689,21 @@ def sign_out_all():
             })
 
         # Sign out each checked-in user
+        logger.info("Starting individual sign-out operations")
         checked_out_count = 0
         device_ip = request.remote_addr
 
         for name in checked_in_users:
-            success, message = tracker.add_attendance_record(name, 'check-out', 'Mass sign-out by admin', device_ip)
+            # Use local_db.add_record directly to avoid Google Sheets sync for mass operations
+            success = local_db.add_record(name, 'check-out')
             if success:
                 checked_out_count += 1
                 logger.info(f"Admin signed out {name}")
             else:
-                logger.error(f"Failed to sign out {name}: {message}")
+                logger.error(f"Failed to sign out {name}")
 
+        # All sign-outs completed - background sync will handle Google Sheets update
+        logger.info(f"Mass sign-out completed successfully: {checked_out_count}/{len(checked_in_users)} users signed out")
         return jsonify({
             'success': True,
             'message': f'Successfully signed out {checked_out_count} users',
@@ -642,9 +769,19 @@ def api_adjust_user_hours():
         name = data.get('name', '').strip()
         adjustment_type = data.get('adjustment_type', 'add')
         adjustment_hours = float(data.get('hours', 0))
+        adjustment_date = data.get('date', '')  # New date parameter
+        reason = data.get('reason', '').strip()  # New reason parameter
 
         if not name:
             return jsonify({'success': False, 'message': 'Name is required'})
+
+        # Validate date format if provided
+        if adjustment_date:
+            try:
+                from datetime import datetime
+                datetime.fromisoformat(adjustment_date)
+            except ValueError:
+                return jsonify({'success': False, 'message': 'Invalid date format. Use YYYY-MM-DD'})
 
         # Get current hours
         db = LocalDatabase()
@@ -672,7 +809,7 @@ def api_adjust_user_hours():
         # Calculate the actual adjustment needed
         actual_adjustment = new_hours - current_hours
 
-        success, message = local_db.adjust_user_hours(name, actual_adjustment)
+        success, message = local_db.adjust_user_hours(name, actual_adjustment, adjustment_date, reason)
 
         if success:
             return jsonify({
@@ -692,3 +829,47 @@ def api_adjust_user_hours():
             'success': False,
             'message': f'Error adjusting hours: {str(e)}'
         })
+
+def api_weekly_attendance():
+    """Get weekly attendance metrics for all users"""
+    try:
+        weeks_back = int(request.args.get('weeks_back', 0))
+        
+        weekly_data = local_db.get_weekly_attendance(weeks_back)
+        
+        # Get team mapping for grouping
+        team_mapping = get_team_roster_mapping()
+        
+        # Group by team
+        teams = {'4143': [], '4423': []}
+        summary = {
+            'team_4143_total': 0, 'team_4143_meeting_requirement': 0,
+            'team_4423_total': 0, 'team_4423_meeting_requirement': 0,
+            'overall_total': 0, 'overall_meeting_requirement': 0
+        }
+        
+        for name, data in weekly_data.items():
+            team = team_mapping.get(name, '4143')
+            if team in teams:
+                teams[team].append({'name': name, **data})
+                summary[f'team_{team}_total'] += 1
+                if data['status'] == 'good':
+                    summary[f'team_{team}_meeting_requirement'] += 1
+        
+        summary['overall_total'] = summary['team_4143_total'] + summary['team_4423_total']
+        summary['overall_meeting_requirement'] = summary['team_4143_meeting_requirement'] + summary['team_4423_meeting_requirement']
+        
+        # Sort users within teams by attendance percentage (descending)
+        for team_users in teams.values():
+            team_users.sort(key=lambda x: x['attendance_percentage'], reverse=True)
+        
+        return jsonify({
+            'success': True,
+            'teams': teams,
+            'summary': summary,
+            'weeks_back': weeks_back
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting weekly attendance: {e}")
+        return jsonify({'success': False, 'error': str(e)})

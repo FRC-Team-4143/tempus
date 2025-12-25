@@ -6,7 +6,6 @@
     <title>Admin Dashboard - Attendance Tracker</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <style>
         :root {
             --primary-color: #b71c1c;
@@ -97,6 +96,27 @@
             border-radius: 16px;
             overflow: hidden;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .filter-group {
+            min-width: 200px;
+        }
+        
+        .filter-group .form-label {
+            font-size: 0.875rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .filter-group .form-select {
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            color: var(--text-dark);
+        }
+        
+        .filter-group .form-select:focus {
+            background-color: white;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.2rem rgba(183, 28, 28, 0.25);
         }
         
         .table th {
@@ -246,49 +266,6 @@
                 font-size: 2rem;
             }
         }
-        
-        .dataTables_wrapper {
-            padding: 0;
-        }
-        
-        .dataTables_filter input {
-            border-radius: 12px;
-            border: 2px solid #e3f2fd;
-            padding: 10px 14px;
-            transition: all 0.3s ease;
-        }
-        
-        .dataTables_filter input:focus {
-            border-color: var(--secondary-color);
-            box-shadow: 0 0 0 0.2rem rgba(255, 87, 34, 0.25);
-        }
-        
-        .dataTables_length select {
-            border-radius: 12px;
-            border: 2px solid #e3f2fd;
-            padding: 8px 12px;
-        }
-        
-        .pagination .page-link {
-            border-radius: 12px;
-            border: none;
-            margin: 0 3px;
-            color: var(--primary-color);
-            background: rgba(255,255,255,0.9);
-            transition: all 0.3s ease;
-        }
-        
-        .pagination .page-link:hover {
-            background: var(--secondary-color);
-            color: var(--text-light);
-            transform: translateY(-1px);
-        }
-        
-        .pagination .page-item.active .page-link {
-            background: linear-gradient(135deg, var(--primary-color) 0%, #303f9f 100%);
-            border: none;
-            color: var(--text-light);
-        }
     </style>
 </head>
 <body>
@@ -308,9 +285,6 @@
                         <div class="col-auto">
                             <button class="btn refresh-btn" onclick="refreshData()">
                                 <i class="fas fa-sync-alt"></i> Refresh
-                            </button>
-                            <button class="btn export-btn" onclick="exportToCSV()">
-                                <i class="fas fa-download"></i> Export CSV
                             </button>
                         </div>
                     </div>
@@ -340,29 +314,126 @@
                         <small>Today</small>
                     </div>
                 </div>
-                <div class="col-lg-3 col-md-6">
-                    <div class="stats-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
-                        <h3 id="totalRecords">{{ records|length or 0 }}</h3>
-                        <p class="mb-0">Total Records</p>
-                        <small>Last 50 entries</small>
-                    </div>
-                </div>
             </div>
 
-            <!-- Attendance Records -->
+            <!-- Weekly Attendance Overview -->
             <div class="card">
                 <div class="card-header">
-                    <h3 class="mb-0">
-                        <i class="fas fa-list"></i>
-                        Recent Attendance Records
-                    </h3>
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h3 class="mb-0">
+                                <i class="fas fa-calendar-week"></i>
+                                Weekly Attendance Metrics
+                            </h3>
+                            <p class="mb-0 mt-1">80% requirement tracking (11 hours/week needed)</p>
+                            <div class="mt-2">
+                                <strong id="selectedWeekDisplay" class="text-light" style="font-size: 1.1em; background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 6px; display: inline-block;">Loading...</strong>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-light btn-sm" onclick="changeWeek(1)">
+                                    <i class="fas fa-chevron-left"></i> Previous
+                                </button>
+                                <button class="btn btn-light btn-sm" id="currentWeekBtn" onclick="changeWeek(0)">
+                                    Current Week
+                                </button>
+                                <button class="btn btn-light btn-sm" onclick="changeWeek(-1)">
+                                    <i class="fas fa-chevron-right"></i> Next
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="card-body">
+                    <!-- Weekly Summary Stats -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-lg-3 col-md-6">
+                            <div class="stats-card" style="background: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%);">
+                                <h4 id="meetingRequirement">0</h4>
+                                <p class="mb-0">Meeting 80%+</p>
+                                <small>Goal Achieved</small>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <div class="stats-card" style="background: linear-gradient(135deg, #ff9800 0%, #ffb74d 100%);">
+                                <h4 id="warningCount">0</h4>
+                                <p class="mb-0">60-79% Range</p>
+                                <small>Needs Attention</small>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <div class="stats-card" style="background: linear-gradient(135deg, #f44336 0%, #ef5350 100%);">
+                                <h4 id="dangerCount">0</h4>
+                                <p class="mb-0">Below 60%</p>
+                                <small>Critical</small>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <div class="stats-card" style="background: linear-gradient(135deg, #2196f3 0%, #42a5f5 100%);">
+                                <h4 id="totalStudents">0</h4>
+                                <p class="mb-0">Total Students</p>
+                                <small>This Week</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Filter Controls -->
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="d-flex gap-3">
+                            <div class="filter-group">
+                                <label for="teamFilter" class="form-label fw-bold mb-1" style="color: #000000;">Filter by Team:</label>
+                                <select id="teamFilter" class="form-select form-select-sm" onchange="applyFilters()">
+                                    <option value="">All Teams</option>
+                                    <option value="4143">Team 4143</option>
+                                    <option value="4144">Team 4144</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="categoryFilter" class="form-label fw-bold mb-1" style="color: #000000;">Filter by Category:</label>
+                                <select id="categoryFilter" class="form-select form-select-sm" onchange="applyFilters()">
+                                    <option value="">All Categories</option>
+                                    <option value="Design">Design</option>
+                                    <option value="Software">Software</option>
+                                    <option value="Business">Business</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <button class="btn btn-outline-light btn-sm" onclick="clearFilters()">
+                                <i class="fas fa-times"></i> Clear Filters
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Weekly Attendance Table -->
                     <div class="table-responsive">
-                        <table id="attendanceTable" class="table table-hover table-striped">
+                        <table class="table table-striped" id="weeklyAttendanceTable">
                             <thead>
+                                <tr>
+                                    <th onclick="sortWeeklyTable(0)">
+                                        <i class="fas fa-sort"></i> Student Name
+                                    </th>
+                                    <th onclick="sortWeeklyTable(1)">
+                                        <i class="fas fa-sort"></i> Team
+                                    </th>
+                                    <th onclick="sortWeeklyTable(2)">
+                                        <i class="fas fa-sort"></i> Category
+                                    </th>
+                                    <th onclick="sortWeeklyTable(3)">
+                                        <i class="fas fa-sort"></i> Hours This Week
+                                    </th>
+                                    <th onclick="sortWeeklyTable(4)">
+                                        <i class="fas fa-sort"></i> Total Hours
+                                    </th>
+                                </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="weeklyAttendanceBody">
+                                <tr>
+                                    <td colspan="5" class="text-center py-4">
+                                        <i class="fas fa-spinner fa-spin"></i> Loading weekly attendance data...
+                                    </td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -381,25 +452,25 @@
                     <!-- CSV Upload -->
                     <div class="row">
                         <div class="col-md-8">
-                            <h5>Upload Names from CSV</h5>
+                            <h5>Upload Users from CSV</h5>
                             <div class="mb-3">
                                 <input type="file" class="form-control" id="csvFileInput" accept=".csv" />
                                 <div class="form-text">
-                                    Upload a CSV file with names in the first column. First row can be a header.
+                                    Upload a CSV file with names and team numbers. Format: "Name","TeamNumber"
                                 </div>
                             </div>
                             <button class="btn btn-primary" onclick="uploadCSV()">
-                                <i class="fas fa-upload"></i> Upload CSV
+                                <i class="fas fa-upload"></i> Upload Users
                             </button>
                         </div>
                         <div class="col-md-4">
                             <h6>CSV Format Example:</h6>
                             <div class="bg-light p-3 rounded">
                                 <small class="text-muted">
-                                    Name<br>
-                                    John Smith<br>
-                                    Jane Doe<br>
-                                    Mike Johnson
+                                    "Name","Team"<br>
+                                    "John Smith","4143"<br>
+                                    "Jane Doe","4423"<br>
+                                    "Mike Johnson","4143"
                                 </small>
                             </div>
                         </div>
@@ -407,16 +478,16 @@
                     
                     <hr class="my-4">
                     
-                    <!-- Current Names List -->
+                    <!-- Current Users List -->
                     <div class="row">
                         <div class="col-md-6">
-                            <h5>Current Names List</h5>
-                            <div id="currentNamesList" class="list-group" style="max-height: 300px; overflow-y: auto;">
+                            <h5>Current Users List</h5>
+                            <div id="currentUsersList" class="list-group" style="max-height: 300px; overflow-y: auto;">
                                 <!-- Names will be loaded here -->
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <h5>Add Individual Name</h5>
+                            <h5>Add Individual User</h5>
                             <div class="input-group mb-3">
                                 <input type="text" class="form-control" id="newNameInput" placeholder="Enter name">
                                 <button class="btn btn-success" onclick="addName()">
@@ -475,14 +546,24 @@
                                 </div>
                                 <div class="col-md-6">
                                     <div class="mb-3">
+                                        <label for="adjustmentDate" class="form-label">Date</label>
+                                        <input type="date" class="form-control" id="adjustmentDate" value="">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
                                         <label for="adjustmentHours" class="form-label">Hours</label>
                                         <input type="number" class="form-control" id="adjustmentHours" min="0" step="0.5" placeholder="Enter hours">
                                     </div>
                                 </div>
-                            </div>
-                            <div class="mb-3">
-                                <label for="adjustmentReason" class="form-label">Reason (Optional)</label>
-                                <input type="text" class="form-control" id="adjustmentReason" placeholder="e.g., Manual correction, Event attendance">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="adjustmentReason" class="form-label">Reason (Optional)</label>
+                                        <input type="text" class="form-control" id="adjustmentReason" placeholder="e.g., Manual correction, Event attendance">
+                                    </div>
+                                </div>
                             </div>
                             <button class="btn btn-warning" onclick="adjustHours()">
                                 <i class="fas fa-edit"></i> Adjust Hours
@@ -510,108 +591,35 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Hours Overview -->
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="mb-0">
-                        <i class="fas fa-clock"></i>
-                        Hours Overview
-                    </h3>
-                </div>
-                <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <button class="btn btn-primary" onclick="loadHoursOverview()">
-                                <i class="fas fa-sync-alt"></i> Refresh Hours
-                            </button>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="input-group">
-                                <span class="input-group-text">
-                                    <i class="fas fa-search"></i>
-                                </span>
-                                <input type="text" class="form-control" id="hoursSearchInput" placeholder="Search by name..." onkeyup="filterHoursTable()">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="table-responsive">
-                        <table id="hoursOverviewTable" class="table table-hover table-striped">
-                            <thead>
-                                <tr>
-                                    <th style="cursor: pointer;" onclick="sortHoursTable(0)">
-                                        Name <i class="fas fa-sort"></i>
-                                    </th>
-                                    <th style="cursor: pointer;" onclick="sortHoursTable(1)">
-                                        Total Hours <i class="fas fa-sort"></i>
-                                    </th>
-                                    <th style="cursor: pointer;" onclick="sortHoursTable(2)">
-                                        Team <i class="fas fa-sort"></i>
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody id="hoursOverviewBody">
-                                <tr>
-                                    <td colspan="3" class="text-center text-muted">
-                                        <i class="fas fa-spinner fa-spin"></i> Loading hours data...
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
     
     <script>
                 // ...existing code...
-        let attendanceTable;
 
         $(document).ready(function() {
-            // Initialize DataTable
-            attendanceTable = $('#attendanceTable').DataTable({
-                columns: [
-                    { title: 'Timestamp' },
-                    { title: 'Name' },
-                    { title: 'Action' },
-                    { title: 'Duration' },
-                    { title: 'Notes' },
-                    { title: 'Device IP' }
-                ],
-                order: [[0, 'desc']], // Sort by timestamp descending
-                pageLength: 25,
-                responsive: true,
-                language: {
-                    search: "Search records:",
-                    lengthMenu: "Show _MENU_ records per page",
-                    info: "Showing _START_ to _END_ of _TOTAL_ records",
-                    paginate: {
-                        previous: "Previous",
-                        next: "Next"
-                    }
-                }
-            });
-
             // Load initial data
-            loadCurrentNames();
+            loadCurrentUsers();
 
             // Setup real-time updates for admin dashboard
             setupAdminRealTimeUpdates();
 
             // Load initial data
             refreshData();
+            loadWeeklyAttendance();
+            
+            // Set default date to today
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('adjustmentDate').value = today;
 
             // Auto-refresh every minute (fallback)
             setInterval(refreshData, 60000);
         });
 
-        async function loadCurrentNames() {
+        async function loadCurrentUsers() {
             try {
                 const response = await fetch('/api/preset-names');
                 const data = await response.json();
@@ -625,12 +633,12 @@
                 }
             } catch (error) {
                 console.error('Error loading names:', error);
-                showToast('Error loading current names list', 'error');
+                showToast('Error loading current users list', 'error');
             }
         }
 
         function displayNamesList(names) {
-            const container = document.getElementById('currentNamesList');
+            const container = document.getElementById('currentUsersList');
             container.innerHTML = '';
             
             // Handle both old format (array of strings) and new format (array of objects)
@@ -762,38 +770,12 @@
                 const summaryResponse = await fetch('/api/summary');
                 const summaryData = await summaryResponse.json();
                 
-                document.getElementById('todayCheckIns').textContent = summaryData.total_check_ins || 0;
-                document.getElementById('todayCheckOuts').textContent = summaryData.total_check_outs || 0;
-                document.getElementById('uniqueUsers').textContent = summaryData.unique_users || 0;
-
-                // Update records table
-                const recordsResponse = await fetch('/api/records?limit=50');
-                const recordsData = await recordsResponse.json();
+                document.getElementById('todayCheckIns').textContent = summaryData.summary.total_check_ins || 0;
+                document.getElementById('todayCheckOuts').textContent = summaryData.summary.total_check_outs || 0;
+                document.getElementById('uniqueUsers').textContent = summaryData.summary.unique_users || 0;
                 
-                // Clear and rebuild table
-                attendanceTable.clear();
-                
-                recordsData.records.forEach(record => {
-                    const actionBadge = record.Action === 'check-in' 
-                        ? '<span class="badge badge-check-in"><i class="fas fa-sign-in-alt"></i> Check In</span>'
-                        : '<span class="badge badge-check-out"><i class="fas fa-sign-out-alt"></i> Check Out</span>';
-                    
-                    const duration = record['Duration (hours)'] 
-                        ? `<strong>${record['Duration (hours)']}h</strong>` 
-                        : '-';
-                    
-                    attendanceTable.row.add([
-                        record.Timestamp || '-',
-                        `<strong>${record.Name || '-'}</strong>`,
-                        actionBadge,
-                        duration,
-                        `<small>${record.Notes || '-'}</small>`,
-                        `<small class="text-muted">${record['Device IP'] || '-'}</small>`
-                    ]);
-                });
-                
-                attendanceTable.draw();
-                document.getElementById('totalRecords').textContent = recordsData.records.length;
+                // Refresh weekly attendance data
+                await loadWeeklyAttendance();
                 
                 // Show success message
                 showToast('Data refreshed successfully!', 'success');
@@ -802,39 +784,6 @@
                 console.error('Error refreshing data:', error);
                 showToast('Error refreshing data. Please try again.', 'error');
             }
-        }
-
-        function exportToCSV() {
-            const table = document.getElementById('attendanceTable');
-            const rows = table.querySelectorAll('tr');
-            const csvContent = [];
-            
-            rows.forEach(row => {
-                const cols = row.querySelectorAll('td, th');
-                const rowData = [];
-                cols.forEach(col => {
-                    // Clean text content (remove HTML tags)
-                    let text = col.textContent || col.innerText || '';
-                    text = text.replace(/"/g, '""'); // Escape quotes
-                    rowData.push(`"${text}"`);
-                });
-                if (rowData.length > 0) {
-                    csvContent.push(rowData.join(','));
-                }
-            });
-            
-            const csvString = csvContent.join('\n');
-            const blob = new Blob([csvString], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `attendance_records_${new Date().toISOString().split('T')[0]}.csv`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-            
-            showToast('CSV file exported successfully!', 'success');
         }
 
         function showToast(message, type = 'info') {
@@ -948,6 +897,7 @@
             const userSelect = document.getElementById('userSelect');
             const adjustmentType = document.getElementById('adjustmentType').value;
             const adjustmentHours = parseFloat(document.getElementById('adjustmentHours').value);
+            const adjustmentDate = document.getElementById('adjustmentDate').value;
             const reason = document.getElementById('adjustmentReason').value.trim();
             
             const selectedUser = userSelect.value;
@@ -959,6 +909,11 @@
             
             if (isNaN(adjustmentHours) || adjustmentHours < 0) {
                 showToast('Please enter valid hours (0 or greater)', 'error');
+                return;
+            }
+            
+            if (!adjustmentDate) {
+                showToast('Please select a date for the adjustment', 'error');
                 return;
             }
             
@@ -981,7 +936,7 @@
                     return;
             }
             
-            const confirmMessage = `Are you sure you want to adjust hours for ${selectedUser}?\n\nCurrent: ${currentHours}h\nNew: ${newHours}h\nType: ${adjustmentType.toUpperCase()}\nAmount: ${adjustmentHours}h${reason ? `\nReason: ${reason}` : ''}`;
+            const confirmMessage = `Are you sure you want to adjust hours for ${selectedUser}?\n\nDate: ${adjustmentDate}\nCurrent: ${currentHours}h\nNew: ${newHours}h\nType: ${adjustmentType.toUpperCase()}\nAmount: ${adjustmentHours}h${reason ? `\nReason: ${reason}` : ''}`;
             
             if (!confirm(confirmMessage)) {
                 return;
@@ -997,6 +952,7 @@
                         name: selectedUser,
                         adjustment_type: adjustmentType,
                         hours: adjustmentHours,
+                        date: adjustmentDate,
                         reason: reason || 'Manual adjustment'
                     })
                 });
@@ -1010,6 +966,7 @@
                     document.getElementById('userSelect').selectedIndex = 0;
                     document.getElementById('currentHours').value = '';
                     document.getElementById('adjustmentHours').value = '';
+                    document.getElementById('adjustmentDate').value = new Date().toISOString().split('T')[0]; // Set to today
                     document.getElementById('adjustmentReason').value = '';
                     
                     // Reload users to reflect changes
@@ -1038,6 +995,9 @@
             
             // Load users when page loads
             loadUsersForAdjustment();
+            
+            // Load weekly attendance for current week
+            loadWeeklyAttendance();
         });
 
         // Real-time updates for admin dashboard
@@ -1050,92 +1010,129 @@
             if (totalCheckIns) totalCheckIns.textContent = summary.total_check_ins || 0;
             if (totalCheckOuts) totalCheckOuts.textContent = summary.total_check_outs || 0;
             if (uniqueUsers) uniqueUsers.textContent = summary.unique_users || 0;
-            
-            // Optionally refresh the records table
-            if (summary.records && summary.records.length > 0) {
-                // Could refresh DataTable here if needed
-                // New records available for refresh
-            }
         }
 
-        // Hours overview functions
-        let hoursData = [];
-        let sortDirection = 1; // 1 for ascending, -1 for descending
+        // Weekly Attendance Functions
+        let weeklyData = [];
+        let filteredData = [];
+        let currentWeekOffset = 0;
+        let currentTeamFilter = '';
+        let currentCategoryFilter = '';
 
-        async function loadHoursOverview() {
-            const tbody = document.getElementById('hoursOverviewBody');
-            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted"><i class="fas fa-spinner fa-spin"></i> Loading hours data...</td></tr>';
-            
+        async function loadWeeklyAttendance() {
             try {
-                const [usersResponse, rosterResponse] = await Promise.all([
-                    fetch('/api/user-hours-summary'),
-                    fetch('/api/preset-names')
-                ]);
-                
-                const usersData = await usersResponse.json();
-                const rosterData = await rosterResponse.json();
-                
-                if (usersData.success && rosterData.success) {
-                    // Create team mapping
-                    const teamMap = {};
-                    if (rosterData.names) {
-                        rosterData.names.forEach(member => {
-                            if (member.team && member.name) {
-                                teamMap[member.name] = member.team;
-                            }
-                        });
-                    }
+                const response = await fetch(`/api/weekly-attendance?weeks_back=${currentWeekOffset}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    weeklyData = [];
                     
-                    // Add team information to users data
-                    hoursData = usersData.users.map(user => ({
-                        name: user.name,
-                        hours: user.total_hours,
-                        team: teamMap[user.name] || 'Unknown'
-                    }));
+                    // Combine both teams
+                    Object.values(data.teams).forEach(teamUsers => {
+                        weeklyData.push(...teamUsers);
+                    });
                     
-                    // Sort by hours (descending) by default
-                    hoursData.sort((a, b) => b.hours - a.hours);
-                    
-                    renderHoursTable();
+                    filteredData = [...weeklyData]; // Initialize filtered data
+                    applyFilters(); // Apply any existing filters
+                    displayWeeklyAttendance(data);
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Error loading data</td></tr>';
-                    showToast('Error loading hours data', 'error');
+                    showToast('Error loading weekly attendance data', 'error');
                 }
             } catch (error) {
-                console.error('Error loading hours overview:', error);
-                tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Error loading data</td></tr>';
-                showToast('Error loading hours data', 'error');
+                console.error('Error loading weekly attendance:', error);
+                showToast('Error loading weekly attendance data', 'error');
             }
         }
 
-        function renderHoursTable() {
-            const tbody = document.getElementById('hoursOverviewBody');
+        function displayWeeklyAttendance(data) {
+            // Update summary stats
+            document.getElementById('meetingRequirement').textContent = data.summary.overall_meeting_requirement;
+            document.getElementById('warningCount').textContent = 
+                (data.summary.team_4143_total - data.summary.team_4143_meeting_requirement) + 
+                (data.summary.team_4423_total - data.summary.team_4423_meeting_requirement) - 
+                data.summary.overall_total + data.summary.overall_meeting_requirement; // Calculate warning count
+            document.getElementById('dangerCount').textContent = 
+                data.summary.overall_total - data.summary.overall_meeting_requirement - 
+                (document.getElementById('warningCount').textContent * 1); // Rough calculation
+            document.getElementById('totalStudents').textContent = data.summary.overall_total;
+
+            // Update selected week display with formatted dates
+            // Calculate week dates based on currentWeekOffset
+            const now = new Date();
+            const currentWeekStart = new Date(now);
+            currentWeekStart.setDate(now.getDate() - now.getDay()); // Monday of current week
+            const targetWeekStart = new Date(currentWeekStart);
+            targetWeekStart.setDate(currentWeekStart.getDate() - (currentWeekOffset * 7)); // Subtract because currentWeekOffset is backwards
+            const targetWeekEnd = new Date(targetWeekStart);
+            targetWeekEnd.setDate(targetWeekStart.getDate() + 6); // Sunday
             
-            if (hoursData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No hours data available</td></tr>';
+            // Format dates as MM-DD-YYYY
+            const formatDate = (date) => {
+                const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                const day = date.getDate().toString().padStart(2, '0');
+                const year = date.getFullYear();
+                return `${month}-${day}-${year}`;
+            };
+            
+            const formattedRange = `${formatDate(targetWeekStart)} to ${formatDate(targetWeekEnd)}`;
+            document.getElementById('selectedWeekDisplay').textContent = formattedRange;
+            
+            document.getElementById('currentWeekBtn').textContent = 'Current Week';
+
+            // Display table
+            renderWeeklyTable();
+        }
+
+        function renderWeeklyTable() {
+            const tbody = document.getElementById('weeklyAttendanceBody');
+            tbody.innerHTML = '';
+            
+            if (filteredData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">No attendance data available</td></tr>';
                 return;
             }
             
-            tbody.innerHTML = '';
-            
-            hoursData.forEach((user, index) => {
+            filteredData.forEach((user, index) => {
                 const row = document.createElement('tr');
+                
+                // Status badge styling
+                let statusBadge = '';
+                let statusClass = '';
+                if (user.status === 'good') {
+                    statusBadge = '<i class="fas fa-check-circle"></i> Meeting Goal';
+                    statusClass = 'badge bg-success';
+                } else if (user.status === 'warning') {
+                    statusBadge = '<i class="fas fa-exclamation-triangle"></i> Needs Attention';
+                    statusClass = 'badge bg-warning text-dark';
+                } else {
+                    statusBadge = '<i class="fas fa-times-circle"></i> Critical';
+                    statusClass = 'badge bg-danger';
+                }
                 
                 row.innerHTML = `
                     <td>
                         <strong>${user.name}</strong>
                     </td>
                     <td>
-                        <strong>${user.hours}h</strong>
-                        <div class="progress mt-1" style="height: 5px;">
-                            <div class="progress-bar bg-primary" 
-                                 style="width: ${Math.min(100, (user.hours / Math.max(...hoursData.map(u => u.hours))) * 100)}%"></div>
+                        <span class="badge ${user.team === '4143' ? 'bg-primary' : 'bg-secondary'}">
+                            Team ${user.team}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge ${user.category === 'Design' ? 'bg-info' : user.category === 'Software' ? 'bg-success' : user.category === 'Business' ? 'bg-warning text-dark' : 'bg-light text-dark'}">
+                            ${user.category || 'Unassigned'}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div>
+                                <strong>${user.total_hours}h</strong> / 11h
+                            </div>
+                            <span class="${statusClass} ms-2">${statusBadge}</span>
                         </div>
                     </td>
                     <td>
-                        <span class="badge ${user.team === '4143' ? 'bg-primary' : user.team === '4423' ? 'bg-secondary' : 'bg-dark'}">
-                            Team ${user.team}
-                        </span>
+                        <strong>${user.all_time_hours}h</strong>
                     </td>
                 `;
                 
@@ -1143,12 +1140,12 @@
             });
         }
 
-        function sortHoursTable(columnIndex) {
-            if (hoursData.length === 0) return;
+        function sortWeeklyTable(columnIndex) {
+            if (filteredData.length === 0) return;
             
             sortDirection *= -1; // Toggle sort direction
             
-            hoursData.sort((a, b) => {
+            filteredData.sort((a, b) => {
                 let valueA, valueB;
                 
                 switch (columnIndex) {
@@ -1156,48 +1153,64 @@
                         valueA = a.name.toLowerCase();
                         valueB = b.name.toLowerCase();
                         return sortDirection * valueA.localeCompare(valueB);
-                    case 1: // Hours
-                        valueA = a.hours;
-                        valueB = b.hours;
-                        return sortDirection * (valueA - valueB);
-                    case 2: // Team
+                    case 1: // Team
                         valueA = a.team;
                         valueB = b.team;
                         return sortDirection * valueA.localeCompare(valueB);
+                    case 2: // Category
+                        valueA = a.category || '';
+                        valueB = b.category || '';
+                        return sortDirection * valueA.localeCompare(valueB);
+                    case 3: // Hours
+                        valueA = a.total_hours;
+                        valueB = b.total_hours;
+                        return sortDirection * (valueA - valueB);
+                    case 4: // Total Hours
+                        valueA = a.all_time_hours;
+                        valueB = b.all_time_hours;
+                        return sortDirection * (valueA - valueB);
                     default:
                         return 0;
                 }
             });
             
-            renderHoursTable();
+            renderWeeklyTable();
             
             // Update sort icons
-            document.querySelectorAll('#hoursOverviewTable th i').forEach(icon => {
+            document.querySelectorAll('#weeklyAttendanceTable th i').forEach(icon => {
                 icon.className = 'fas fa-sort';
             });
             
-            const sortIcon = document.querySelectorAll('#hoursOverviewTable th i')[columnIndex];
+            const sortIcon = document.querySelectorAll('#weeklyAttendanceTable th i')[columnIndex];
             sortIcon.className = sortDirection === 1 ? 'fas fa-sort-up' : 'fas fa-sort-down';
         }
 
-        function filterHoursTable() {
-            const searchTerm = document.getElementById('hoursSearchInput').value.toLowerCase();
-            const tbody = document.getElementById('hoursOverviewBody');
-            const rows = tbody.querySelectorAll('tr');
+        function applyFilters() {
+            currentTeamFilter = document.getElementById('teamFilter').value;
+            currentCategoryFilter = document.getElementById('categoryFilter').value;
             
-            rows.forEach(row => {
-                const nameCell = row.querySelector('td:first-child');
-                if (nameCell) {
-                    const name = nameCell.textContent.toLowerCase();
-                    row.style.display = name.includes(searchTerm) ? '' : 'none';
-                }
+            filteredData = weeklyData.filter(user => {
+                const teamMatch = !currentTeamFilter || user.team === currentTeamFilter;
+                const categoryMatch = !currentCategoryFilter || user.category === currentCategoryFilter;
+                return teamMatch && categoryMatch;
             });
+            
+            renderWeeklyTable();
         }
 
-        // Load hours overview when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            loadHoursOverview();
-        });
+        function clearFilters() {
+            document.getElementById('teamFilter').value = '';
+            document.getElementById('categoryFilter').value = '';
+            currentTeamFilter = '';
+            currentCategoryFilter = '';
+            filteredData = [...weeklyData];
+            renderWeeklyTable();
+        }
+
+        function changeWeek(offset) {
+            currentWeekOffset += offset;
+            loadWeeklyAttendance();
+        }
     </script>
 </body>
 </html>
