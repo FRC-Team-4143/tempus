@@ -148,4 +148,4 @@ Thumbs.db
 
 # Database files
 *.db
-users.csv
+*.csv
