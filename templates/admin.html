@@ -456,7 +456,7 @@
                             <div class="mb-3">
                                 <input type="file" class="form-control" id="csvFileInput" accept=".csv" />
                                 <div class="form-text">
-                                    Upload a CSV file with names and team numbers. Format: "Name","TeamNumber"
+                                    Upload a CSV file with names, team numbers, and categories. Format: "Name","TeamNumber","Category"
                                 </div>
                             </div>
                             <button class="btn btn-primary" onclick="uploadCSV()">
@@ -467,10 +467,10 @@
                             <h6>CSV Format Example:</h6>
                             <div class="bg-light p-3 rounded">
                                 <small class="text-muted">
-                                    "Name","Team"<br>
-                                    "John Smith","4143"<br>
-                                    "Jane Doe","4423"<br>
-                                    "Mike Johnson","4143"
+                                    "Name","Team","Category"<br>
+                                    "John Smith","4143","Design"<br>
+                                    "Jane Doe","4423","Software<br>
+                                    "Mike Johnson","4143","Business"
                                 </small>
                             </div>
                         </div>
@@ -1059,7 +1059,12 @@
             // Calculate week dates based on currentWeekOffset
             const now = new Date();
             const currentWeekStart = new Date(now);
-            currentWeekStart.setDate(now.getDate() - now.getDay()); // Monday of current week
+            
+            // Calculate Monday of current week (weeks start on Monday)
+            const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+            const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // If Sunday, subtract 6 days; otherwise subtract (day-1)
+            currentWeekStart.setDate(now.getDate() - daysToSubtract);
+            
             const targetWeekStart = new Date(currentWeekStart);
             targetWeekStart.setDate(currentWeekStart.getDate() - (currentWeekOffset * 7)); // Subtract because currentWeekOffset is backwards
             const targetWeekEnd = new Date(targetWeekStart);
@@ -1139,7 +1144,7 @@
                     <td>
                         <div class="d-flex align-items-center justify-content-between">
                             <div>
-                                <strong>${user.total_hours}h</strong> / 11h
+                                <strong>${user.total_hours}h</strong> / ${user.required_hours}h
                             </div>
                             <span class="${statusClass} ms-2">${statusBadge}</span>
                         </div>

@@ -452,13 +452,28 @@ class LocalDatabase:
                             total_weekly_hours += record['duration_hours']
 
                     # Calculate attendance percentage
-                    # Required: 2 sessions × 3h = 6h + 1 Saturday × 5h = 5h = 11h total
-                    required_hours = 11.0
+                    # Check if we're before the expected hours start date
+                    from .utils import get_expected_hours_config
+                    config = get_expected_hours_config()
+                    start_date = config['start_date']
+                    
+                    if week_start < start_date:
+                        required_hours = 0.0
+                    else:
+                        required_hours = 11.0
+                    
                     attendance_percentage = min(100.0, (total_weekly_hours / required_hours) * 100) if required_hours > 0 else 0
                     
                     # Calculate total expected hours up to the end of this week
-                    from .utils import calculate_total_expected_hours
+                    from .utils import calculate_total_expected_hours, calculate_week_number, get_expected_hours_config
                     total_expected_hours = calculate_total_expected_hours(week_end)
+                    # Use the expected hours for this specific week for comparison
+                    config = get_expected_hours_config()
+                    if week_start < config['start_date']:
+                        total_expected_hours = 0.0
+                    else:
+                        week_number = calculate_week_number(week_start)
+                        total_expected_hours = 11.0 * week_number
                     total_hours_ratio = round((user_total_hours.get(name, 0) / total_expected_hours * 100), 1) if total_expected_hours > 0 else 0
                     
                     # Determine total status (similar to weekly)

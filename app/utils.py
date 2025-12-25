@@ -44,7 +44,7 @@ def load_names_from_file():
                 for line in f:
                     line = line.strip()
                     if line:
-                        # Parse CSV line: "Name","TeamNumber"
+                        # Parse CSV line: "Name","TeamNumber","Category"
                         parts = [part.strip('"') for part in line.split(',')]
                         if len(parts) >= 2:
                             name = parts[0]
@@ -69,23 +69,8 @@ def load_names_from_file():
                     grouped_names.extend(team_4423_names)
 
                 if grouped_names:
-                    PRESET_NAMES = grouped_names
+                    PRESET_NAMES[:] = grouped_names  # Modify in place to preserve references
                     logger.info(f'Loaded {len(team_4143_names)} Team 4143 names and {len(team_4423_names)} Team 4423 names from users.csv')
-                    
-                    # Clean up old users from database
-                    db = LocalDatabase()
-                    db.cleanup_old_users(PRESET_NAMES)
-        elif os.path.exists(os.path.join(data_dir, 'names_list.csv')):
-            # Fallback to simple names list if users.csv doesn't exist
-            with open(os.path.join(data_dir, 'names_list.csv'), 'r', encoding='utf-8') as f:
-                file_names = []
-                for line in f:
-                    name = line.strip().strip('"')
-                    if name:
-                        file_names.append(name)
-                if file_names:
-                    PRESET_NAMES = file_names
-                    logger.info(f'Loaded {len(file_names)} names from names_list.csv')
                     
                     # Clean up old users from database
                     db = LocalDatabase()
@@ -175,14 +160,59 @@ def calculate_total_expected_hours(current_date: datetime = None) -> float:
     # Calculate number of weeks from start to calculation date
     weeks_elapsed = (calculation_date - start_date).days // 7
     
+    # If we're on or after the start date, we should have at least 1 week
+    if weeks_elapsed < 0:
+        return 0.0
+    elif weeks_elapsed == 0:
+        # First week: just the base weekly hours
+        return weekly_increase
+    
+    # For subsequent weeks: sum of arithmetic series
     # Total expected hours = sum of arithmetic series: n/2 * (first + last)
     # where first = weekly_increase, last = weekly_increase * weeks_elapsed
-    if weeks_elapsed <= 0:
-        return 0.0
-    
     total_expected = (weeks_elapsed / 2) * (weekly_increase + (weekly_increase * weeks_elapsed))
     
     return round(total_expected, 2)
 
-# Load custom names from files on module import
-load_names_from_file()
+def get_expected_hours_config():
+    """Get expected hours configuration from environment"""
+    from dotenv import load_dotenv
+    import os
+    config_dir = os.path.join(os.path.dirname(__file__), '..', 'config', '.env')
+    load_dotenv(config_dir)
+    
+    start_date_str = os.environ.get('EXPECTED_HOURS_START_DATE', '2024-01-01')
+    end_date_str = os.environ.get('EXPECTED_HOURS_END_DATE', '2024-12-31')
+    weekly_increase = float(os.environ.get('EXPECTED_HOURS_WEEKLY_INCREASE', '11'))
+    
+    try:
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+    except ValueError:
+        start_date = datetime(2024, 1, 1)
+        end_date = datetime(2024, 12, 31)
+    
+    return {
+        'start_date': start_date,
+        'end_date': end_date,
+        'weekly_increase': weekly_increase
+    }
+
+def calculate_week_number(target_date: datetime) -> int:
+    """Calculate the week number from the expected hours start date
+    
+    Args:
+        target_date: Date to calculate week number for
+    
+    Returns:
+        Week number (1-based) from the start date
+    """
+    config = get_expected_hours_config()
+    start_date = config['start_date']
+    
+    if target_date < start_date:
+        return 1
+    
+    # Calculate week number (1-based)
+    weeks_elapsed = ((target_date - start_date).days // 7) + 1
+    return max(1, weeks_elapsed)

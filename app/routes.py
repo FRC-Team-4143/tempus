@@ -414,6 +414,9 @@ def quick_status():
 def global_status():
     """Get current status of all users grouped by team - now uses local database"""
     try:
+        # Load names from file to ensure PRESET_NAMES is up to date
+        load_names_from_file()
+        
         # Get team roster mapping
         team_mapping = get_team_roster_mapping()
 
@@ -536,6 +539,11 @@ def upload_names():
         # Save uploaded file as users.csv
         data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
         file.save(os.path.join(data_dir, 'users.csv'))
+        
+        # Also save as team_roster.csv in the root directory for reference
+        root_dir = os.path.join(os.path.dirname(__file__), '..')
+        file.seek(0)  # Reset file pointer
+        file.save(os.path.join(root_dir, 'team_roster.csv'))
 
         # Reload names
         load_names_from_file()
