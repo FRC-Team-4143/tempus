@@ -20,7 +20,7 @@ from .routes import (
 )
 
 # Load environment variables
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
 
 # Configure logging
 logging.basicConfig(level=logging.WARNING)

@@ -540,7 +540,6 @@
                                         <select class="form-control" id="adjustmentType">
                                             <option value="add">Add Hours</option>
                                             <option value="subtract">Subtract Hours</option>
-                                            <option value="set">Set Total Hours</option>
                                         </select>
                                     </div>
                                 </div>
@@ -1095,7 +1094,7 @@
             filteredData.forEach((user, index) => {
                 const row = document.createElement('tr');
                 
-                // Status badge styling
+                // Status badge styling for weekly
                 let statusBadge = '';
                 let statusClass = '';
                 if (user.status === 'good') {
@@ -1107,6 +1106,20 @@
                 } else {
                     statusBadge = '<i class="fas fa-times-circle"></i> Critical';
                     statusClass = 'badge bg-danger';
+                }
+                
+                // Status badge styling for total
+                let totalStatusBadge = '';
+                let totalStatusClass = '';
+                if (user.total_status === 'good') {
+                    totalStatusBadge = '<i class="fas fa-check-circle"></i> On Track';
+                    totalStatusClass = 'badge bg-success';
+                } else if (user.total_status === 'warning') {
+                    totalStatusBadge = '<i class="fas fa-exclamation-triangle"></i> Behind';
+                    totalStatusClass = 'badge bg-warning text-dark';
+                } else {
+                    totalStatusBadge = '<i class="fas fa-times-circle"></i> Critical';
+                    totalStatusClass = 'badge bg-danger';
                 }
                 
                 row.innerHTML = `
@@ -1132,7 +1145,12 @@
                         </div>
                     </td>
                     <td>
-                        <strong>${user.all_time_hours}h</strong>
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div>
+                                <strong>${user.all_time_hours}h</strong> / ${user.total_expected_hours}h (${user.total_hours_ratio}%)
+                            </div>
+                            <span class="${totalStatusClass} ms-2">${totalStatusBadge}</span>
+                        </div>
                     </td>
                 `;
                 
@@ -1165,9 +1183,9 @@
                         valueA = a.total_hours;
                         valueB = b.total_hours;
                         return sortDirection * (valueA - valueB);
-                    case 4: // Total Hours
-                        valueA = a.all_time_hours;
-                        valueB = b.all_time_hours;
+                    case 4: // Total Hours Ratio
+                        valueA = a.total_hours_ratio;
+                        valueB = b.total_hours_ratio;
                         return sortDirection * (valueA - valueB);
                     default:
                         return 0;
@@ -1208,7 +1226,11 @@
         }
 
         function changeWeek(offset) {
-            currentWeekOffset += offset;
+            if (offset === 0) {
+                currentWeekOffset = 0;
+            } else {
+                currentWeekOffset += offset;
+            }
             loadWeeklyAttendance();
         }
     </script>

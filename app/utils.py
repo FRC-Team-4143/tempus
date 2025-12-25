@@ -7,6 +7,7 @@ import os
 import logging
 import sys
 from typing import Dict, List
+from datetime import datetime, timedelta
 
 # Add the app directory to the path so we can import database
 sys.path.append(os.path.dirname(__file__))
@@ -133,6 +134,55 @@ def get_category_mapping():
     except Exception as e:
         logger.warning(f'Could not load category mapping: {e}')
     return category_mapping
+
+def calculate_total_expected_hours(current_date: datetime = None) -> float:
+    """Calculate total expected hours based on configurable dates and weekly increase
+    
+    Args:
+        current_date: Date to calculate for (defaults to today)
+    
+    Returns:
+        Total expected hours accumulated up to the current date
+    """
+    if current_date is None:
+        current_date = datetime.now()
+    
+    # Load environment variables from config/.env
+    from dotenv import load_dotenv
+    import os
+    config_dir = os.path.join(os.path.dirname(__file__), '..', 'config', '.env')
+    load_dotenv(config_dir)
+    
+    # Get configuration from environment
+    start_date_str = os.environ.get('EXPECTED_HOURS_START_DATE', '2024-01-01')
+    end_date_str = os.environ.get('EXPECTED_HOURS_END_DATE', '2024-12-31')
+    weekly_increase = float(os.environ.get('EXPECTED_HOURS_WEEKLY_INCREASE', '11'))
+    
+    try:
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+    except ValueError as e:
+        logger.error(f"Invalid date format in configuration: {e}")
+        return 0.0
+    
+    # If current date is before start date, return 0
+    if current_date < start_date:
+        return 0.0
+    
+    # If current date is after end date, calculate up to end date
+    calculation_date = min(current_date, end_date)
+    
+    # Calculate number of weeks from start to calculation date
+    weeks_elapsed = (calculation_date - start_date).days // 7
+    
+    # Total expected hours = sum of arithmetic series: n/2 * (first + last)
+    # where first = weekly_increase, last = weekly_increase * weeks_elapsed
+    if weeks_elapsed <= 0:
+        return 0.0
+    
+    total_expected = (weeks_elapsed / 2) * (weekly_increase + (weekly_increase * weeks_elapsed))
+    
+    return round(total_expected, 2)
 
 # Load custom names from files on module import
 load_names_from_file()

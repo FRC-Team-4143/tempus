@@ -25,7 +25,7 @@ local_db = LocalDatabase()
 
 # Load environment variables
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
 
 # Google Sheets setup
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
@@ -801,8 +801,6 @@ def api_adjust_user_hours():
             new_hours = current_hours + adjustment_hours
         elif adjustment_type == 'subtract':
             new_hours = max(0, current_hours - adjustment_hours)
-        elif adjustment_type == 'set':
-            new_hours = adjustment_hours
         else:
             return jsonify({'success': False, 'message': 'Invalid adjustment type'})
 

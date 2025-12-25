@@ -285,12 +285,13 @@ class LocalDatabase:
                 conn.close()
 
                 leaderboard = []
-                for row in rows:
+                for i, row in enumerate(rows, 1):  # Start rank from 1
                     leaderboard.append({
                         'name': row[0],
                         'total_hours': round(row[1], 2),
                         'sessions': row[2],
-                        'last_activity': row[3] or 'Never'
+                        'last_activity': row[3] or 'Never',
+                        'rank': i
                     })
 
                 return leaderboard
@@ -455,6 +456,19 @@ class LocalDatabase:
                     required_hours = 11.0
                     attendance_percentage = min(100.0, (total_weekly_hours / required_hours) * 100) if required_hours > 0 else 0
                     
+                    # Calculate total expected hours up to the end of this week
+                    from .utils import calculate_total_expected_hours
+                    total_expected_hours = calculate_total_expected_hours(week_end)
+                    total_hours_ratio = round((user_total_hours.get(name, 0) / total_expected_hours * 100), 1) if total_expected_hours > 0 else 0
+                    
+                    # Determine total status (similar to weekly)
+                    if total_hours_ratio >= 80:
+                        total_status = 'good'
+                    elif total_hours_ratio >= 60:
+                        total_status = 'warning'
+                    else:
+                        total_status = 'danger'
+                    
                     # Determine status
                     if attendance_percentage >= 80:
                         status = 'good'
@@ -474,7 +488,10 @@ class LocalDatabase:
                         'team': team_mapping.get(name, '4143'),  # Add team information
                         'category': category_mapping.get(name, ''),  # Add category information
                         'sessions': sessions,
-                        'all_time_hours': round(user_total_hours.get(name, 0), 2)  # Add total hours
+                        'all_time_hours': round(user_total_hours.get(name, 0), 2),  # Add total hours
+                        'total_expected_hours': total_expected_hours,
+                        'total_hours_ratio': total_hours_ratio,
+                        'total_status': total_status
                     }
 
                 return weekly_data
