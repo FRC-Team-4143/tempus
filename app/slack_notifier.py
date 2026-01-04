@@ -75,11 +75,11 @@ class SlackNotifier:
         
         return mapping
     
-    def load_mentor_mapping(self) -> tuple[Dict[tuple, str], str]:
+    def load_mentor_mapping(self) -> tuple[Dict[tuple, List[str]], str]:
         """Load mapping of (team, category) to mentor Slack IDs from mentors.csv
         
         Returns:
-            Tuple of (mapping dict, lead_mentor_id)
+            Tuple of (mapping dict with lists of mentor IDs, lead_mentor_id)
         """
         mapping = {}
         lead_mentor_id = None
@@ -99,7 +99,10 @@ class SlackNotifier:
                                 if team == 'LEAD' and category == 'ALL':
                                     lead_mentor_id = slack_id if slack_id else None
                                 elif slack_id:  # Only add if Slack ID is provided
-                                    mapping[(team, category)] = slack_id
+                                    key = (team, category)
+                                    if key not in mapping:
+                                        mapping[key] = []
+                                    mapping[key].append(slack_id)
             else:
                 logger.warning("mentors.csv not found")
         except Exception as e:
@@ -249,12 +252,13 @@ class SlackNotifier:
                 
                 # If student needs intervention, include mentor(s) in group DM
                 if needs_mentor and team and category:
-                    mentor_id = mentor_mapping.get((team, category))
+                    mentor_ids = mentor_mapping.get((team, category), [])
                     
-                    # Build list of recipients: student + category mentor + lead mentor
+                    # Build list of recipients: student + all category mentors + lead mentor
                     recipients = [slack_id]
-                    if mentor_id:
-                        recipients.append(mentor_id)
+                    for mentor_id in mentor_ids:
+                        if mentor_id not in recipients:
+                            recipients.append(mentor_id)
                     if lead_mentor_id and lead_mentor_id not in recipients:
                         recipients.append(lead_mentor_id)
                     
