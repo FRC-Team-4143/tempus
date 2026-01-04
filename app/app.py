@@ -26,6 +26,9 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
+# Suppress Werkzeug HTTP request logs
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
+
 # Initialize database
 db = LocalDatabase()
 
@@ -74,4 +77,11 @@ if __name__ == '__main__':
     # Run the Flask app
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    
+    print("=" * 60)
+    print("✓ Attendance Tracker initialized successfully!")
+    print(f"✓ Server running on http://0.0.0.0:{port}")
+    print(f"✓ Access locally at http://localhost:{port}")
+    print("=" * 60)
+    
     app.run(host='0.0.0.0', port=port, debug=debug)

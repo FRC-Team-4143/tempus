@@ -106,7 +106,7 @@ Automatically backup attendance records to Google Sheets.
 1. Create Google Cloud project
 2. Enable Google Sheets API and Google Drive API
 3. Create service account and download credentials
-4. Follow detailed instructions in [config/GOOGLE_SHEETS_SETUP.md](config/GOOGLE_SHEETS_SETUP.md)
+4. Follow detailed instructions in [docs/GOOGLE_SHEETS_SETUP.md](./docs/GOOGLE_SHEETS_SETUP.md)
 
 ### Slack Notifications
 Send weekly attendance summaries and mentor alerts.
@@ -116,14 +116,14 @@ Send weekly attendance summaries and mentor alerts.
 2. Configure bot token in `.env`
 3. Add Slack user IDs to `data/users.csv`
 4. Create `config/mentors.csv` for mentor mappings
-5. Follow detailed instructions in [config/SLACK_SETUP.md](config/SLACK_SETUP.md)
+5. Follow detailed instructions in [docs/SLACK_SETUP.md](./docs/SLACK_SETUP.md)
 
 ## Documentation
 
-- **[OFFLINE_MODE.md](OFFLINE_MODE.md)** - Complete guide to offline capabilities and connectivity handling
-- **[config/GOOGLE_SHEETS_SETUP.md](config/GOOGLE_SHEETS_SETUP.md)** - Step-by-step Google Sheets integration
-- **[config/SLACK_SETUP.md](config/SLACK_SETUP.md)** - Slack bot setup and configuration
-- **[data/DATA.md](data/DATA.md)** - Data structure and file formats
+- **[docs/OFFLINE_MODE.md](./docs/OFFLINE_MODE.md)** - Complete guide to offline capabilities and connectivity handling
+- **[docs/GOOGLE_SHEETS_SETUP.md](./docs/GOOGLE_SHEETS_SETUP.md)** - Step-by-step Google Sheets integration
+- **[docs/SLACK_SETUP.md](./docs/SLACK_SETUP.md)** - Slack bot setup and configuration
+- **[data/DATA.md](./data/DATA.md)** - Data structure and file formats
 
 ## Project Structure
 
