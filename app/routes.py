@@ -17,6 +17,7 @@ from threading import Lock, Thread
 
 from .database import LocalDatabase, db_lock
 from .utils import PRESET_NAMES, get_team_roster_mapping, load_names_from_file, get_category_mapping
+from .connectivity import check_internet_connection, check_google_sheets_connection
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,11 @@ class AttendanceTracker:
         """
         if not self.gc:
             logger.warning("Google Sheets not available, skipping sync")
+            return
+        
+        # Check internet connectivity before attempting sync
+        if not check_google_sheets_connection():
+            logger.warning("⚠️ No internet connection, skipping Google Sheets sync")
             return
 
         try:
@@ -173,6 +179,12 @@ def background_sync():
     while True:
         try:
             time.sleep(300)  # Sync every 5 minutes
+            
+            # Check connectivity before attempting sync
+            if not check_internet_connection():
+                logger.debug("⚠️ No internet connection, skipping scheduled sync")
+                continue
+            
             logger.info("🔄 Starting scheduled Google Sheets sync...")
             tracker.sync_to_google_sheets()
             logger.info("✅ Scheduled Google Sheets sync completed")
@@ -375,8 +387,22 @@ def get_records():
         return jsonify({'success': False, 'error': str(e)})
 
 def health_check():
-    """Health check endpoint"""
-    return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
+    """Health check endpoint with connectivity status"""
+    status = {
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'connectivity': {
+            'internet': check_internet_connection(),
+            'google_sheets': check_google_sheets_connection() if gc else False,
+            'slack': check_slack_connection()
+        },
+        'services': {
+            'database': True,  # If we got here, database is working
+            'google_sheets_configured': gc is not None,
+            'slack_configured': os.environ.get('SLACK_ENABLED', 'False').lower() == 'true'
+        }
+    }
+    return jsonify(status)
 
 def quick_status():
     """Quick status overview"""
@@ -539,11 +565,6 @@ def upload_names():
         # Save uploaded file as users.csv
         data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
         file.save(os.path.join(data_dir, 'users.csv'))
-        
-        # Also save as team_roster.csv in the root directory for reference
-        root_dir = os.path.join(os.path.dirname(__file__), '..')
-        file.seek(0)  # Reset file pointer
-        file.save(os.path.join(root_dir, 'team_roster.csv'))
 
         # Reload names
         load_names_from_file()
@@ -729,6 +750,14 @@ def sign_out_all():
 def api_manual_sync():
     """Manually trigger Google Sheets sync for testing"""
     try:
+        # Check connectivity first
+        if not check_internet_connection():
+            return jsonify({
+                'success': False, 
+                'message': 'No internet connection available',
+                'offline': True
+            })
+        
         logger.info("🔧 Manual sync triggered")
         tracker.sync_to_google_sheets()
         return jsonify({'success': True, 'message': 'Manual sync completed'})
@@ -878,4 +907,40 @@ def api_weekly_attendance():
         
     except Exception as e:
         logger.error(f"Error getting weekly attendance: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+def api_slack_notify():
+    """Manually trigger Slack notifications for users not meeting attendance requirements"""
+    try:
+        from .slack_notifier import SlackNotifier
+        
+        weeks_back = int(request.args.get('weeks_back', 0))
+        
+        notifier = SlackNotifier()
+        result = notifier.check_and_notify_weekly_attendance(weeks_back)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error triggering Slack notifications: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+def api_slack_test():
+    """Send a test Slack notification to a specific user"""
+    try:
+        from .slack_notifier import SlackNotifier
+        
+        data = request.get_json()
+        user_name = data.get('name', '').strip()
+        
+        if not user_name:
+            return jsonify({'success': False, 'message': 'Name is required'})
+        
+        notifier = SlackNotifier()
+        result = notifier.send_test_notification(user_name)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error sending test notification: {e}")
         return jsonify({'success': False, 'error': str(e)})

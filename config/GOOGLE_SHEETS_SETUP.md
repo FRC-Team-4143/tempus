@@ -66,15 +66,36 @@ cd config
 
 Then start the application:
 ```bash
-cd ../app
 ./start.sh
 ```
+
+## Sync Behavior
+
+### Automatic Background Sync
+- Runs every 5 minutes automatically
+- Only syncs new/unsynced records
+- Gracefully handles offline mode
+- No data loss if sync fails
+
+### Manual Sync
+```bash
+curl -X POST http://localhost:5000/api/manual-sync
+```
+
+### Offline Mode
+Google Sheets integration is optional and works offline:
+- All data stored locally first
+- Sync automatically resumes when online
+- Check `/health` endpoint for connectivity status
+- See [OFFLINE_MODE.md](../OFFLINE_MODE.md) for details
 
 ## Troubleshooting
 - Ensure the service account has Editor access to the Google Sheet
 - Verify the spreadsheet ID is correct in `.env`
 - Check that all APIs are enabled in Google Cloud Console
 - Make sure `credentials.json` is in the `config/` directory
+- Check internet connectivity via `/health` endpoint
+- Review logs for sync errors or connectivity issues
 
 ## Security Notes
 - Never commit `credentials.json` to version control

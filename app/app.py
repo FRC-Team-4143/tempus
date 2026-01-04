@@ -16,7 +16,7 @@ from .routes import (
     get_records, health_check, quick_status, global_status, status_stream,
     get_preset_names, upload_names, add_name, remove_name, toggle_attendance,
     sign_out_all, api_manual_sync, api_user_hours_summary, api_adjust_user_hours,
-    api_weekly_attendance
+    api_weekly_attendance, api_slack_notify, api_slack_test
 )
 
 # Load environment variables
@@ -29,8 +29,11 @@ logger = logging.getLogger(__name__)
 # Initialize database
 db = LocalDatabase()
 
+# Load names from users.csv file
+from .utils import PRESET_NAMES, load_names_from_file
+load_names_from_file()
+
 # Initialize user hours for all names from CSV
-from .utils import PRESET_NAMES
 db.initialize_user_hours(PRESET_NAMES)
 
 # Create Flask app
@@ -60,8 +63,14 @@ app.add_url_rule('/api/manual-sync', 'api_manual_sync', api_manual_sync, methods
 app.add_url_rule('/api/user-hours-summary', 'api_user_hours_summary', api_user_hours_summary, methods=['GET'])
 app.add_url_rule('/api/adjust-user-hours', 'api_adjust_user_hours', api_adjust_user_hours, methods=['POST'])
 app.add_url_rule('/api/weekly-attendance', 'api_weekly_attendance', api_weekly_attendance, methods=['GET'])
+app.add_url_rule('/api/slack-notify', 'api_slack_notify', api_slack_notify, methods=['POST'])
+app.add_url_rule('/api/slack-test', 'api_slack_test', api_slack_test, methods=['POST'])
 
 if __name__ == '__main__':
+    # Start the scheduler for automated tasks
+    from .scheduler import start_scheduler
+    start_scheduler()
+    
     # Run the Flask app
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
