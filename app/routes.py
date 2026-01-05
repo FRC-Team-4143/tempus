@@ -9,6 +9,7 @@ import logging
 import sqlite3
 from datetime import datetime, timedelta
 from flask import render_template, request, jsonify, redirect, url_for, flash, Response
+from flask_httpauth import HTTPBasicAuth
 import gspread
 from google.oauth2.service_account import Credentials
 from typing import Dict, List, Optional
@@ -17,7 +18,7 @@ from threading import Lock, Thread
 
 from .database import LocalDatabase, db_lock
 from .utils import PRESET_NAMES, get_team_roster_mapping, load_names_from_file, get_category_mapping
-from .connectivity import check_internet_connection, check_google_sheets_connection
+from .connectivity import check_internet_connection, check_google_sheets_connection, check_slack_connection
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,15 @@ local_db = LocalDatabase()
 # Load environment variables
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
+
+# HTTP Basic Auth setup
+auth = HTTPBasicAuth()
+
+@auth.verify_password
+def verify_password(username, password):
+    """Verify password for admin access - username can be anything, password must match ADMIN_PASSWORD"""
+    admin_password = os.environ.get('ADMIN_PASSWORD', 'admin')
+    return password == admin_password
 
 # Google Sheets setup
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
@@ -79,92 +89,87 @@ class AttendanceTracker:
             return
 
         try:
+            # Get data from database with minimal lock time
             with db_lock:
                 # Get unsynced records
                 conn = sqlite3.connect(local_db.db_path)
                 cursor = conn.cursor()
                 cursor.execute('SELECT id, timestamp, name, action, duration_hours, notes FROM attendance_records WHERE synced = 0 ORDER BY timestamp')
                 unsynced_records = cursor.fetchall()
-                conn.close()
-
-                if not unsynced_records:
-                    return
-
-                # Get team mapping and user hours
-                team_mapping = get_team_roster_mapping()
-                category_mapping = get_category_mapping()
                 
                 # Get current total hours for all users
-                conn = sqlite3.connect(local_db.db_path)
-                cursor = conn.cursor()
                 cursor.execute('SELECT name, total_hours FROM user_hours')
                 user_hours_data = cursor.fetchall()
                 conn.close()
-                
-                user_hours = {name: hours for name, hours in user_hours_data}
 
-                # Open spreadsheet
-                spreadsheet = self.gc.open(self.spreadsheet_name)
-                worksheet = spreadsheet.worksheet(self.worksheet_name)
+            if not unsynced_records:
+                return
 
-                # Get current values
-                current_values = worksheet.get_all_values()
-                current_rows = len(current_values)
+            # Process data outside of db_lock
+            team_mapping = get_team_roster_mapping()
+            category_mapping = get_category_mapping()
+            user_hours = {name: hours for name, hours in user_hours_data}
 
-                # Add headers if sheet is empty
-                if current_rows == 0:
-                    headers = ['Timestamp', 'Name', 'Team', 'Category', 'Date', 'Time', 'Shift Duration', 'Total Hours', 'Notes']
-                    worksheet.append_row(headers)
-                    current_rows = 1
-                    logger.info("✅ Added headers to Google Sheets")
+            # Open spreadsheet - this is slow, do it outside db_lock
+            spreadsheet = self.gc.open(self.spreadsheet_name)
+            worksheet = spreadsheet.worksheet(self.worksheet_name)
 
-                # Prepare data for batch update
+            # Get current values
+            current_values = worksheet.get_all_values()
+            current_rows = len(current_values)
 
-                # Prepare data for batch update
-                batch_data = []
-                synced_ids = []
+            # Add headers if sheet is empty
+            if current_rows == 0:
+                headers = ['Timestamp', 'Name', 'Team', 'Category', 'Date', 'Time', 'Shift Duration', 'Total Hours', 'Notes']
+                worksheet.append_row(headers)
+                current_rows = 1
+                logger.info("✅ Added headers to Google Sheets")
 
-                for record in unsynced_records:
-                    record_id, timestamp, name, action, duration_hours, notes = record
+            # Prepare data for batch update
+            batch_data = []
+            synced_ids = []
 
-                    # Convert timestamp to components
-                    try:
-                        dt = datetime.fromisoformat(timestamp)
-                        full_timestamp = dt.strftime('%Y-%m-%d %H:%M:%S')
-                        date_only = dt.strftime('%Y-%m-%d')
-                        time_only = dt.strftime('%H:%M:%S')
-                    except:
-                        full_timestamp = timestamp
-                        date_only = timestamp.split(' ')[0] if ' ' in timestamp else timestamp
-                        time_only = timestamp.split(' ')[1] if ' ' in timestamp else ''
+            for record in unsynced_records:
+                record_id, timestamp, name, action, duration_hours, notes = record
 
-                    # Get team information
-                    team = team_mapping.get(name, 'Unknown')
-                    category = category_mapping.get(name, '')
+                # Convert timestamp to components
+                try:
+                    dt = datetime.fromisoformat(timestamp)
+                    full_timestamp = dt.strftime('%Y-%m-%d %H:%M:%S')
+                    date_only = dt.strftime('%Y-%m-%d')
+                    time_only = dt.strftime('%H:%M:%S')
+                except:
+                    full_timestamp = timestamp
+                    date_only = timestamp.split(' ')[0] if ' ' in timestamp else timestamp
+                    time_only = timestamp.split(' ')[1] if ' ' in timestamp else ''
 
-                    # Format shift duration (only show on checkout)
-                    shift_duration = ""
-                    if action == 'check-out' and duration_hours > 0:
-                        shift_duration = f"{duration_hours:.2f}h"
+                # Get team information
+                team = team_mapping.get(name, 'Unknown')
+                category = category_mapping.get(name, '')
 
-                    # Get total hours for user
-                    total_hours = user_hours.get(name, 0)
-                    total_hours_str = f"{total_hours:.2f}h"
+                # Format shift duration (only show on checkout)
+                shift_duration = ""
+                if action == 'check-out' and duration_hours > 0:
+                    shift_duration = f"{duration_hours:.2f}h"
 
-                    # New column format: Timestamp, Name, Team, Category, Date, Time, Shift Duration, Total Hours, Notes
-                    row_data = [full_timestamp, name, team, category, date_only, time_only, shift_duration, total_hours_str, notes or '']
-                    batch_data.append(row_data)
-                    synced_ids.append(record_id)
+                # Get total hours for user
+                total_hours = user_hours.get(name, 0)
+                total_hours_str = f"{total_hours:.2f}h"
 
-                if batch_data:
-                    # Add rows to sheet
-                    start_row = current_rows + 1
-                    worksheet.append_rows(batch_data)
+                # New column format: Timestamp, Name, Team, Category, Date, Time, Shift Duration, Total Hours, Notes
+                row_data = [full_timestamp, name, team, category, date_only, time_only, shift_duration, total_hours_str, notes or '']
+                batch_data.append(row_data)
+                synced_ids.append(record_id)
 
-                    # Mark records as synced
-                    local_db.mark_records_synced(synced_ids)
+            if batch_data:
+                # Add rows to sheet - slow operation, outside db_lock
+                start_row = current_rows + 1
+                worksheet.append_rows(batch_data)
 
-                    logger.info(f"✅ Synced {len(batch_data)} records to Google Sheets with enhanced format")
+                # Mark records as synced - quick operation with lock
+                local_db.mark_records_synced(synced_ids)
+
+                logger.info(f"✅ Synced {len(batch_data)} records to Google Sheets with enhanced format")
 
         except Exception as e:
             logger.error(f"❌ Error syncing to Google Sheets: {e}")
@@ -277,8 +282,9 @@ def index():
     """Main attendance page"""
     return render_template('index.html')
 
+@auth.login_required
 def admin():
-    """Admin dashboard"""
+    """Admin dashboard - protected by HTTP Basic Authentication"""
     today = datetime.now().strftime('%Y-%m-%d')
     records = local_db.get_records(date_filter=today)
     today_summary = {

@@ -91,6 +91,9 @@ Access the application:
 
 ### For Admins
 - Access admin dashboard at `/admin`
+  - **Authentication**: You'll be prompted with a browser login popup
+  - **Username**: Can be anything (e.g., "admin")
+  - **Password**: Use the `ADMIN_PASSWORD` value from `config/.env` (default: `admin`)
 - Upload new user lists
 - Manually adjust hours
 - Sign out all users at end of day

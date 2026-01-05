@@ -1,4 +1,5 @@
 Flask==2.3.3
+Flask-HTTPAuth==4.8.0
 python-dotenv==1.0.0
 gspread==5.10.0
 google-auth==2.22.0

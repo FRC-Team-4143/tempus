@@ -14,6 +14,10 @@ import hashlib
 from threading import Lock
 import json
 from collections import defaultdict
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
 
 # Database lock to prevent race conditions between user operations and background sync
 db_lock = Lock()
@@ -23,9 +27,20 @@ logger = logging.getLogger(__name__)
 
 class LocalDatabase:
     def __init__(self):
-        # Use absolute path to data directory
-        data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
-        self.db_path = os.path.join(data_dir, 'attendance.db')
+        # Get database path from environment or use default
+        db_path = os.environ.get('DATABASE_PATH', 'data/attendance.db')
+        
+        # If relative path, make it relative to project root
+        if not os.path.isabs(db_path):
+            project_root = os.path.join(os.path.dirname(__file__), '..')
+            db_path = os.path.join(project_root, db_path)
+        
+        # Ensure directory exists
+        db_dir = os.path.dirname(db_path)
+        os.makedirs(db_dir, exist_ok=True)
+        
+        self.db_path = os.path.abspath(db_path)
+        logger.info(f"📁 Using database: {self.db_path}")
         self.init_database()
 
     def init_database(self):
@@ -33,6 +48,12 @@ class LocalDatabase:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
+
+            # Enable WAL mode for better concurrency and crash recovery
+            cursor.execute('PRAGMA journal_mode=WAL')
+            # Ensure data is synced to disk (FULL = safest, NORMAL = good balance)
+            cursor.execute('PRAGMA synchronous=FULL')
+            logger.debug("✅ WAL mode and synchronous writes enabled")
 
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS attendance_records (
@@ -514,3 +535,14 @@ class LocalDatabase:
             except Exception as e:
                 logger.error(f"Error calculating weekly attendance: {e}")
                 return {}
+
+    def close(self):
+        """Ensure all pending transactions are committed and WAL checkpoint is performed"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            # Perform a full checkpoint to ensure all WAL data is written to main database
+            conn.execute('PRAGMA wal_checkpoint(FULL)')
+            conn.close()
+            logger.info("✅ Database checkpoint completed")
+        except Exception as e:
+            logger.error(f"❌ Error during database close: {e}")

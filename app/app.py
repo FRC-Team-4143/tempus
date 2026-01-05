@@ -6,6 +6,8 @@ A Flask web application for tracking attendance using local SQLite database with
 
 import os
 import logging
+import signal
+import atexit
 from flask import Flask
 from dotenv import load_dotenv
 
@@ -16,7 +18,7 @@ from .routes import (
     get_records, health_check, quick_status, global_status, status_stream,
     get_preset_names, upload_names, add_name, remove_name, toggle_attendance,
     sign_out_all, api_manual_sync, api_user_hours_summary, api_adjust_user_hours,
-    api_weekly_attendance, api_slack_notify, api_slack_test
+    api_weekly_attendance, api_slack_notify, api_slack_test, auth
 )
 
 # Load environment variables
@@ -31,6 +33,18 @@ logging.getLogger('werkzeug').setLevel(logging.WARNING)
 
 # Initialize database
 db = LocalDatabase()
+
+# Register cleanup handlers for graceful shutdown
+def cleanup_handler(signum=None, frame=None):
+    """Handle cleanup on shutdown"""
+    logger.info("🛑 Shutdown signal received, cleaning up...")
+    db.close()
+    if signum is not None:
+        exit(0)
+
+atexit.register(cleanup_handler)
+signal.signal(signal.SIGTERM, cleanup_handler)
+signal.signal(signal.SIGINT, cleanup_handler)
 
 # Load names from users.csv file
 from .utils import PRESET_NAMES, load_names_from_file
