@@ -54,7 +54,7 @@ load_names_from_file()
 db.initialize_user_hours(PRESET_NAMES)
 
 # Create Flask app
-app = Flask(__name__, template_folder='../templates')
+app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
 # Register routes
