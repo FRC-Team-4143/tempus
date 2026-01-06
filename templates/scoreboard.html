@@ -251,23 +251,26 @@
             position: relative;
         }
 
+        .scrolling-wrapper {
+            position: relative;
+            width: 100%;
+            padding: 0;
+        }
+
         .scrolling-content {
-            animation: scrollUp 60s linear infinite;
-            animation-play-state: running;
-            padding: 1rem;
+            padding: 0 1rem;
+            width: 100%;
+            display: block;
+            margin: 0;
         }
-
-        .scrolling-content:hover {
-            animation-play-state: paused;
+        
+        /* Consistent spacing for all items */
+        .scrolling-content .ranking-item {
+            margin-bottom: 1rem;
         }
-
-        @keyframes scrollUp {
-            0% {
-                transform: translateY(0);
-            }
-            100% {
-                transform: translateY(calc(-100% + 700px));
-            }
+        
+        .scrolling-content .ranking-item:first-child {
+            margin-top: 1rem;
         }
 
         /* Fade effect at top and bottom of scrolling container */
@@ -601,9 +604,10 @@
                             <span class="badge bg-light text-dark ms-2">{{ rankings|length - 3 }}</span>
                         </div>
                         <div class="scrolling-container">
-                            <div class="scrolling-content" id="scrollingContent">
-                                {% for person in rankings[3:] %}
-                                <div class="ranking-item rank-{{ person.rank }}" data-rank="{{ person.rank }}">
+                            <div class="scrolling-wrapper" id="scrollingWrapper">
+                                <div class="scrolling-content" id="scrollingContent">
+                                    {% for person in rankings[3:] %}
+                                    <div class="ranking-item rank-{{ person.rank }}" data-rank="{{ person.rank }}">
                                     <div class="rank-badge rank-{{ person.rank }}">
                                         {{ person.rank }}
                                     </div>
@@ -627,6 +631,7 @@
                                     </div>
                                 </div>
                                 {% endfor %}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -707,11 +712,55 @@
                 refreshCounter--;
                 if (refreshCounter <= 0) {
                     refreshCounter = 300; // Reset counter
+
                 }
             }
             
             // Update timer every second
             setInterval(updateRefreshTimer, 1000);
+
+            // TRUE infinite scroll - continuous loop with no jump
+            const scrollingWrapper = document.getElementById('scrollingWrapper');
+            const scrollingContent = document.getElementById('scrollingContent');
+            
+            if (scrollingWrapper && scrollingContent) {
+                // Create TWO complete clones for truly seamless scrolling
+                const clone1 = scrollingContent.cloneNode(true);
+                const clone2 = scrollingContent.cloneNode(true);
+                clone1.removeAttribute('id');
+                clone2.removeAttribute('id');
+                
+                // Append both clones
+                scrollingWrapper.appendChild(clone1);
+                scrollingWrapper.appendChild(clone2);
+                
+                setTimeout(() => {
+                    const singleHeight = scrollingContent.getBoundingClientRect().height;
+                    let scrollPos = 0;
+                    const scrollSpeed = 1
+                    let isPaused = false;
+                    
+                    function animate() {
+                        if (!isPaused) {
+                            scrollPos += scrollSpeed;
+                            
+                            // Reset seamlessly when we reach the end of first section
+                            if (scrollPos >= singleHeight) {
+                                scrollPos = scrollPos % singleHeight;
+                            }
+                            
+                            scrollingWrapper.style.transform = `translateY(-${scrollPos}px)`;
+                        }
+                        
+                        requestAnimationFrame(animate);
+                    }
+                    
+                    scrollingWrapper.addEventListener('mouseenter', () => isPaused = true);
+                    scrollingWrapper.addEventListener('mouseleave', () => isPaused = false);
+                    
+                    animate();
+                }, 100);
+            }
         });
     </script>
 </body>
