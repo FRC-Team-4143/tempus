@@ -304,6 +304,13 @@
                         <small>Today</small>
                     </div>
                 </div>
+                <div class="col-lg-3 col-md-6">
+                    <div class="stats-card" style="background: linear-gradient(135deg, #ffa726 0%, #ff6f00 100%);">
+                        <h3 id="currentlySignedIn">0</h3>
+                        <p class="mb-0">Currently Signed In</p>
+                        <small>Right Now</small>
+                    </div>
+                </div>
             </div>
 
             <!-- Weekly Attendance Overview -->
@@ -630,9 +637,22 @@
             // Setup real-time updates for admin dashboard
             setupAdminRealTimeUpdates();
 
-            // Load initial data
-            refreshData();
-            loadWeeklyAttendance();
+            // Load summary data immediately
+            (async function() {
+                try {
+                    // Refresh dashboard summary data
+                    await refreshData();
+                    
+                    // Load currently signed in count
+                    const statusResponse = await fetch('/api/quick-status');
+                    const statusData = await statusResponse.json();
+                    if (statusData.success) {
+                        document.getElementById('currentlySignedIn').textContent = statusData.checked_in || 0;
+                    }
+                } catch (error) {
+                    console.error('Error loading initial data:', error);
+                }
+            })();
 
             // Auto-refresh every minute (fallback)
             setInterval(refreshData, 60000);
@@ -640,6 +660,15 @@
 
         // Wait for full page load before initializing record management
         window.addEventListener('load', function() {
+            console.log('Page fully loaded, initializing weekly attendance...');
+            
+            // Load weekly attendance data after full page load
+            loadWeeklyAttendance().then(() => {
+                console.log('Weekly attendance loaded successfully');
+            }).catch(error => {
+                console.error('Error loading weekly attendance on page load:', error);
+            });
+            
             // Set default date range to current week (Monday to Sunday)
             const today = new Date();
             const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
@@ -825,6 +854,13 @@
                 document.getElementById('todayCheckIns').textContent = summaryData.summary.total_check_ins || 0;
                 document.getElementById('todayCheckOuts').textContent = summaryData.summary.total_check_outs || 0;
                 document.getElementById('uniqueUsers').textContent = summaryData.summary.unique_users || 0;
+                
+                // Update currently signed in count
+                const statusResponse = await fetch('/api/quick-status');
+                const statusData = await statusResponse.json();
+                if (statusData.success) {
+                    document.getElementById('currentlySignedIn').textContent = statusData.checked_in || 0;
+                }
                 
                 // Refresh weekly attendance data
                 await loadWeeklyAttendance();
