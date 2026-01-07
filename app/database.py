@@ -229,6 +229,172 @@ class LocalDatabase:
                 logger.error(f"Error adding record: {e}")
                 return False
 
+    def add_manual_record(self, name: str, action: str, timestamp: str, notes: str = '') -> bool:
+        """Add a manual record with custom timestamp to the local database and update hours tracking"""
+        with db_lock:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+
+                duration_hours = 0
+
+                # Get or create user hours record
+                cursor.execute('SELECT total_hours, last_checkin, session_count FROM user_hours WHERE name = ?', (name,))
+                user_data = cursor.fetchone()
+
+                if not user_data:
+                    cursor.execute('INSERT INTO user_hours (name, total_hours, session_count, last_activity) VALUES (?, 0, 0, ?)', (name, timestamp[:10]))
+                    total_hours, last_checkin, session_count = 0, None, 0
+                else:
+                    total_hours, last_checkin, session_count = user_data
+
+                if action == 'check-in':
+                    # Update last_checkin time
+                    cursor.execute('UPDATE user_hours SET last_checkin = ?, last_activity = ? WHERE name = ?', (timestamp, timestamp[:10], name))
+
+                elif action == 'check-out':
+                    # Find the most recent check-in for this user by searching attendance_records
+                    cursor.execute('''
+                        SELECT timestamp FROM attendance_records
+                        WHERE name = ? AND action = 'check-in' AND timestamp < ?
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    ''', (name, timestamp))
+                    
+                    checkin_record = cursor.fetchone()
+                    
+                    if checkin_record:
+                        # Calculate session duration
+                        try:
+                            checkin_time = datetime.fromisoformat(checkin_record[0])
+                            checkout_time = datetime.fromisoformat(timestamp)
+                            duration_seconds = (checkout_time - checkin_time).total_seconds()
+                            duration_hours = duration_seconds / 3600
+
+                            if 0 < duration_hours < 24:  # Sanity check
+                                # Update total hours and session count
+                                new_total_hours = total_hours + duration_hours
+                                new_session_count = session_count + 1
+                                cursor.execute('''
+                                    UPDATE user_hours
+                                    SET total_hours = ?, last_checkin = NULL, session_count = ?, last_activity = ?
+                                    WHERE name = ?
+                                ''', (new_total_hours, new_session_count, timestamp[:10], name))
+
+                                logger.info(f"Manual session complete for {name}: {duration_hours:.2f} hours (Total: {new_total_hours:.2f}h)")
+                        except Exception as e:
+                            logger.error(f"Error calculating duration for {name}: {e}")
+                    else:
+                        logger.warning(f"No matching check-in found for {name}'s check-out at {timestamp}")
+
+                # Insert attendance record
+                cursor.execute('''
+                    INSERT INTO attendance_records (timestamp, name, action, duration_hours, notes)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (timestamp, name, action, duration_hours, notes))
+
+                conn.commit()
+                conn.close()
+                return True
+
+            except Exception as e:
+                logger.error(f"Error adding manual record: {e}")
+                return False
+
+    def add_manual_session(self, name: str, sign_in_timestamp: str, sign_out_timestamp: str, notes: str = '') -> bool:
+        """Add a complete manual session with both check-in and check-out records"""
+        with db_lock:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+
+                # First, add the check-in record
+                checkin_success = self._add_single_record(cursor, name, 'check-in', sign_in_timestamp, notes)
+                if not checkin_success:
+                    conn.rollback()
+                    return False
+
+                # Then, add the check-out record
+                checkout_success = self._add_single_record(cursor, name, 'check-out', sign_out_timestamp, notes)
+                if not checkout_success:
+                    conn.rollback()
+                    return False
+
+                conn.commit()
+                conn.close()
+                logger.info(f"Successfully added manual session for {name}: {sign_in_timestamp} to {sign_out_timestamp}")
+                return True
+
+            except Exception as e:
+                logger.error(f"Error adding manual session: {e}")
+                return False
+
+    def _add_single_record(self, cursor, name: str, action: str, timestamp: str, notes: str = '') -> bool:
+        """Helper method to add a single record within a transaction"""
+        try:
+            duration_hours = 0
+
+            # Get or create user hours record
+            cursor.execute('SELECT total_hours, last_checkin, session_count FROM user_hours WHERE name = ?', (name,))
+            user_data = cursor.fetchone()
+
+            if not user_data:
+                cursor.execute('INSERT INTO user_hours (name, total_hours, session_count, last_activity) VALUES (?, 0, 0, ?)', (name, timestamp[:10]))
+                total_hours, last_checkin, session_count = 0, None, 0
+            else:
+                total_hours, last_checkin, session_count = user_data
+
+            if action == 'check-in':
+                # Update last_checkin time
+                cursor.execute('UPDATE user_hours SET last_checkin = ?, last_activity = ? WHERE name = ?', (timestamp, timestamp[:10], name))
+
+            elif action == 'check-out':
+                # Find the most recent check-in for this user by searching attendance_records
+                cursor.execute('''
+                    SELECT timestamp FROM attendance_records
+                    WHERE name = ? AND action = 'check-in' AND timestamp < ?
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                ''', (name, timestamp))
+
+                checkin_record = cursor.fetchone()
+
+                if checkin_record:
+                    # Calculate session duration
+                    try:
+                        checkin_time = datetime.fromisoformat(checkin_record[0])
+                        checkout_time = datetime.fromisoformat(timestamp)
+                        duration_seconds = (checkout_time - checkin_time).total_seconds()
+                        duration_hours = duration_seconds / 3600
+
+                        if 0 < duration_hours < 24:  # Sanity check
+                            # Update total hours and session count
+                            new_total_hours = total_hours + duration_hours
+                            new_session_count = session_count + 1
+                            cursor.execute('''
+                                UPDATE user_hours
+                                SET total_hours = ?, last_checkin = NULL, session_count = ?, last_activity = ?
+                                WHERE name = ?
+                            ''', (new_total_hours, new_session_count, timestamp[:10], name))
+
+                            logger.info(f"Manual session complete for {name}: {duration_hours:.2f} hours (Total: {new_total_hours:.2f}h)")
+                    except Exception as e:
+                        logger.error(f"Error calculating duration for {name}: {e}")
+                else:
+                    logger.warning(f"No matching check-in found for {name}'s check-out at {timestamp}")
+
+            # Insert attendance record
+            cursor.execute('''
+                INSERT INTO attendance_records (timestamp, name, action, duration_hours, notes)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (timestamp, name, action, duration_hours, notes))
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error adding single record: {e}")
+            return False
+
     def get_user_status(self, name: str) -> str:
         """Get the current status of a user for today"""
         with db_lock:

@@ -20,7 +20,7 @@ from .routes import (
     sign_out_all, api_manual_sync, api_user_hours_summary,
     api_weekly_attendance, api_slack_notify, api_slack_test, auth,
     api_get_all_records, api_get_record, api_update_record, api_delete_record,
-    api_recalculate_durations
+    api_recalculate_durations, api_add_manual_record, api_add_manual_session
 )
 
 # Load environment variables
@@ -88,6 +88,8 @@ app.add_url_rule('/api/record', 'api_get_record', api_get_record, methods=['GET'
 app.add_url_rule('/api/update-record', 'api_update_record', api_update_record, methods=['POST'])
 app.add_url_rule('/api/delete-record', 'api_delete_record', api_delete_record, methods=['POST'])
 app.add_url_rule('/api/recalculate-durations', 'api_recalculate_durations', api_recalculate_durations, methods=['POST'])
+app.add_url_rule('/api/add-manual-record', 'api_add_manual_record', api_add_manual_record, methods=['POST'])
+app.add_url_rule('/api/add-manual-session', 'api_add_manual_session', api_add_manual_session, methods=['POST'])
 
 if __name__ == '__main__':
     # Start the scheduler for automated tasks

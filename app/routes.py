@@ -980,3 +980,104 @@ def api_recalculate_durations():
     except Exception as e:
         logger.error(f"Error recalculating durations: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+@auth.login_required
+def api_add_manual_record():
+    """Add a manual attendance record with custom timestamp"""
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        action = data.get('action')
+        timestamp = data.get('timestamp')
+        notes = data.get('notes', '')
+
+        if not all([name, action, timestamp]):
+            return jsonify({'success': False, 'message': 'Name, action, and timestamp are required'})
+
+        if action not in ['check-in', 'check-out']:
+            return jsonify({'success': False, 'message': 'Action must be check-in or check-out'})
+
+        # Validate timestamp format
+        try:
+            datetime.fromisoformat(timestamp)
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid timestamp format. Use ISO format (YYYY-MM-DDTHH:MM:SS)'})
+
+        success = local_db.add_manual_record(name, action, timestamp, notes)
+
+        if success:
+            return jsonify({'success': True, 'message': f'Successfully added {action} record for {name}'})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to add record to database'})
+
+    except Exception as e:
+        logger.error(f"Error adding manual record: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@auth.login_required
+def api_add_manual_session():
+    """Add a complete manual session with both check-in and check-out"""
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        sign_in_timestamp = data.get('sign_in_timestamp')
+        sign_out_timestamp = data.get('sign_out_timestamp')
+        notes = data.get('notes', '')
+
+        if not all([name, sign_in_timestamp, sign_out_timestamp]):
+            return jsonify({'success': False, 'message': 'Name, sign-in timestamp, and sign-out timestamp are required'})
+
+        # Validate timestamp formats
+        try:
+            sign_in_dt = datetime.fromisoformat(sign_in_timestamp)
+            sign_out_dt = datetime.fromisoformat(sign_out_timestamp)
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid timestamp format. Use ISO format (YYYY-MM-DDTHH:MM:SS)'})
+
+        # Validate that sign-out is after sign-in
+        if sign_out_dt <= sign_in_dt:
+            return jsonify({'success': False, 'message': 'Sign-out time must be after sign-in time'})
+
+        success = local_db.add_manual_session(name, sign_in_timestamp, sign_out_timestamp, notes)
+
+        if success:
+            return jsonify({'success': True, 'message': f'Successfully added session for {name}'})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to add session to database'})
+
+    except Exception as e:
+        logger.error(f"Error adding manual session: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@auth.login_required
+def api_add_manual_record():
+    """Add a manual attendance record with custom timestamp"""
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        action = data.get('action')
+        timestamp = data.get('timestamp')
+        notes = data.get('notes', '')
+
+        if not all([name, action, timestamp]):
+            return jsonify({'success': False, 'message': 'Name, action, and timestamp are required'})
+
+        if action not in ['check-in', 'check-out']:
+            return jsonify({'success': False, 'message': 'Action must be check-in or check-out'})
+
+        # Validate timestamp format
+        try:
+            datetime.fromisoformat(timestamp)
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid timestamp format. Use ISO format (YYYY-MM-DDTHH:MM:SS)'})
+
+        success = local_db.add_manual_record(name, action, timestamp, notes)
+
+        if success:
+            return jsonify({'success': True, 'message': f'Successfully added {action} record for {name}'})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to add record'})
+
+    except Exception as e:
+        logger.error(f"Error adding manual record: {e}")
+        return jsonify({'success': False, 'error': str(e)})
