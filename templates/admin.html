@@ -382,8 +382,8 @@
                                 <label for="teamFilter" class="form-label fw-bold mb-1" style="color: #000000;">Filter by Team:</label>
                                 <select id="teamFilter" class="form-select form-select-sm" onchange="applyFilters()">
                                     <option value="">All Teams</option>
-                                    <option value="4143">Team 4143</option>
-                                    <option value="4144">Team 4144</option>
+                                    <option value="4143">4143</option>
+                                    <option value="4144">4423</option>
                                 </select>
                             </div>
                             <div class="filter-group">
@@ -453,7 +453,7 @@
                             <div class="mb-3">
                                 <input type="file" class="form-control" id="csvFileInput" accept=".csv" />
                                 <div class="form-text">
-                                    Upload a CSV file with names, team numbers, and categories. Format: "Name","TeamNumber","Category"
+                                    Upload a CSV file with names, team numbers, and categories. Format: "Name","TeamNumber","Category", "Slack UID"
                                 </div>
                             </div>
                             <button class="btn btn-primary" onclick="uploadCSV()">
@@ -464,10 +464,10 @@
                             <h6>CSV Format Example:</h6>
                             <div class="bg-light p-3 rounded">
                                 <small class="text-muted">
-                                    "Name","Team","Category"<br>
-                                    "John Smith","4143","Design"<br>
-                                    "Jane Doe","4423","Software<br>
-                                    "Mike Johnson","4143","Business"
+                                    "Name","Team","Category","Slack UID"<br>
+                                    "John Smith","4143","Design","U2WSQRY1M"<br>
+                                    "Jane Doe","4423","Software","U2WSB5753"<br>
+                                    "Mike Johnson","4143","Business","U2ZDFUPDW"<br>
                                 </small>
                             </div>
                         </div>
@@ -485,13 +485,43 @@
                         </div>
                         <div class="col-md-6">
                             <h5>Add Individual User</h5>
-                            <div class="input-group mb-3">
-                                <input type="text" class="form-control" id="newNameInput" placeholder="Enter name">
-                                <button class="btn btn-success" onclick="addName()">
-                                    <i class="fas fa-plus"></i> Add
-                                </button>
+                            <div class="mb-3">
+                                <label for="newNameInput" class="form-label">Full Name</label>
+                                <input type="text" class="form-control" id="newNameInput" placeholder="Enter full name" required>
                             </div>
-                            <div class="alert alert-info">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="newUserTeam" class="form-label">Team</label>
+                                        <select class="form-control" id="newUserTeam" required>
+                                            <option value="">Select Team</option>
+                                            <option value="4143">4143</option>
+                                            <option value="4423">4423</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="newUserCategory" class="form-label">Category</label>
+                                        <select class="form-control" id="newUserCategory" required>
+                                            <option value="">Select Category</option>
+                                            <option value="Software">Software</option>
+                                            <option value="Design">Design</option>
+                                            <option value="Business">Business</option>
+                                            <option value="Mentor">Mentor</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="newUserSlackUID" class="form-label">Slack UID (Optional)</label>
+                                <input type="text" class="form-control" id="newUserSlackUID" placeholder="e.g., U09HX29UT70">
+                                <small class="form-text text-muted">Find this in Slack by viewing the user's profile</small>
+                            </div>
+                            <button class="btn btn-success" onclick="addName()">
+                                <i class="fas fa-plus"></i> Add User
+                            </button>
+                            <div class="alert alert-info mt-3">
                                 <small>
                                     <i class="fas fa-info-circle"></i>
                                     Changes take effect immediately. Users will see the updated list when they refresh.
@@ -726,6 +756,64 @@
             setInterval(refreshData, 60000);
         });
 
+        function setDefaultWeekDates() {
+            // Set default date range to current calendar week (Monday to Sunday)
+            // Use same logic as Weekly Attendance Metrics
+            const now = new Date();
+            console.log('Setting default week dates - Current date:', now);
+            console.log('Day of week:', now.getDay()); // 0 = Sunday, 1 = Monday, etc.
+            
+            const currentWeekStart = new Date(now);
+            
+            // Calculate Monday of current week (weeks start on Monday)
+            const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+            const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // If Sunday, subtract 6 days; otherwise subtract (day-1)
+            console.log('Days to subtract to get to Monday:', daysToSubtract);
+            
+            currentWeekStart.setDate(now.getDate() - daysToSubtract);
+            console.log('Monday of current week:', currentWeekStart);
+            
+            const monday = new Date(currentWeekStart);
+            const sunday = new Date(currentWeekStart);
+            sunday.setDate(currentWeekStart.getDate() + 6); // Sunday
+            console.log('Sunday of current week:', sunday);
+            
+            // Use local date formatting instead of toISOString() to avoid UTC conversion issues
+            const mondayStr = monday.getFullYear() + '-' + 
+                            String(monday.getMonth() + 1).padStart(2, '0') + '-' + 
+                            String(monday.getDate()).padStart(2, '0');
+            const sundayStr = sunday.getFullYear() + '-' + 
+                            String(sunday.getMonth() + 1).padStart(2, '0') + '-' + 
+                            String(sunday.getDate()).padStart(2, '0');
+            
+            console.log('Monday ISO string:', mondayStr);
+            console.log('Sunday ISO string:', sundayStr);
+            
+            // Set the date filters
+            const dateFromEl = document.getElementById('recordDateFrom');
+            const dateToEl = document.getElementById('recordDateTo');
+            
+            if (dateFromEl && dateToEl) {
+                const mondayStr = monday.getFullYear() + '-' + 
+                                String(monday.getMonth() + 1).padStart(2, '0') + '-' + 
+                                String(monday.getDate()).padStart(2, '0');
+                const sundayStr = sunday.getFullYear() + '-' + 
+                                String(sunday.getMonth() + 1).padStart(2, '0') + '-' + 
+                                String(sunday.getDate()).padStart(2, '0');
+                
+                console.log('Setting dateFromEl to:', mondayStr);
+                console.log('Setting dateToEl to:', sundayStr);
+                
+                dateFromEl.value = mondayStr;
+                dateToEl.value = sundayStr;
+                
+                console.log('After setting - dateFromEl.value:', dateFromEl.value);
+                console.log('After setting - dateToEl.value:', dateToEl.value);
+            } else {
+                console.log('Date elements not found!', {dateFromEl, dateToEl});
+            }
+        }
+
         // Wait for full page load before initializing record management
         window.addEventListener('load', function() {
             console.log('Page fully loaded, initializing weekly attendance...');
@@ -737,46 +825,61 @@
                 console.error('Error loading weekly attendance on page load:', error);
             });
             
-            // Set default date range to current week (Monday to Sunday)
-            const today = new Date();
-            const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
-            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // If Sunday, go back 6 days; otherwise go back (day-1)
+            // Set default week dates
+            setDefaultWeekDates();
+                
+            // Set manual entry dates to today
+            const today = new Date().toISOString().split('T')[0];
+            const manualSignInDateEl = document.getElementById('manualSignInDate');
+            const manualSignOutDateEl = document.getElementById('manualSignOutDate');
+            if (manualSignInDateEl) {
+                manualSignInDateEl.value = today;
+            }
+            if (manualSignOutDateEl) {
+                manualSignOutDateEl.value = today;
+            }
             
-            // Calculate Monday of current week
-            const monday = new Date(today);
-            monday.setDate(today.getDate() - daysToMonday);
+            // Load names for record filter
+            loadNamesForRecordManagement();
             
-            // Calculate Sunday of current week
+            // Auto-load records for current week after names are loaded
+            setTimeout(function() {
+                loadRecords();
+            }, 300);
+        });
+
+        // Also try setting dates when document is ready (jQuery)
+        $(document).ready(function() {
+            console.log('Document ready, setting default dates...');
+            // Try setting dates here too as a fallback
+            setTimeout(setDefaultWeekDates, 100);
+            
+            // DIRECT APPROACH - set dates immediately
+            console.log('Trying direct approach...');
+            const now = new Date();
+            const dayOfWeek = now.getDay();
+            const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            
+            const monday = new Date(now);
+            monday.setDate(now.getDate() - daysToSubtract);
+            
             const sunday = new Date(monday);
             sunday.setDate(monday.getDate() + 6);
             
-            // Set the date filters
-            const dateFromEl = document.getElementById('recordDateFrom');
-            const dateToEl = document.getElementById('recordDateTo');
+            const mondayStr = monday.getFullYear() + '-' + 
+                            String(monday.getMonth() + 1).padStart(2, '0') + '-' + 
+                            String(monday.getDate()).padStart(2, '0');
+            const sundayStr = sunday.getFullYear() + '-' + 
+                            String(sunday.getMonth() + 1).padStart(2, '0') + '-' + 
+                            String(sunday.getDate()).padStart(2, '0');
             
-            if (dateFromEl && dateToEl) {
-                dateFromEl.value = monday.toISOString().split('T')[0];
-                dateToEl.value = sunday.toISOString().split('T')[0];
-                
-                // Set manual entry dates to today
-                const today = new Date().toISOString().split('T')[0];
-                const manualSignInDateEl = document.getElementById('manualSignInDate');
-                const manualSignOutDateEl = document.getElementById('manualSignOutDate');
-                if (manualSignInDateEl) {
-                    manualSignInDateEl.value = today;
-                }
-                if (manualSignOutDateEl) {
-                    manualSignOutDateEl.value = today;
-                }
-                
-                // Load names for record filter
-                loadNamesForRecordManagement();
-                
-                // Auto-load records for current week after names are loaded
-                setTimeout(function() {
-                    loadRecords();
-                }, 300);
-            }
+            console.log('Calculated dates - Monday:', mondayStr, 'Sunday:', sundayStr);
+            
+            // Force set the values
+            $('#recordDateFrom').val(mondayStr);
+            $('#recordDateTo').val(sundayStr);
+            
+            console.log('Set values using jQuery - From:', $('#recordDateFrom').val(), 'To:', $('#recordDateTo').val());
         });
 
         async function loadCurrentUsers() {
@@ -864,11 +967,28 @@
         }
 
         async function addName() {
-            const input = document.getElementById('newNameInput');
-            const name = input.value.trim();
+            const nameInput = document.getElementById('newNameInput');
+            const teamSelect = document.getElementById('newUserTeam');
+            const categorySelect = document.getElementById('newUserCategory');
+            const slackUIDInput = document.getElementById('newUserSlackUID');
+            
+            const name = nameInput.value.trim();
+            const team = teamSelect.value;
+            const category = categorySelect.value;
+            const slackUID = slackUIDInput.value.trim();
             
             if (!name) {
                 showToast('Please enter a name', 'error');
+                return;
+            }
+            
+            if (!team) {
+                showToast('Please select a team', 'error');
+                return;
+            }
+            
+            if (!category) {
+                showToast('Please select a category', 'error');
                 return;
             }
             
@@ -878,7 +998,12 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ name })
+                    body: JSON.stringify({ 
+                        name: name,
+                        team: team,
+                        category: category,
+                        slack_uid: slackUID
+                    })
                 });
                 
                 const data = await response.json();
@@ -886,7 +1011,13 @@
                 if (data.success) {
                     showToast(data.message, 'success');
                     displayNamesList(data.names);
-                    input.value = ''; // Clear the input
+                    // Clear all inputs
+                    nameInput.value = '';
+                    teamSelect.value = '';
+                    categorySelect.value = '';
+                    slackUIDInput.value = '';
+                    // Reload names for other dropdowns
+                    loadNamesForRecordManagement();
                 } else {
                     showToast(data.message, 'error');
                 }

@@ -582,27 +582,44 @@ def upload_names():
         return jsonify({'success': False, 'message': 'Error uploading file'})
 
 def add_name():
-    """Add a name to the preset list"""
+    """Add a name with team, category, and slack UID to the preset list"""
     data = request.get_json()
     name = data.get('name', '').strip()
+    team = data.get('team', '').strip()
+    category = data.get('category', '').strip()
+    slack_uid = data.get('slack_uid', '').strip()
 
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'})
+    
+    if not team:
+        return jsonify({'success': False, 'message': 'Team is required'})
+    
+    if not category:
+        return jsonify({'success': False, 'message': 'Category is required'})
 
-    if name in PRESET_NAMES:
+    # Check if name already exists in the flat list (excluding team headers)
+    existing_names = [n for n in PRESET_NAMES if not n.startswith('--- Team')]
+    if name in existing_names:
         return jsonify({'success': False, 'message': 'Name already exists'})
 
-    PRESET_NAMES.append(name)
-
-    # Save to file (simplified - in production you'd want better persistence)
+    # Add to users.csv file
     try:
         data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
-        with open(os.path.join(data_dir, 'names_list.csv'), 'a') as f:
-            f.write(f'"{name}"\n')
+        users_path = os.path.join(data_dir, 'users.csv')
+        with open(users_path, 'a', encoding='utf-8') as f:
+            f.write(f'"{name}","{team}","{category}","{slack_uid}"\n')
+        
+        # Reload names from file to update PRESET_NAMES with proper grouping
+        from .utils import load_names_from_file
+        load_names_from_file()
+        
+        logger.info(f"Added user: {name} (Team {team}, {category}, Slack: {slack_uid})")
+        return jsonify({'success': True, 'message': f'Added {name} to the list', 'names': PRESET_NAMES})
+        
     except Exception as e:
-        logger.warning(f"Could not save name to file: {e}")
-
-    return jsonify({'success': True, 'message': f'Added {name} to the list', 'names': PRESET_NAMES})
+        logger.error(f"Could not save user to file: {e}")
+        return jsonify({'success': False, 'message': f'Error saving user: {str(e)}'})
 
 def remove_name():
     """Remove a name from the preset list"""

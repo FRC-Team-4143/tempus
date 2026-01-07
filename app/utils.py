@@ -44,7 +44,7 @@ def load_names_from_file():
                 for line in f:
                     line = line.strip()
                     if line:
-                        # Parse CSV line: "Name","TeamNumber","Category"
+                        # Parse CSV line: "Name","TeamNumber","Category","SlackUID"
                         parts = [part.strip('"') for part in line.split(',')]
                         if len(parts) >= 2:
                             name = parts[0]
@@ -119,6 +119,27 @@ def get_category_mapping():
     except Exception as e:
         logger.warning(f'Could not load category mapping: {e}')
     return category_mapping
+
+def get_slack_uid_mapping():
+    """Get a mapping of names to Slack UIDs from users.csv"""
+    slack_mapping = {}
+    try:
+        data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
+        users_path = os.path.join(data_dir, 'users.csv')
+        if os.path.exists(users_path):
+            with open(users_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        parts = [part.strip('"') for part in line.split(',')]
+                        if len(parts) >= 4:
+                            name = parts[0]
+                            slack_uid = parts[3]
+                            if slack_uid:  # Only add if slack UID is not empty
+                                slack_mapping[name] = slack_uid
+    except Exception as e:
+        logger.warning(f'Could not load Slack UID mapping: {e}')
+    return slack_mapping
 
 def calculate_total_expected_hours(current_date: datetime = None) -> float:
     """Calculate total expected hours based on configurable dates and weekly increase
