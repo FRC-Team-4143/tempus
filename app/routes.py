@@ -1098,3 +1098,51 @@ def api_add_manual_record():
     except Exception as e:
         logger.error(f"Error adding manual record: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+def api_recalculate_durations():
+    """Recalculate missing durations for check-out records"""
+    try:
+        logger.info("🔧 Manual duration recalculation triggered")
+        
+        updated_count = local_db.recalculate_missing_durations()
+        
+        if updated_count > 0:
+            message = f"Successfully recalculated durations for {updated_count} records."
+        else:
+            message = "No missing durations found - all records are up to date."
+            
+        return jsonify({
+            'success': True, 
+            'message': message,
+            'updated_count': updated_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error during duration recalculation: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+def api_verify_hours_consistency():
+    """Verify and fix hours consistency between user_hours and attendance_records tables"""
+    try:
+        logger.info("🔧 Manual hours consistency check triggered")
+        
+        # First recalculate any missing durations
+        missing_count = local_db.recalculate_missing_durations()
+        
+        # Then verify hours consistency
+        is_consistent = local_db.verify_hours_consistency()
+        
+        message = "Hours consistency verified and any issues have been auto-fixed."
+        if missing_count > 0:
+            message += f" Fixed {missing_count} missing duration calculations."
+            
+        return jsonify({
+            'success': True, 
+            'message': message,
+            'was_consistent': is_consistent,
+            'missing_durations_fixed': missing_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error during hours consistency check: {e}")
+        return jsonify({'success': False, 'error': str(e)})

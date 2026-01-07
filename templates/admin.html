@@ -479,7 +479,7 @@
                     <div class="row">
                         <div class="col-md-6">
                             <h5>Current Users List</h5>
-                            <div id="currentUsersList" class="list-group" style="max-height: 300px; overflow-y: auto;">
+                            <div id="currentUsersList" class="list-group" style="max-height: 450px; overflow-y: auto;">
                                 <!-- Names will be loaded here -->
                             </div>
                         </div>
@@ -508,7 +508,6 @@
                                             <option value="Software">Software</option>
                                             <option value="Design">Design</option>
                                             <option value="Business">Business</option>
-                                            <option value="Mentor">Mentor</option>
                                         </select>
                                     </div>
                                 </div>
@@ -568,6 +567,9 @@
                             </button>
                             <button class="btn btn-warning" onclick="recalculateDurations()" title="Fix missing durations">
                                 <i class="fas fa-calculator"></i>
+                            </button>
+                            <button class="btn btn-info" onclick="verifyHoursConsistency()" title="Verify and fix hours consistency">
+                                <i class="fas fa-check-double"></i>
                             </button>
                         </div>
                     </div>
@@ -1755,6 +1757,41 @@
             } catch (error) {
                 console.error('Error recalculating durations:', error);
                 showToast('Error recalculating durations', 'error');
+            }
+        }
+
+        async function verifyHoursConsistency() {
+            if (!confirm('This will verify and auto-fix any inconsistencies between weekly hours and total hours. Continue?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/verify-hours-consistency', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    let message = data.message;
+                    if (!data.was_consistent) {
+                        message += ' Some inconsistencies were found and fixed.';
+                    }
+                    showToast(message, 'success');
+                    
+                    // Reload the page to refresh all data
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                } else {
+                    showToast(data.message || 'Error verifying hours consistency', 'error');
+                }
+            } catch (error) {
+                console.error('Error verifying hours consistency:', error);
+                showToast('Error verifying hours consistency', 'error');
             }
         }
     </script>

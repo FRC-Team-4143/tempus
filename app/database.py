@@ -203,13 +203,21 @@ class LocalDatabase:
                                 # Update total hours and session count
                                 new_total_hours = total_hours + duration_hours
                                 new_session_count = session_count + 1
+                                
+                                # Update user_hours table
                                 cursor.execute('''
                                     UPDATE user_hours
                                     SET total_hours = ?, last_checkin = NULL, session_count = ?, last_activity = ?
                                     WHERE name = ?
                                 ''', (new_total_hours, new_session_count, timestamp[:10], name))
-
-                                logger.info(f"Session complete for {name}: {duration_hours:.2f} hours (Total: {new_total_hours:.2f}h)")
+                                
+                                # Verify the update was successful
+                                if cursor.rowcount == 0:
+                                    logger.error(f"Failed to update user_hours for {name} - user not found in table")
+                                else:
+                                    logger.info(f"Session complete for {name}: {duration_hours:.2f} hours (Total: {new_total_hours:.2f}h)")
+                            else:
+                                logger.warning(f"Invalid session duration for {name}: {duration_hours:.3f} hours (outside 0-24h range)")
                         except Exception as e:
                             logger.error(f"Error calculating duration for {name}: {e}")
                     else:
@@ -984,6 +992,70 @@ class LocalDatabase:
             except Exception as e:
                 logger.error(f"Error recalculating durations: {e}")
                 return 0
+
+    def verify_hours_consistency(self) -> bool:
+        """Verify that user_hours totals match attendance records and fix if needed"""
+        with db_lock:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                
+                # Get all users and their total hours from user_hours table
+                cursor.execute('SELECT name, total_hours FROM user_hours')
+                user_hours_data = {name: hours for name, hours in cursor.fetchall()}
+                
+                # Calculate expected hours from attendance records
+                cursor.execute('''
+                    SELECT name, SUM(duration_hours) as calculated_hours
+                    FROM attendance_records
+                    WHERE (action = 'check-out' AND duration_hours > 0) OR action = 'manual_adjustment'
+                    GROUP BY name
+                ''')
+                calculated_hours = {name: hours for name, hours in cursor.fetchall()}
+                
+                inconsistencies = []
+                
+                # Check for inconsistencies
+                for name in user_hours_data:
+                    stored_hours = user_hours_data[name]
+                    calc_hours = calculated_hours.get(name, 0)
+                    
+                    if abs(stored_hours - calc_hours) > 0.001:  # Allow for small floating point differences
+                        inconsistencies.append((name, stored_hours, calc_hours))
+                
+                # Also check for users in attendance but not in user_hours
+                for name in calculated_hours:
+                    if name not in user_hours_data and calculated_hours[name] > 0:
+                        inconsistencies.append((name, 0, calculated_hours[name]))
+                
+                if inconsistencies:
+                    logger.warning(f"Found {len(inconsistencies)} hours inconsistencies")
+                    for name, stored, calculated in inconsistencies:
+                        logger.warning(f"  {name}: stored={stored:.3f}h, calculated={calculated:.3f}h")
+                    
+                    # Auto-fix the inconsistencies
+                    logger.info("Auto-fixing hours inconsistencies...")
+                    for name, stored, calculated in inconsistencies:
+                        cursor.execute('''
+                            UPDATE user_hours SET total_hours = ? WHERE name = ?
+                        ''', (calculated, name))
+                        
+                        if cursor.rowcount == 0:
+                            # User doesn't exist, create them
+                            cursor.execute('''
+                                INSERT INTO user_hours (name, total_hours, session_count, last_activity)
+                                VALUES (?, ?, 0, date('now'))
+                            ''', (name, calculated))
+                    
+                    conn.commit()
+                    logger.info(f"Fixed {len(inconsistencies)} hours inconsistencies")
+                
+                conn.close()
+                return len(inconsistencies) == 0
+                
+            except Exception as e:
+                logger.error(f"Error verifying hours consistency: {e}")
+                return False
 
     def close(self):
         """Ensure all pending transactions are committed and WAL checkpoint is performed"""
