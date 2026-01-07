@@ -495,89 +495,123 @@
                 </div>
             </div>
 
-            <!-- Hour Adjustment -->
+            <!-- Records Management -->
             <div class="card">
                 <div class="card-header">
-                    <h3 class="mb-0">
-                        <i class="fas fa-clock"></i>
-                        Manual Hour Adjustment
-                    </h3>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-8">
-                            <h5>Adjust User Hours</h5>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="userSelect" class="form-label">Select User</label>
-                                        <select class="form-control" id="userSelect">
-                                            <option value="">Choose a user...</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="currentHours" class="form-label">Current Hours</label>
-                                        <input type="text" class="form-control" id="currentHours" readonly>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="adjustmentType" class="form-label">Adjustment Type</label>
-                                        <select class="form-control" id="adjustmentType">
-                                            <option value="add">Add Hours</option>
-                                            <option value="subtract">Subtract Hours</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="adjustmentDate" class="form-label">Date</label>
-                                        <input type="date" class="form-control" id="adjustmentDate" value="">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="adjustmentHours" class="form-label">Hours</label>
-                                        <input type="number" class="form-control" id="adjustmentHours" min="0" step="0.5" placeholder="Enter hours">
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="adjustmentReason" class="form-label">Reason (Optional)</label>
-                                        <input type="text" class="form-control" id="adjustmentReason" placeholder="e.g., Manual correction, Event attendance">
-                                    </div>
-                                </div>
-                            </div>
-                            <button class="btn btn-warning" onclick="adjustHours()">
-                                <i class="fas fa-edit"></i> Adjust Hours
-                            </button>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="alert alert-warning">
-                                <h6><i class="fas fa-exclamation-triangle"></i> Important Notes:</h6>
-                                <ul class="mb-0">
-                                    <li>This will create a manual adjustment record</li>
-                                    <li>Changes are permanent and logged</li>
-                                    <li>Use "Set Total" to override current hours completely</li>
-                                    <li>Add/Subtract will modify existing hours</li>
-                                </ul>
-                            </div>
-                            <div class="alert alert-info">
-                                <h6><i class="fas fa-info-circle"></i> Examples:</h6>
-                                <ul class="mb-0">
-                                    <li><strong>Add 2:</strong> 10h → 12h</li>
-                                    <li><strong>Subtract 1:</strong> 10h → 9h</li>
-                                    <li><strong>Set 15:</strong> 10h → 15h</li>
-                                </ul>
-                            </div>
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h3 class="mb-0">
+                                <i class="fas fa-list"></i>
+                                View & Manage Attendance Records
+                            </h3>
+                            <p class="mb-0 mt-1">Search, edit, and delete attendance records</p>
                         </div>
                     </div>
+                </div>
+                <div class="card-body">
+                    <!-- Filter Controls -->
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <label for="recordNameFilter" class="form-label">Filter by Name</label>
+                            <select class="form-control" id="recordNameFilter">
+                                <option value="">All Users</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="recordDateFrom" class="form-label">From Date</label>
+                            <input type="date" class="form-control" id="recordDateFrom">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="recordDateTo" class="form-label">To Date</label>
+                            <input type="date" class="form-control" id="recordDateTo">
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end gap-2">
+                            <button class="btn btn-primary" onclick="loadRecords()">
+                                <i class="fas fa-search"></i> Search
+                            </button>
+                            <button class="btn btn-warning" onclick="recalculateDurations()" title="Fix missing durations">
+                                <i class="fas fa-calculator"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Records Table -->
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Timestamp</th>
+                                    <th>Name</th>
+                                    <th>Action</th>
+                                    <th>Duration</th>
+                                    <th>Notes</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recordsTableBody">
+                                <tr>
+                                    <td colspan="7" class="text-center py-4">
+                                        <i class="fas fa-info-circle"></i> Select filters and click Search to view records
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Record Count -->
+                    <div class="mt-3">
+                        <small class="text-muted" id="recordCount">No records loaded</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Record Modal -->
+    <div class="modal fade" id="editRecordModal" tabindex="-1" aria-labelledby="editRecordModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="editRecordModalLabel">
+                        <i class="fas fa-edit"></i> Edit Attendance Record
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editRecordId">
+                    <div class="mb-3">
+                        <label for="editTimestamp" class="form-label">Timestamp</label>
+                        <input type="datetime-local" class="form-control" id="editTimestamp" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="editName" readonly required>
+                        <small class="form-text text-muted">Name cannot be changed when editing a record</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editAction" class="form-label">Action</label>
+                        <select class="form-control" id="editAction" required>
+                            <option value="check-in">Check In</option>
+                            <option value="check-out">Check Out</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editNotes" class="form-label">Notes</label>
+                        <input type="text" class="form-control" id="editNotes" placeholder="Optional notes">
+                    </div>
+                    <div class="alert alert-warning">
+                        <small>
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Warning:</strong> Editing records will recalculate user hours and mark the record for re-sync to Google Sheets.
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="saveRecord()">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
                 </div>
             </div>
         </div>
@@ -599,13 +633,42 @@
             // Load initial data
             refreshData();
             loadWeeklyAttendance();
-            
-            // Set default date to today
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('adjustmentDate').value = today;
 
             // Auto-refresh every minute (fallback)
             setInterval(refreshData, 60000);
+        });
+
+        // Wait for full page load before initializing record management
+        window.addEventListener('load', function() {
+            // Set default date range to current week (Monday to Sunday)
+            const today = new Date();
+            const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // If Sunday, go back 6 days; otherwise go back (day-1)
+            
+            // Calculate Monday of current week
+            const monday = new Date(today);
+            monday.setDate(today.getDate() - daysToMonday);
+            
+            // Calculate Sunday of current week
+            const sunday = new Date(monday);
+            sunday.setDate(monday.getDate() + 6);
+            
+            // Set the date filters
+            const dateFromEl = document.getElementById('recordDateFrom');
+            const dateToEl = document.getElementById('recordDateTo');
+            
+            if (dateFromEl && dateToEl) {
+                dateFromEl.value = monday.toISOString().split('T')[0];
+                dateToEl.value = sunday.toISOString().split('T')[0];
+                
+                // Load names for record filter
+                loadNamesForRecordManagement();
+                
+                // Auto-load records for current week after names are loaded
+                setTimeout(function() {
+                    loadRecords();
+                }, 300);
+            }
         });
 
         async function loadCurrentUsers() {
@@ -766,6 +829,9 @@
                 // Refresh weekly attendance data
                 await loadWeeklyAttendance();
                 
+                // Refresh attendance records
+                await loadRecords();
+                
                 // Show success message
                 showToast('Data refreshed successfully!', 'success');
                 
@@ -839,155 +905,6 @@
                 // SSE not supported for admin dashboard
             }
         }
-
-        // Hour adjustment functions
-        async function loadUsersForAdjustment() {
-            try {
-                // Fetch all names (roster) and user hours in parallel
-                const [namesRes, hoursRes] = await Promise.all([
-                    fetch('/api/preset-names'),
-                    fetch('/api/user-hours-summary')
-                ]);
-                const namesData = await namesRes.json();
-                const hoursData = await hoursRes.json();
-
-                if (namesData.success && namesData.names) {
-                    const userSelect = document.getElementById('userSelect');
-                    userSelect.innerHTML = '<option value="">Choose a user...</option>';
-
-                    // Map of user hours for quick lookup
-                    const userHoursMap = {};
-                    if (hoursData.success && hoursData.users) {
-                        hoursData.users.forEach(user => {
-                            userHoursMap[user.name] = user.total_hours;
-                        });
-                    }
-
-                    namesData.names.forEach(item => {
-                        const name = item.name || item; // support both formats
-                        if (name.startsWith('--- Team')) return; // skip headers
-                        const hours = userHoursMap[name] || 0;
-                        const option = document.createElement('option');
-                        option.value = name;
-                        option.textContent = `${name} (${hours}h)`;
-                        option.dataset.hours = hours;
-                        userSelect.appendChild(option);
-                    });
-                } else {
-                    showToast('Error loading user data', 'error');
-                }
-            } catch (error) {
-                console.error('Error loading users:', error);
-                showToast('Error loading user data', 'error');
-            }
-        }
-
-        async function adjustHours() {
-            const userSelect = document.getElementById('userSelect');
-            const adjustmentType = document.getElementById('adjustmentType').value;
-            const adjustmentHours = parseFloat(document.getElementById('adjustmentHours').value);
-            const adjustmentDate = document.getElementById('adjustmentDate').value;
-            const reason = document.getElementById('adjustmentReason').value.trim();
-            
-            const selectedUser = userSelect.value;
-            
-            if (!selectedUser) {
-                showToast('Please select a user', 'error');
-                return;
-            }
-            
-            if (isNaN(adjustmentHours) || adjustmentHours < 0) {
-                showToast('Please enter valid hours (0 or greater)', 'error');
-                return;
-            }
-            
-            if (!adjustmentDate) {
-                showToast('Please select a date for the adjustment', 'error');
-                return;
-            }
-            
-            const currentHours = parseFloat(userSelect.selectedOptions[0].dataset.hours || 0);
-            
-            // Calculate new hours based on adjustment type
-            let newHours;
-            switch (adjustmentType) {
-                case 'add':
-                    newHours = currentHours + adjustmentHours;
-                    break;
-                case 'subtract':
-                    newHours = Math.max(0, currentHours - adjustmentHours);
-                    break;
-                case 'set':
-                    newHours = adjustmentHours;
-                    break;
-                default:
-                    showToast('Invalid adjustment type', 'error');
-                    return;
-            }
-            
-            const confirmMessage = `Are you sure you want to adjust hours for ${selectedUser}?\n\nDate: ${adjustmentDate}\nCurrent: ${currentHours}h\nNew: ${newHours}h\nType: ${adjustmentType.toUpperCase()}\nAmount: ${adjustmentHours}h${reason ? `\nReason: ${reason}` : ''}`;
-            
-            if (!confirm(confirmMessage)) {
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/adjust-user-hours', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        name: selectedUser,
-                        adjustment_type: adjustmentType,
-                        hours: adjustmentHours,
-                        date: adjustmentDate,
-                        reason: reason || 'Manual adjustment'
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showToast(`Hours adjusted successfully! ${selectedUser}: ${currentHours}h → ${data.new_hours}h`, 'success');
-                    
-                    // Reset form
-                    document.getElementById('userSelect').selectedIndex = 0;
-                    document.getElementById('currentHours').value = '';
-                    document.getElementById('adjustmentHours').value = '';
-                    document.getElementById('adjustmentDate').value = new Date().toISOString().split('T')[0]; // Set to today
-                    document.getElementById('adjustmentReason').value = '';
-                    
-                    // Reload users to reflect changes
-                    loadUsersForAdjustment();
-                } else {
-                    showToast(data.message || 'Error adjusting hours', 'error');
-                }
-            } catch (error) {
-                console.error('Error adjusting hours:', error);
-                showToast('Error adjusting hours. Please try again.', 'error');
-            }
-        }
-
-        // Update current hours display when user changes
-        document.addEventListener('DOMContentLoaded', function() {
-            const userSelect = document.getElementById('userSelect');
-            const currentHours = document.getElementById('currentHours');
-            
-            userSelect.addEventListener('change', function() {
-                if (this.selectedOptions[0] && this.selectedOptions[0].dataset.hours) {
-                    currentHours.value = this.selectedOptions[0].dataset.hours + ' hours';
-                } else {
-                    currentHours.value = '';
-                }
-            });
-            
-            // Load users when page loads
-            loadUsersForAdjustment();
-            
-            // Load weekly attendance for current week
-            loadWeeklyAttendance();
-        });
 
         // Real-time updates for admin dashboard
         function setupAdminRealTimeUpdates() {
@@ -1227,6 +1144,252 @@
                 currentWeekOffset += offset;
             }
             loadWeeklyAttendance();
+        }
+
+        // Records Management Functions
+        async function loadNamesForRecordManagement() {
+            try {
+                const response = await fetch('/api/preset-names');
+                const data = await response.json();
+
+                if (data.success && data.names) {
+                    const nameFilterSelect = document.getElementById('recordNameFilter');
+                    
+                    // Clear existing options
+                    nameFilterSelect.innerHTML = '<option value="">All Users</option>';
+
+                    data.names.forEach(item => {
+                        const name = item.name || item;
+                        if (name.startsWith('--- Team')) return;
+                        
+                        const filterOption = document.createElement('option');
+                        filterOption.value = name;
+                        filterOption.textContent = name;
+                        nameFilterSelect.appendChild(filterOption);
+                    });
+                }
+                return Promise.resolve();
+            } catch (error) {
+                console.error('Error loading names:', error);
+                return Promise.reject(error);
+            }
+        }
+
+        async function loadRecords() {
+            try {
+                const name = document.getElementById('recordNameFilter').value;
+                const dateFrom = document.getElementById('recordDateFrom').value;
+                const dateTo = document.getElementById('recordDateTo').value;
+
+                let url = '/api/all-records?limit=200';
+                if (name) url += `&name=${encodeURIComponent(name)}`;
+                if (dateFrom) url += `&date_from=${dateFrom}`;
+                if (dateTo) url += `&date_to=${dateTo}`;
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.success) {
+                    displayRecords(data.records);
+                    document.getElementById('recordCount').textContent = 
+                        `Showing ${data.records.length} record(s)`;
+                } else {
+                    showToast('Error loading records', 'error');
+                }
+            } catch (error) {
+                console.error('Error loading records:', error);
+                showToast('Error loading records', 'error');
+            }
+        }
+
+        function displayRecords(records) {
+            const tbody = document.getElementById('recordsTableBody');
+            tbody.innerHTML = '';
+
+            if (records.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center py-4">
+                            <i class="fas fa-inbox"></i> No records found
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            records.forEach(record => {
+                const row = document.createElement('tr');
+                
+                const actionBadge = record.action === 'check-in' 
+                    ? '<span class="badge badge-check-in">Check In</span>'
+                    : '<span class="badge badge-check-out">Check Out</span>';
+                
+                const duration = (record.duration_hours && record.duration_hours > 0)
+                    ? `${record.duration_hours.toFixed(2)}h` 
+                    : '';
+                
+                const timestamp = new Date(record.timestamp).toLocaleString();
+
+                row.innerHTML = `
+                    <td>${record.id}</td>
+                    <td>${timestamp}</td>
+                    <td><strong>${record.name}</strong></td>
+                    <td>${actionBadge}</td>
+                    <td>${duration}</td>
+                    <td><small>${record.notes || '-'}</small></td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="editRecord(${record.id})" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteRecord(${record.id}, '${record.name}')" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        async function editRecord(recordId) {
+            try {
+                const response = await fetch(`/api/record?id=${recordId}`);
+                const data = await response.json();
+
+                if (data.success && data.record) {
+                    const record = data.record;
+                    
+                    document.getElementById('editRecordId').value = record.id;
+                    
+                    // Convert ISO timestamp to datetime-local format
+                    const dt = new Date(record.timestamp);
+                    const localDatetime = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000)
+                        .toISOString()
+                        .slice(0, 16);
+                    document.getElementById('editTimestamp').value = localDatetime;
+                    
+                    document.getElementById('editName').value = record.name;
+                    document.getElementById('editAction').value = record.action;
+                    document.getElementById('editNotes').value = record.notes || '';
+
+                    // Show modal
+                    const modal = new bootstrap.Modal(document.getElementById('editRecordModal'));
+                    modal.show();
+                } else {
+                    showToast('Error loading record details', 'error');
+                }
+            } catch (error) {
+                console.error('Error loading record:', error);
+                showToast('Error loading record', 'error');
+            }
+        }
+
+        async function saveRecord() {
+            try {
+                const recordId = document.getElementById('editRecordId').value;
+                const timestamp = document.getElementById('editTimestamp').value;
+                const name = document.getElementById('editName').value;
+                const action = document.getElementById('editAction').value;
+                const notes = document.getElementById('editNotes').value;
+
+                if (!timestamp || !name || !action) {
+                    showToast('Please fill in all required fields', 'error');
+                    return;
+                }
+
+                // Convert datetime-local to ISO format WITHOUT timezone conversion
+                // The input is already in local time, so we just need to format it as ISO
+                const isoTimestamp = timestamp + ':00'; // Add seconds if not present
+
+                const response = await fetch('/api/update-record', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        id: parseInt(recordId),
+                        timestamp: isoTimestamp,
+                        name: name,
+                        action: action,
+                        notes: notes
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('Record updated successfully!', 'success');
+                    
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('editRecordModal'));
+                    modal.hide();
+                    
+                    // Reload records
+                    loadRecords();
+                } else {
+                    showToast(data.message || 'Error updating record', 'error');
+                }
+            } catch (error) {
+                console.error('Error saving record:', error);
+                showToast('Error saving record', 'error');
+            }
+        }
+
+        async function deleteRecord(recordId, name) {
+            if (!confirm(`Are you sure you want to delete this record for ${name}?\n\nThis action cannot be undone and will adjust the user's total hours.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/delete-record', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        id: parseInt(recordId)
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('Record deleted successfully!', 'success');
+                    loadRecords();
+                } else {
+                    showToast(data.message || 'Error deleting record', 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting record:', error);
+                showToast('Error deleting record', 'error');
+            }
+        }
+
+        async function recalculateDurations() {
+            if (!confirm('This will recalculate durations for all check-out records that are missing them. Continue?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/recalculate-durations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    loadRecords();
+                } else {
+                    showToast(data.message || 'Error recalculating durations', 'error');
+                }
+            } catch (error) {
+                console.error('Error recalculating durations:', error);
+                showToast('Error recalculating durations', 'error');
+            }
         }
     </script>
 </body>

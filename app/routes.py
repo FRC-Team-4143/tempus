@@ -805,72 +805,6 @@ def api_user_hours_summary():
         logger.error(f"Error getting user hours summary: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-def api_adjust_user_hours():
-    """Adjust a user's total hours (admin function)"""
-    try:
-        data = request.get_json()
-        name = data.get('name', '').strip()
-        adjustment_type = data.get('adjustment_type', 'add')
-        adjustment_hours = float(data.get('hours', 0))
-        adjustment_date = data.get('date', '')  # New date parameter
-        reason = data.get('reason', '').strip()  # New reason parameter
-
-        if not name:
-            return jsonify({'success': False, 'message': 'Name is required'})
-
-        # Validate date format if provided
-        if adjustment_date:
-            try:
-                from datetime import datetime
-                datetime.fromisoformat(adjustment_date)
-            except ValueError:
-                return jsonify({'success': False, 'message': 'Invalid date format. Use YYYY-MM-DD'})
-
-        # Get current hours
-        db = LocalDatabase()
-        conn = sqlite3.connect(db.db_path)
-        cursor = conn.cursor()
-        cursor.execute('SELECT total_hours FROM user_hours WHERE name = ?', (name,))
-        result = cursor.fetchone()
-        conn.close()
-
-        if not result:
-            return jsonify({'success': False, 'message': f'User {name} not found'})
-
-        current_hours = result[0]
-
-        # Calculate new hours based on adjustment type
-        if adjustment_type == 'add':
-            new_hours = current_hours + adjustment_hours
-        elif adjustment_type == 'subtract':
-            new_hours = max(0, current_hours - adjustment_hours)
-        else:
-            return jsonify({'success': False, 'message': 'Invalid adjustment type'})
-
-        # Calculate the actual adjustment needed
-        actual_adjustment = new_hours - current_hours
-
-        success, message = local_db.adjust_user_hours(name, actual_adjustment, adjustment_date, reason)
-
-        if success:
-            return jsonify({
-                'success': True,
-                'message': f'Successfully adjusted {name}\'s hours',
-                'new_hours': round(new_hours, 2),
-                'adjustment': round(actual_adjustment, 2)
-            })
-        else:
-            return jsonify({'success': False, 'message': message})
-
-    except ValueError as e:
-        return jsonify({'success': False, 'message': 'Invalid hours value'})
-    except Exception as e:
-        logger.error(f"Error adjusting hours: {e}")
-        return jsonify({
-            'success': False,
-            'message': f'Error adjusting hours: {str(e)}'
-        })
-
 def api_weekly_attendance():
     """Get weekly attendance metrics for all users"""
     try:
@@ -949,4 +883,100 @@ def api_slack_test():
         
     except Exception as e:
         logger.error(f"Error sending test notification: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@auth.login_required
+def api_get_all_records():
+    """Get all attendance records with optional filters"""
+    try:
+        name = request.args.get('name', '').strip()
+        date_from = request.args.get('date_from', '').strip()
+        date_to = request.args.get('date_to', '').strip()
+        limit = int(request.args.get('limit', 100))
+
+        records = local_db.get_all_records_with_filters(
+            name=name if name else None,
+            date_from=date_from if date_from else None,
+            date_to=date_to if date_to else None,
+            limit=limit
+        )
+
+        return jsonify({'success': True, 'records': records})
+
+    except Exception as e:
+        logger.error(f"Error getting all records: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@auth.login_required
+def api_get_record():
+    """Get a specific record by ID"""
+    try:
+        record_id = int(request.args.get('id'))
+        record = local_db.get_record_by_id(record_id)
+
+        if record:
+            return jsonify({'success': True, 'record': record})
+        else:
+            return jsonify({'success': False, 'message': 'Record not found'})
+
+    except Exception as e:
+        logger.error(f"Error getting record: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@auth.login_required
+def api_update_record():
+    """Update an existing attendance record"""
+    try:
+        data = request.get_json()
+        record_id = int(data.get('id'))
+        timestamp = data.get('timestamp', '').strip()
+        name = data.get('name', '').strip()
+        action = data.get('action', '').strip()
+        notes = data.get('notes', '').strip()
+
+        if not all([record_id, timestamp, name, action]):
+            return jsonify({'success': False, 'message': 'Missing required fields'})
+
+        if action not in ['check-in', 'check-out']:
+            return jsonify({'success': False, 'message': 'Invalid action. Must be check-in or check-out'})
+
+        success, message = local_db.update_record(record_id, timestamp, name, action, notes)
+
+        return jsonify({'success': success, 'message': message})
+
+    except Exception as e:
+        logger.error(f"Error updating record: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@auth.login_required
+def api_delete_record():
+    """Delete an attendance record"""
+    try:
+        data = request.get_json()
+        record_id = int(data.get('id'))
+
+        if not record_id:
+            return jsonify({'success': False, 'message': 'Record ID is required'})
+
+        success, message = local_db.delete_record(record_id)
+
+        return jsonify({'success': success, 'message': message})
+
+    except Exception as e:
+        logger.error(f"Error deleting record: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@auth.login_required
+def api_recalculate_durations():
+    """Recalculate missing durations for all check-out records"""
+    try:
+        count = local_db.recalculate_missing_durations()
+        return jsonify({
+            'success': True, 
+            'message': f'Recalculated durations for {count} records',
+            'count': count
+        })
+
+    except Exception as e:
+        logger.error(f"Error recalculating durations: {e}")
         return jsonify({'success': False, 'error': str(e)})

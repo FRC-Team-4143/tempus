@@ -180,27 +180,40 @@ class LocalDatabase:
                     # Update last_checkin time
                     cursor.execute('UPDATE user_hours SET last_checkin = ?, last_activity = ? WHERE name = ?', (timestamp, timestamp[:10], name))
 
-                elif action == 'check-out' and last_checkin:
-                    # Calculate session duration
-                    try:
-                        checkin_time = datetime.fromisoformat(last_checkin)
-                        checkout_time = datetime.fromisoformat(timestamp)
-                        duration_seconds = (checkout_time - checkin_time).total_seconds()
-                        duration_hours = duration_seconds / 3600
+                elif action == 'check-out':
+                    # Find the most recent check-in for this user by searching attendance_records
+                    cursor.execute('''
+                        SELECT timestamp FROM attendance_records
+                        WHERE name = ? AND action = 'check-in' AND timestamp < ?
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    ''', (name, timestamp))
+                    
+                    checkin_record = cursor.fetchone()
+                    
+                    if checkin_record:
+                        # Calculate session duration
+                        try:
+                            checkin_time = datetime.fromisoformat(checkin_record[0])
+                            checkout_time = datetime.fromisoformat(timestamp)
+                            duration_seconds = (checkout_time - checkin_time).total_seconds()
+                            duration_hours = duration_seconds / 3600
 
-                        if 0 < duration_hours < 24:  # Sanity check
-                            # Update total hours and session count
-                            new_total_hours = total_hours + duration_hours
-                            new_session_count = session_count + 1
-                            cursor.execute('''
-                                UPDATE user_hours
-                                SET total_hours = ?, last_checkin = NULL, session_count = ?, last_activity = ?
-                                WHERE name = ?
-                            ''', (new_total_hours, new_session_count, timestamp[:10], name))
+                            if 0 < duration_hours < 24:  # Sanity check
+                                # Update total hours and session count
+                                new_total_hours = total_hours + duration_hours
+                                new_session_count = session_count + 1
+                                cursor.execute('''
+                                    UPDATE user_hours
+                                    SET total_hours = ?, last_checkin = NULL, session_count = ?, last_activity = ?
+                                    WHERE name = ?
+                                ''', (new_total_hours, new_session_count, timestamp[:10], name))
 
-                            logger.info(f"Session complete for {name}: {duration_hours:.2f} hours (Total: {new_total_hours:.2f}h)")
-                    except Exception as e:
-                        logger.error(f"Error calculating duration for {name}: {e}")
+                                logger.info(f"Session complete for {name}: {duration_hours:.2f} hours (Total: {new_total_hours:.2f}h)")
+                        except Exception as e:
+                            logger.error(f"Error calculating duration for {name}: {e}")
+                    else:
+                        logger.warning(f"No matching check-in found for {name}'s check-out at {timestamp}")
 
                 # Insert attendance record
                 cursor.execute('''
@@ -335,49 +348,6 @@ class LocalDatabase:
                 conn.close()
             except Exception as e:
                 logger.error(f"Error marking records as synced: {e}")
-
-    def adjust_user_hours(self, name: str, adjustment_hours: float, adjustment_date: str = None, reason: str = None) -> tuple[bool, str]:
-        """Adjust a user's total hours"""
-        with db_lock:
-            try:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-
-                # Get current total
-                cursor.execute('SELECT total_hours FROM user_hours WHERE name = ?', (name,))
-                result = cursor.fetchone()
-
-                if not result:
-                    return False, f"User {name} not found"
-
-                current_total = result[0]
-                new_total = current_total + adjustment_hours
-
-                # Update the total
-                cursor.execute('UPDATE user_hours SET total_hours = ?, last_activity = ? WHERE name = ?', 
-                             (new_total, datetime.now().isoformat(), name))
-
-                # Create an attendance record for the manual adjustment to include it in weekly calculations
-                if adjustment_date:
-                    # Use the specified date with current time
-                    timestamp = f"{adjustment_date}T{datetime.now().strftime('%H:%M:%S.%f')}"
-                else:
-                    # Use current timestamp
-                    timestamp = datetime.now().isoformat()
-                    
-                cursor.execute('''
-                    INSERT INTO attendance_records (timestamp, name, action, duration_hours, notes)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (timestamp, name, 'manual_adjustment', adjustment_hours, reason))
-
-                conn.commit()
-                conn.close()
-
-                return True, f"Successfully adjusted {name}'s hours"
-
-            except Exception as e:
-                logger.error(f"Error adjusting user hours: {e}")
-                return False, str(e)
 
     def get_weekly_attendance(self, weeks_back: int = 0) -> Dict[str, Dict]:
         """Get weekly attendance metrics for all users
@@ -535,6 +505,319 @@ class LocalDatabase:
             except Exception as e:
                 logger.error(f"Error calculating weekly attendance: {e}")
                 return {}
+
+    def get_record_by_id(self, record_id: int) -> Optional[Dict]:
+        """Get a specific attendance record by ID"""
+        with db_lock:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+
+                cursor.execute('''
+                    SELECT id, timestamp, name, action, duration_hours, notes
+                    FROM attendance_records
+                    WHERE id = ?
+                ''', (record_id,))
+
+                row = cursor.fetchone()
+                conn.close()
+
+                if row:
+                    return {
+                        'id': row[0],
+                        'timestamp': row[1],
+                        'name': row[2],
+                        'action': row[3],
+                        'duration_hours': row[4],
+                        'notes': row[5] or ''
+                    }
+                return None
+
+            except Exception as e:
+                logger.error(f"Error getting record by ID: {e}")
+                return None
+
+    def update_record(self, record_id: int, timestamp: str, name: str, action: str, notes: str = '') -> tuple[bool, str]:
+        """Update an existing attendance record"""
+        with db_lock:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+
+                # Get the old record first
+                cursor.execute('SELECT timestamp, name, action, duration_hours FROM attendance_records WHERE id = ?', (record_id,))
+                old_record = cursor.fetchone()
+                
+                if not old_record:
+                    conn.close()
+                    return False, "Record not found"
+
+                old_timestamp, old_name, old_action, old_duration = old_record
+
+                # Parse timestamp - handle both ISO format with 'Z' and without
+                try:
+                    if timestamp.endswith('Z'):
+                        # Replace 'Z' with '+00:00' for UTC timezone
+                        timestamp = timestamp.replace('Z', '+00:00')
+                    # Python 3.7+ supports fromisoformat with timezone
+                    parsed_time = datetime.fromisoformat(timestamp)
+                    # Convert to local time string without timezone
+                    timestamp = parsed_time.replace(tzinfo=None).isoformat()
+                except ValueError as e:
+                    # Try parsing without timezone
+                    try:
+                        parsed_time = datetime.strptime(timestamp[:19], '%Y-%m-%dT%H:%M:%S')
+                        timestamp = parsed_time.isoformat()
+                    except:
+                        conn.close()
+                        return False, f"Invalid timestamp format: {str(e)}"
+
+                # First, if old record was a check-out with duration, remove it from user hours
+                if old_action == 'check-out' and old_duration > 0:
+                    cursor.execute('''
+                        UPDATE user_hours
+                        SET total_hours = total_hours - ?
+                        WHERE name = ?
+                    ''', (old_duration, old_name))
+
+                # Update the record with initial duration of 0
+                cursor.execute('''
+                    UPDATE attendance_records
+                    SET timestamp = ?, name = ?, action = ?, notes = ?, synced = 0, duration_hours = 0
+                    WHERE id = ?
+                ''', (timestamp, name, action, notes, record_id))
+
+                # Recalculate duration if this is a check-out record
+                new_duration = 0
+                if action == 'check-out':
+                    # Find the corresponding check-in (most recent one before this checkout)
+                    cursor.execute('''
+                        SELECT id, timestamp FROM attendance_records
+                        WHERE name = ? AND action = 'check-in' AND timestamp < ? AND id != ?
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    ''', (name, timestamp, record_id))
+                    
+                    checkin_record = cursor.fetchone()
+                    if checkin_record:
+                        checkin_time = datetime.fromisoformat(checkin_record[1])
+                        checkout_time = datetime.fromisoformat(timestamp)
+                        duration_seconds = (checkout_time - checkin_time).total_seconds()
+                        new_duration = duration_seconds / 3600
+
+                        if 0 < new_duration < 24:  # Sanity check
+                            # Update duration on this record
+                            cursor.execute('''
+                                UPDATE attendance_records
+                                SET duration_hours = ?
+                                WHERE id = ?
+                            ''', (new_duration, record_id))
+
+                            # Add new duration to user hours
+                            cursor.execute('''
+                                UPDATE user_hours
+                                SET total_hours = total_hours + ?, last_activity = ?
+                                WHERE name = ?
+                            ''', (new_duration, timestamp[:10], name))
+                        else:
+                            logger.warning(f"Invalid duration calculated: {new_duration} hours")
+                    else:
+                        logger.warning(f"No matching check-in found for check-out at {timestamp}")
+                
+                # If this was a check-in that's now a check-out or vice versa, 
+                # we need to recalculate any affected check-outs
+                if old_action != action:
+                    # Find any check-outs that might have been paired with this record
+                    if old_action == 'check-in':
+                        # Find check-outs that came after this timestamp
+                        cursor.execute('''
+                            SELECT id, timestamp FROM attendance_records
+                            WHERE name = ? AND action = 'check-out' AND timestamp > ?
+                            ORDER BY timestamp ASC
+                            LIMIT 1
+                        ''', (old_name, old_timestamp))
+                        
+                        checkout_to_recalc = cursor.fetchone()
+                        if checkout_to_recalc:
+                            # Recalculate that check-out's duration
+                            cursor.execute('''
+                                SELECT timestamp FROM attendance_records
+                                WHERE name = ? AND action = 'check-in' AND timestamp < ? AND id != ?
+                                ORDER BY timestamp DESC
+                                LIMIT 1
+                            ''', (old_name, checkout_to_recalc[1], checkout_to_recalc[0]))
+                            
+                            new_checkin = cursor.fetchone()
+                            if new_checkin:
+                                recalc_duration = (datetime.fromisoformat(checkout_to_recalc[1]) - datetime.fromisoformat(new_checkin[0])).total_seconds() / 3600
+                                if 0 < recalc_duration < 24:
+                                    # Get old duration for that checkout
+                                    cursor.execute('SELECT duration_hours FROM attendance_records WHERE id = ?', (checkout_to_recalc[0],))
+                                    old_recalc_duration = cursor.fetchone()[0]
+                                    
+                                    # Update the checkout duration
+                                    cursor.execute('UPDATE attendance_records SET duration_hours = ? WHERE id = ?', (recalc_duration, checkout_to_recalc[0]))
+                                    
+                                    # Update user hours (remove old, add new)
+                                    cursor.execute('''
+                                        UPDATE user_hours
+                                        SET total_hours = total_hours - ? + ?
+                                        WHERE name = ?
+                                    ''', (old_recalc_duration, recalc_duration, old_name))
+
+                conn.commit()
+                conn.close()
+                return True, "Record updated successfully"
+
+            except Exception as e:
+                logger.error(f"Error updating record: {e}")
+                return False, str(e)
+
+    def delete_record(self, record_id: int) -> tuple[bool, str]:
+        """Delete an attendance record and adjust user hours accordingly"""
+        with db_lock:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+
+                # Get the record details before deleting
+                cursor.execute('''
+                    SELECT name, action, duration_hours
+                    FROM attendance_records
+                    WHERE id = ?
+                ''', (record_id,))
+
+                record = cursor.fetchone()
+                if not record:
+                    conn.close()
+                    return False, "Record not found"
+
+                name, action, duration_hours = record
+
+                # If this was a check-out with hours, subtract from user's total
+                if action == 'check-out' and duration_hours > 0:
+                    cursor.execute('''
+                        UPDATE user_hours
+                        SET total_hours = total_hours - ?
+                        WHERE name = ?
+                    ''', (duration_hours, name))
+
+                # Delete the record
+                cursor.execute('DELETE FROM attendance_records WHERE id = ?', (record_id,))
+
+                conn.commit()
+                conn.close()
+                return True, f"Record deleted successfully"
+
+            except Exception as e:
+                logger.error(f"Error deleting record: {e}")
+                return False, str(e)
+
+    def get_all_records_with_filters(self, name: str = None, date_from: str = None, date_to: str = None, limit: int = 100) -> List[Dict]:
+        """Get attendance records with various filters"""
+        with db_lock:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+
+                query = '''
+                    SELECT id, timestamp, name, action, duration_hours, notes
+                    FROM attendance_records
+                    WHERE 1=1
+                '''
+                params = []
+
+                if name:
+                    query += ' AND name = ?'
+                    params.append(name)
+
+                if date_from:
+                    query += ' AND date(timestamp) >= ?'
+                    params.append(date_from)
+
+                if date_to:
+                    query += ' AND date(timestamp) <= ?'
+                    params.append(date_to)
+
+                query += ' ORDER BY timestamp DESC LIMIT ?'
+                params.append(limit)
+
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                conn.close()
+
+                records = []
+                for row in rows:
+                    records.append({
+                        'id': row[0],
+                        'timestamp': row[1],
+                        'name': row[2],
+                        'action': row[3],
+                        'duration_hours': row[4] if row[4] is not None else 0,
+                        'notes': row[5] or ''
+                    })
+
+                return records
+
+            except Exception as e:
+                logger.error(f"Error getting filtered records: {e}")
+                return []
+
+    def recalculate_missing_durations(self):
+        """Recalculate duration for all check-out records that don't have one"""
+        with db_lock:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+
+                # Find all check-out records with no duration or 0 duration
+                cursor.execute('''
+                    SELECT id, timestamp, name
+                    FROM attendance_records
+                    WHERE action = 'check-out' AND (duration_hours IS NULL OR duration_hours = 0)
+                    ORDER BY timestamp
+                ''')
+                
+                checkouts = cursor.fetchall()
+                updated_count = 0
+
+                for checkout_id, checkout_time, name in checkouts:
+                    # Find the most recent check-in before this checkout
+                    cursor.execute('''
+                        SELECT timestamp FROM attendance_records
+                        WHERE name = ? AND action = 'check-in' AND timestamp < ? AND id != ?
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    ''', (name, checkout_time, checkout_id))
+                    
+                    checkin = cursor.fetchone()
+                    if checkin:
+                        try:
+                            checkin_dt = datetime.fromisoformat(checkin[0])
+                            checkout_dt = datetime.fromisoformat(checkout_time)
+                            duration = (checkout_dt - checkin_dt).total_seconds() / 3600
+                            
+                            if 0 < duration < 24:
+                                cursor.execute('''
+                                    UPDATE attendance_records
+                                    SET duration_hours = ?
+                                    WHERE id = ?
+                                ''', (duration, checkout_id))
+                                updated_count += 1
+                        except:
+                            pass
+
+                conn.commit()
+                conn.close()
+                
+                if updated_count > 0:
+                    logger.info(f"✅ Recalculated durations for {updated_count} check-out records")
+                
+                return updated_count
+
+            except Exception as e:
+                logger.error(f"Error recalculating durations: {e}")
+                return 0
 
     def close(self):
         """Ensure all pending transactions are committed and WAL checkpoint is performed"""

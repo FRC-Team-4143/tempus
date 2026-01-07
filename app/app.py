@@ -17,8 +17,10 @@ from .routes import (
     index, admin, leaderboard, check_in, check_out, get_status, get_summary,
     get_records, health_check, quick_status, global_status, status_stream,
     get_preset_names, upload_names, add_name, remove_name, toggle_attendance,
-    sign_out_all, api_manual_sync, api_user_hours_summary, api_adjust_user_hours,
-    api_weekly_attendance, api_slack_notify, api_slack_test, auth
+    sign_out_all, api_manual_sync, api_user_hours_summary,
+    api_weekly_attendance, api_slack_notify, api_slack_test, auth,
+    api_get_all_records, api_get_record, api_update_record, api_delete_record,
+    api_recalculate_durations
 )
 
 # Load environment variables
@@ -78,10 +80,14 @@ app.add_url_rule('/api/toggle-attendance', 'toggle_attendance', toggle_attendanc
 app.add_url_rule('/api/sign-out-all', 'sign_out_all', sign_out_all, methods=['POST'])
 app.add_url_rule('/api/manual-sync', 'api_manual_sync', api_manual_sync, methods=['POST'])
 app.add_url_rule('/api/user-hours-summary', 'api_user_hours_summary', api_user_hours_summary, methods=['GET'])
-app.add_url_rule('/api/adjust-user-hours', 'api_adjust_user_hours', api_adjust_user_hours, methods=['POST'])
 app.add_url_rule('/api/weekly-attendance', 'api_weekly_attendance', api_weekly_attendance, methods=['GET'])
 app.add_url_rule('/api/slack-notify', 'api_slack_notify', api_slack_notify, methods=['POST'])
 app.add_url_rule('/api/slack-test', 'api_slack_test', api_slack_test, methods=['POST'])
+app.add_url_rule('/api/all-records', 'api_get_all_records', api_get_all_records, methods=['GET'])
+app.add_url_rule('/api/record', 'api_get_record', api_get_record, methods=['GET'])
+app.add_url_rule('/api/update-record', 'api_update_record', api_update_record, methods=['POST'])
+app.add_url_rule('/api/delete-record', 'api_delete_record', api_delete_record, methods=['POST'])
+app.add_url_rule('/api/recalculate-durations', 'api_recalculate_durations', api_recalculate_durations, methods=['POST'])
 
 if __name__ == '__main__':
     # Start the scheduler for automated tasks
