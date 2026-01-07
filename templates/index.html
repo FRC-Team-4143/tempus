@@ -376,14 +376,62 @@
         </div>
     </div>
 
+    <!-- Confirmation Modal -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border-radius: 16px; border: none; box-shadow: 0 8px 32px rgba(0,0,0,0.2);">
+                <div class="modal-header" style="background: linear-gradient(135deg, #b71c1c 0%, #000000 100%); color: white; border-radius: 16px 16px 0 0; border: none;">
+                    <h5 class="modal-title" id="confirmModalLabel">
+                        <i class="fas fa-user-check"></i> Confirm Action
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="padding: 2rem; text-align: center; font-size: 1.1rem;">
+                    <div id="confirmMessage" style="margin-bottom: 1.5rem; font-weight: 600;"></div>
+                    <div id="confirmDetails" style="color: #666; font-size: 0.95rem;"></div>
+                </div>
+                <div class="modal-footer" style="border: none; padding: 1rem 2rem 2rem 2rem; justify-content: center; gap: 1rem;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="min-width: 120px; border-radius: 12px; padding: 12px 24px; font-weight: 600;">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="button" class="btn btn-primary" id="confirmButton" style="min-width: 120px; border-radius: 12px; padding: 12px 24px; font-weight: 600;">
+                        <i class="fas fa-check"></i> Confirm
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <script>
         // Global variables
         let globalStatusData = {};
+        let confirmModalInstance = null;
+        let pendingAction = null;
 
         // Load and initialize
         window.onload = function() {
             // 🚀 Page loaded, starting initialization...
+            // Initialize confirmation modal
+            const modalElement = document.getElementById('confirmModal');
+            if (modalElement) {
+                confirmModalInstance = new bootstrap.Modal(modalElement);
+                
+                // Set up confirm button click handler
+                document.getElementById('confirmButton').addEventListener('click', function() {
+                    if (pendingAction) {
+                        executeToggle(pendingAction.name);
+                        confirmModalInstance.hide();
+                        pendingAction = null;
+                    }
+                });
+                
+                // Reset pending action when modal is dismissed
+                modalElement.addEventListener('hidden.bs.modal', function() {
+                    pendingAction = null;
+                });
+            }
+            
             loadGlobalStatus();
             
             // Auto-refresh every 10 seconds for real-time sync
@@ -577,6 +625,40 @@
                 return;
             }
             
+            // Find user's current status
+            let currentStatus = 'unknown';
+            let userName = name;
+            for (const teamKey in globalStatusData.teams) {
+                const user = globalStatusData.teams[teamKey].find(u => u.name === name);
+                if (user) {
+                    currentStatus = user.status;
+                    userName = user.name;
+                    break;
+                }
+            }
+            
+            // Show confirmation modal
+            const action = currentStatus === 'checked-in' ? 'check out' : 'check in';
+            const actionIcon = currentStatus === 'checked-in' ? 'sign-out-alt' : 'sign-in-alt';
+            const actionColor = currentStatus === 'checked-in' ? '#f44336' : '#4caf50';
+            
+            const confirmMessage = document.getElementById('confirmMessage');
+            const confirmDetails = document.getElementById('confirmDetails');
+            const confirmButton = document.getElementById('confirmButton');
+            
+            confirmMessage.innerHTML = `
+                <i class="fas fa-${actionIcon}" style="color: ${actionColor}; font-size: 3rem; margin-bottom: 1rem;"></i>
+                <div style="font-size: 1.2rem; color: #666; margin-bottom: 0.5rem;">${action.toUpperCase()}</div>
+                <div style="font-size: 3.5rem; font-weight: 800; color: ${actionColor}; line-height: 1.2; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">${userName}</div>
+            `;
+            confirmDetails.textContent = `Are you sure you want to ${action} this person?`;
+            confirmButton.style.background = `linear-gradient(135deg, ${actionColor} 0%, ${actionColor}dd 100%)`;
+            
+            pendingAction = { name: userName };
+            confirmModalInstance.show();
+        }
+        
+        async function executeToggle(name) {
             // Add minimal global throttling
             const now = Date.now();
             const timeSinceLastRequest = now - lastRequestTime;
