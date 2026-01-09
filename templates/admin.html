@@ -437,100 +437,6 @@
                 </div>
             </div>
 
-            <!-- Names Management -->
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="mb-0">
-                        <i class="fas fa-users-cog"></i>
-                        Manage Team Names
-                    </h3>
-                </div>
-                <div class="card-body">
-                    <!-- CSV Upload -->
-                    <div class="row">
-                        <div class="col-md-8">
-                            <h5>Upload Users from CSV</h5>
-                            <div class="mb-3">
-                                <input type="file" class="form-control" id="csvFileInput" accept=".csv" />
-                                <div class="form-text">
-                                    Upload a CSV file with names, team numbers, and categories. Format: "Name","TeamNumber","Category", "Slack UID"
-                                </div>
-                            </div>
-                            <button class="btn btn-primary" onclick="uploadCSV()">
-                                <i class="fas fa-upload"></i> Upload Users
-                            </button>
-                        </div>
-                        <div class="col-md-4">
-                            <h6>CSV Format Example:</h6>
-                            <div class="bg-light p-3 rounded">
-                                <small class="text-muted">
-                                    "Name","Team","Category","Slack UID"<br>
-                                    "John Smith","4143","Design","U2WSQRY1M"<br>
-                                    "Jane Doe","4423","Software","U2WSB5753"<br>
-                                    "Mike Johnson","4143","Business","U2ZDFUPDW"<br>
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <hr class="my-4">
-                    
-                    <!-- Current Users List -->
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h5>Current Users List</h5>
-                            <div id="currentUsersList" class="list-group" style="max-height: 450px; overflow-y: auto;">
-                                <!-- Names will be loaded here -->
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <h5>Add Individual User</h5>
-                            <div class="mb-3">
-                                <label for="newNameInput" class="form-label">Full Name</label>
-                                <input type="text" class="form-control" id="newNameInput" placeholder="Enter full name" required>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="newUserTeam" class="form-label">Team</label>
-                                        <select class="form-control" id="newUserTeam" required>
-                                            <option value="">Select Team</option>
-                                            <option value="4143">4143</option>
-                                            <option value="4423">4423</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="newUserCategory" class="form-label">Category</label>
-                                        <select class="form-control" id="newUserCategory" required>
-                                            <option value="">Select Category</option>
-                                            <option value="Software">Software</option>
-                                            <option value="Design">Design</option>
-                                            <option value="Business">Business</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="mb-3">
-                                <label for="newUserSlackUID" class="form-label">Slack UID (Optional)</label>
-                                <input type="text" class="form-control" id="newUserSlackUID" placeholder="e.g., U09HX29UT70">
-                                <small class="form-text text-muted">Find this in Slack by viewing the user's profile</small>
-                            </div>
-                            <button class="btn btn-success" onclick="addName()">
-                                <i class="fas fa-plus"></i> Add User
-                            </button>
-                            <div class="alert alert-info mt-3">
-                                <small>
-                                    <i class="fas fa-info-circle"></i>
-                                    Changes take effect immediately. Users will see the updated list when they refresh.
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Records Management -->
             <div class="card">
                 <div class="card-header">
@@ -669,6 +575,100 @@
                             <i class="fas fa-info-circle"></i>
                             Enter the sign-in and sign-out times for the missed session. The system will create both check-in and check-out entries automatically.
                         </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Names Management -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="mb-0">
+                        <i class="fas fa-users-cog"></i>
+                        Manage Team Names
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <!-- CSV Upload -->
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h5>Upload Users from CSV</h5>
+                            <div class="mb-3">
+                                <input type="file" class="form-control" id="csvFileInput" accept=".csv" />
+                                <div class="form-text">
+                                    Upload a CSV file with names, team numbers, and categories. Format: "Name","TeamNumber","Category", "Slack UID"
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" onclick="uploadCSV()">
+                                <i class="fas fa-upload"></i> Upload Users
+                            </button>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>CSV Format Example:</h6>
+                            <div class="bg-light p-3 rounded">
+                                <small class="text-muted">
+                                    "Name","Team","Category","Slack UID"<br>
+                                    "John Smith","4143","Design","U2WSQRY1M"<br>
+                                    "Jane Doe","4423","Software","U2WSB5753"<br>
+                                    "Mike Johnson","4143","Business","U2ZDFUPDW"<br>
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4">
+                    
+                    <!-- Current Users List -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5>Current Users List</h5>
+                            <div id="currentUsersList" class="list-group" style="max-height: 450px; overflow-y: auto;">
+                                <!-- Names will be loaded here -->
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h5>Add Individual User</h5>
+                            <div class="mb-3">
+                                <label for="newNameInput" class="form-label">Full Name</label>
+                                <input type="text" class="form-control" id="newNameInput" placeholder="Enter full name" required>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="newUserTeam" class="form-label">Team</label>
+                                        <select class="form-control" id="newUserTeam" required>
+                                            <option value="">Select Team</option>
+                                            <option value="4143">4143</option>
+                                            <option value="4423">4423</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="newUserCategory" class="form-label">Category</label>
+                                        <select class="form-control" id="newUserCategory" required>
+                                            <option value="">Select Category</option>
+                                            <option value="Software">Software</option>
+                                            <option value="Design">Design</option>
+                                            <option value="Business">Business</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="newUserSlackUID" class="form-label">Slack UID (Optional)</label>
+                                <input type="text" class="form-control" id="newUserSlackUID" placeholder="e.g., U09HX29UT70">
+                                <small class="form-text text-muted">Find this in Slack by viewing the user's profile</small>
+                            </div>
+                            <button class="btn btn-success" onclick="addName()">
+                                <i class="fas fa-plus"></i> Add User
+                            </button>
+                            <div class="alert alert-info mt-3">
+                                <small>
+                                    <i class="fas fa-info-circle"></i>
+                                    Changes take effect immediately. Users will see the updated list when they refresh.
+                                </small>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1285,6 +1285,8 @@
         let currentWeekOffset = 0;
         let currentTeamFilter = '';
         let currentCategoryFilter = '';
+        let currentSortColumn = -1; // Track which column is currently sorted
+        let sortDirection = 1; // 1 for ascending, -1 for descending
 
         async function loadWeeklyAttendance() {
             try {
@@ -1300,6 +1302,7 @@
                     });
                     
                     filteredData = [...weeklyData]; // Initialize filtered data
+                    resetSortIcons(); // Reset sorting state when loading new data
                     applyFilters(); // Apply any existing filters
                     displayWeeklyAttendance(data);
                 } else {
@@ -1434,7 +1437,13 @@
         function sortWeeklyTable(columnIndex) {
             if (filteredData.length === 0) return;
             
-            sortDirection *= -1; // Toggle sort direction
+            // If clicking the same column, toggle direction; if different column, reset to ascending
+            if (currentSortColumn === columnIndex) {
+                sortDirection *= -1;
+            } else {
+                currentSortColumn = columnIndex;
+                sortDirection = 1; // Always start with ascending for new columns
+            }
             
             filteredData.sort((a, b) => {
                 let valueA, valueB;
@@ -1452,13 +1461,13 @@
                         valueA = a.category || '';
                         valueB = b.category || '';
                         return sortDirection * valueA.localeCompare(valueB);
-                    case 3: // Hours
-                        valueA = a.total_hours;
-                        valueB = b.total_hours;
+                    case 3: // Hours This Week
+                        valueA = parseFloat(a.total_hours) || 0;
+                        valueB = parseFloat(b.total_hours) || 0;
                         return sortDirection * (valueA - valueB);
-                    case 4: // Total Hours Ratio
-                        valueA = a.total_hours_ratio;
-                        valueB = b.total_hours_ratio;
+                    case 4: // Total Hours
+                        valueA = parseFloat(a.total_hours_ratio) || 0;
+                        valueB = parseFloat(b.total_hours_ratio) || 0;
                         return sortDirection * (valueA - valueB);
                     default:
                         return 0;
@@ -1467,13 +1476,16 @@
             
             renderWeeklyTable();
             
-            // Update sort icons
+            // Update sort icons - reset all to neutral, then set the active one
             document.querySelectorAll('#weeklyAttendanceTable th i').forEach(icon => {
                 icon.className = 'fas fa-sort';
             });
             
+            // Set the active column's sort icon
             const sortIcon = document.querySelectorAll('#weeklyAttendanceTable th i')[columnIndex];
-            sortIcon.className = sortDirection === 1 ? 'fas fa-sort-up' : 'fas fa-sort-down';
+            if (sortIcon) {
+                sortIcon.className = sortDirection === 1 ? 'fas fa-sort-up' : 'fas fa-sort-down';
+            }
         }
 
         function applyFilters() {
@@ -1486,7 +1498,12 @@
                 return teamMatch && categoryMatch;
             });
             
-            renderWeeklyTable();
+            // Re-apply current sort if one is active
+            if (currentSortColumn !== -1) {
+                sortWeeklyTable(currentSortColumn);
+            } else {
+                renderWeeklyTable();
+            }
         }
 
         function clearFilters() {
@@ -1495,7 +1512,22 @@
             currentTeamFilter = '';
             currentCategoryFilter = '';
             filteredData = [...weeklyData];
-            renderWeeklyTable();
+            
+            // Re-apply current sort if one is active
+            if (currentSortColumn !== -1) {
+                sortWeeklyTable(currentSortColumn);
+            } else {
+                renderWeeklyTable();
+            }
+        }
+
+        function resetSortIcons() {
+            // Reset all sort icons to neutral state
+            document.querySelectorAll('#weeklyAttendanceTable th i').forEach(icon => {
+                icon.className = 'fas fa-sort';
+            });
+            currentSortColumn = -1;
+            sortDirection = 1;
         }
 
         function changeWeek(offset) {
