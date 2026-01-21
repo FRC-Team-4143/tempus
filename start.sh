@@ -24,4 +24,4 @@ fi
 
 # Start the application
 echo "🚀 Starting application..."
-python -m app.app
+python3 -m app.app

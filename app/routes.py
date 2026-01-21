@@ -413,24 +413,26 @@ def health_check():
 def quick_status():
     """Quick status overview"""
     try:
-        today = datetime.now().strftime('%Y-%m-%d')
-        records = local_db.get_records(date_filter=today)
+        # Get all records to determine current status
+        records = local_db.get_records()
 
-        # Count current check-ins (check-ins minus check-outs)
-        user_status = {}
+        # Find the most recent action for each user to determine current status
+        user_last_action = {}
         for record in records:
             name = record['Name']
+            timestamp = record['Timestamp']
             action = record['Action']
+            
+            # Keep track of the most recent action for each user
+            if name not in user_last_action or timestamp > user_last_action[name]['timestamp']:
+                user_last_action[name] = {
+                    'timestamp': timestamp,
+                    'action': action
+                }
 
-            if name not in user_status:
-                user_status[name] = 0
-
-            if action == 'check-in':
-                user_status[name] += 1
-            elif action == 'check-out':
-                user_status[name] -= 1
-
-        checked_in_count = sum(1 for count in user_status.values() if count > 0)
+        # Count users whose last action was check-in
+        checked_in_count = sum(1 for user_data in user_last_action.values() 
+                              if user_data['action'] == 'check-in')
 
         return jsonify({
             'success': True,
@@ -866,6 +868,7 @@ def api_weekly_attendance():
         logger.error(f"Error getting weekly attendance: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+@auth.login_required
 def api_slack_notify():
     """Manually trigger Slack notifications for users not meeting attendance requirements"""
     try:
@@ -882,6 +885,7 @@ def api_slack_notify():
         logger.error(f"Error triggering Slack notifications: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+@auth.login_required
 def api_slack_test():
     """Send a test Slack notification to a specific user"""
     try:

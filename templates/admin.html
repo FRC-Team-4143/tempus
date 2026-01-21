@@ -329,13 +329,13 @@
                         </div>
                         <div class="col-auto">
                             <div class="btn-group" role="group">
-                                <button class="btn btn-light btn-sm" onclick="changeWeek(1)">
+                                <button class="btn btn-primary" onclick="changeWeek(1)">
                                     <i class="fas fa-chevron-left"></i> Previous
                                 </button>
-                                <button class="btn btn-light btn-sm" id="currentWeekBtn" onclick="changeWeek(0)">
+                                <button class="btn btn-primary" id="currentWeekBtn" onclick="changeWeek(0)">
                                     Current Week
                                 </button>
-                                <button class="btn btn-light btn-sm" onclick="changeWeek(-1)">
+                                <button class="btn btn-primary" onclick="changeWeek(-1)">
                                     <i class="fas fa-chevron-right"></i> Next
                                 </button>
                             </div>
@@ -468,7 +468,7 @@
                             <input type="date" class="form-control" id="recordDateTo">
                         </div>
                         <div class="col-md-2 d-flex align-items-end gap-2">
-                            <button class="btn btn-primary" onclick="loadRecords()">
+                            <button class="btn btn-success" onclick="loadRecords()">
                                 <i class="fas fa-search"></i> Search
                             </button>
                             <button class="btn btn-warning" onclick="recalculateDurations()" title="Fix missing durations">
@@ -598,7 +598,7 @@
                                     Upload a CSV file with names, team numbers, and categories. Format: "Name","TeamNumber","Category", "Slack UID"
                                 </div>
                             </div>
-                            <button class="btn btn-primary" onclick="uploadCSV()">
+                            <button class="btn btn-success" onclick="uploadCSV()">
                                 <i class="fas fa-upload"></i> Upload Users
                             </button>
                         </div>
@@ -672,6 +672,74 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Slack Notifications -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h3 class="mb-0">
+                                <i class="fab fa-slack"></i>
+                                Slack Notifications
+                            </h3>
+                            <p class="mb-0 mt-1">Send attendance notifications to students and mentors</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Slack Configuration Status -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="alert" id="slackConfigStatus" style="margin-bottom: 0;">
+                                <i class="fas fa-spinner fa-spin"></i> Checking Slack configuration...
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Notification Controls -->
+                    <div class="row g-4">
+                        <div class="col-md-6">
+                            <div class="border rounded p-4" style="background: linear-gradient(135deg, rgba(74, 144, 226, 0.1) 0%, rgba(53, 123, 216, 0.1) 100%); border-color: #4a90e2 !important;">
+                                <h5 class="text-primary mb-3">
+                                    <i class="fas fa-bell"></i> Weekly Attendance Notifications
+                                </h5>
+                                <p class="mb-3 text-muted">Send weekly attendance summaries to all students. Students below attendance targets will also include mentors in group messages.</p>
+                                <div class="mb-3">
+                                    <label for="weeksBackSelect" class="form-label">Week to Send:</label>
+                                    <select class="form-control" id="weeksBackSelect">
+                                        <option value="0">Current Week</option>
+                                        <option value="1">Last Week</option>
+                                        <option value="2">2 Weeks Ago</option>
+                                        <option value="3">3 Weeks Ago</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-success" onclick="sendSlackNotifications()">
+                                    <i class="fab fa-slack"></i> Send Weekly Notifications
+                                </button>
+                                <div id="slackNotifyStatus" class="mt-3" style="display: none;"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="border rounded p-4" style="background: linear-gradient(135deg, rgba(255, 107, 107, 0.1) 0%, rgba(238, 90, 82, 0.1) 100%); border-color: #ff6b6b !important;">
+                                <h5 class="text-danger mb-3">
+                                    <i class="fas fa-vial"></i> Test Slack Notification
+                                </h5>
+                                <p class="mb-3 text-muted">Send a test notification to a specific user to verify the Slack integration is working properly.</p>
+                                <div class="mb-3">
+                                    <label for="testUserSelect" class="form-label">Select User:</label>
+                                    <select class="form-control" id="testUserSelect">
+                                        <option value="">Loading users...</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-success" onclick="sendTestSlackNotification()" id="testSlackBtn">
+                                    <i class="fas fa-paper-plane"></i> Send Test Message
+                                </button>
+                                <div id="slackTestStatus" class="mt-3" style="display: none;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -733,21 +801,30 @@
         $(document).ready(function() {
             // Load initial data
             loadCurrentUsers();
-
-            // Setup real-time updates for admin dashboard
-            setupAdminRealTimeUpdates();
+            
+            // Load Slack-related data
+            loadUsersForSlack();
+            checkSlackConfiguration();
 
             // Load summary data immediately
             (async function() {
                 try {
+                    console.log('Loading initial admin data...');
+                    
                     // Refresh dashboard summary data
                     await refreshData();
                     
                     // Load currently signed in count
-                    const statusResponse = await fetch('/api/quick-status');
+                    console.log('Fetching quick-status...');
+                    const statusResponse = await fetch('/api/quick-status?' + Date.now());
                     const statusData = await statusResponse.json();
+                    console.log('Quick status response:', statusData);
+                    
                     if (statusData.success) {
-                        document.getElementById('currentlySignedIn').textContent = statusData.checked_in || 0;
+                        const element = document.getElementById('currentlySignedIn');
+                        console.log('Found element:', element);
+                        element.textContent = statusData.checked_in || 0;
+                        console.log('Set text to:', statusData.checked_in);
                     }
                 } catch (error) {
                     console.error('Error loading initial data:', error);
@@ -1181,10 +1258,15 @@
                 document.getElementById('uniqueUsers').textContent = summaryData.summary.unique_users || 0;
                 
                 // Update currently signed in count
-                const statusResponse = await fetch('/api/quick-status');
+                console.log('Refreshing quick-status...');
+                const statusResponse = await fetch('/api/quick-status?' + Date.now());
                 const statusData = await statusResponse.json();
+                console.log('Refresh quick status response:', statusData);
+                
                 if (statusData.success) {
-                    document.getElementById('currentlySignedIn').textContent = statusData.checked_in || 0;
+                    const element = document.getElementById('currentlySignedIn');
+                    element.textContent = statusData.checked_in || 0;
+                    console.log('Updated currentlySignedIn to:', statusData.checked_in);
                 }
                 
                 // Refresh weekly attendance data
@@ -1265,18 +1347,6 @@
             } catch (error) {
                 // SSE not supported for admin dashboard
             }
-        }
-
-        // Real-time updates for admin dashboard
-        function setupAdminRealTimeUpdates() {
-            // Update summary cards if they exist
-            const totalCheckIns = document.getElementById('totalCheckIns');
-            const totalCheckOuts = document.getElementById('totalCheckOuts');
-            const uniqueUsers = document.getElementById('uniqueUsers');
-            
-            if (totalCheckIns) totalCheckIns.textContent = summary.total_check_ins || 0;
-            if (totalCheckOuts) totalCheckOuts.textContent = summary.total_check_outs || 0;
-            if (uniqueUsers) uniqueUsers.textContent = summary.unique_users || 0;
         }
 
         // Weekly Attendance Functions
@@ -1824,6 +1894,154 @@
             } catch (error) {
                 console.error('Error verifying hours consistency:', error);
                 showToast('Error verifying hours consistency', 'error');
+            }
+        }
+
+        // Slack notification functions
+        async function loadUsersForSlack() {
+            try {
+                const response = await fetch('/api/preset-names');
+                const data = await response.json();
+                const select = document.getElementById('testUserSelect');
+                
+                select.innerHTML = '<option value="">Select a user...</option>';
+                
+                data.names.forEach(user => {
+                    // Skip team headers
+                    if (user.team !== 'header') {
+                        const option = document.createElement('option');
+                        option.value = user.name;
+                        option.textContent = user.name;
+                        select.appendChild(option);
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Error loading users for Slack test:', error);
+                document.getElementById('testUserSelect').innerHTML = '<option value="">Error loading users</option>';
+            }
+        }
+
+        async function checkSlackConfiguration() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                const statusDiv = document.getElementById('slackConfigStatus');
+                
+                if (data.services && data.services.slack_configured && data.connectivity && data.connectivity.slack) {
+                    statusDiv.className = 'alert alert-success';
+                    statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Slack is configured and connected properly.';
+                } else if (data.services && data.services.slack_configured && data.connectivity && !data.connectivity.slack) {
+                    statusDiv.className = 'alert alert-warning';
+                    statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Slack is configured but currently not connected. Check internet connection.';
+                } else {
+                    statusDiv.className = 'alert alert-danger';
+                    statusDiv.innerHTML = '<i class="fas fa-times-circle"></i> Slack is not configured. Check your SLACK_BOT_TOKEN and SLACK_ENABLED settings.';
+                }
+                
+            } catch (error) {
+                console.error('Error checking Slack configuration:', error);
+                const statusDiv = document.getElementById('slackConfigStatus');
+                statusDiv.className = 'alert alert-danger';
+                statusDiv.innerHTML = '<i class="fas fa-times-circle"></i> Error checking Slack configuration.';
+            }
+        }
+
+        async function sendSlackNotifications() {
+            const weeksBack = document.getElementById('weeksBackSelect').value;
+            const statusDiv = document.getElementById('slackNotifyStatus');
+            
+            try {
+                // Show loading state
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'alert alert-info';
+                statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending Slack notifications...';
+                
+                const response = await fetch(`/api/slack-notify?weeks_back=${weeksBack}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusDiv.className = 'alert alert-success';
+                    const weekText = weeksBack === '0' ? 'current week' : 
+                                   weeksBack === '1' ? 'last week' : 
+                                   `${weeksBack} weeks ago`;
+                    let message = `<i class="fas fa-check-circle"></i> Successfully sent notifications for ${weekText}!<br>`;
+                    message += `<small>• ${data.notified_users.length} users notified`;
+                    if (data.failed_users && data.failed_users.length > 0) {
+                        message += `<br>• ${data.failed_users.length} failed to send`;
+                    }
+                    if (data.skipped_users && data.skipped_users.length > 0) {
+                        message += `<br>• ${data.skipped_users.length} skipped (no Slack ID)`;
+                    }
+                    message += `</small>`;
+                    statusDiv.innerHTML = message;
+                } else {
+                    statusDiv.className = 'alert alert-danger';
+                    statusDiv.innerHTML = `<i class="fas fa-times-circle"></i> Error: ${data.message || data.error || 'Failed to send notifications'}`;
+                    if (data.offline) {
+                        statusDiv.innerHTML += '<br><small>Check your internet connection.</small>';
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Error sending Slack notifications:', error);
+                statusDiv.className = 'alert alert-danger';
+                statusDiv.innerHTML = '<i class="fas fa-times-circle"></i> Error sending notifications. Please try again.';
+            }
+        }
+
+        async function sendTestSlackNotification() {
+            const userName = document.getElementById('testUserSelect').value;
+            const statusDiv = document.getElementById('slackTestStatus');
+            const button = document.getElementById('testSlackBtn');
+            
+            if (!userName) {
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'alert alert-warning';
+                statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Please select a user first.';
+                return;
+            }
+            
+            try {
+                // Show loading state
+                button.disabled = true;
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'alert alert-info';
+                statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending test notification...';
+                
+                const response = await fetch('/api/slack-test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name: userName })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusDiv.className = 'alert alert-success';
+                    statusDiv.innerHTML = `<i class="fas fa-check-circle"></i> ${data.message}`;
+                } else {
+                    statusDiv.className = 'alert alert-danger';
+                    statusDiv.innerHTML = `<i class="fas fa-times-circle"></i> Error: ${data.message || data.error || 'Failed to send test notification'}`;
+                }
+                
+            } catch (error) {
+                console.error('Error sending test Slack notification:', error);
+                statusDiv.className = 'alert alert-danger';
+                statusDiv.innerHTML = '<i class="fas fa-times-circle"></i> Error sending test notification. Please try again.';
+            } finally {
+                // Reset button state
+                button.disabled = false;
+                button.innerHTML = '<i class="fas fa-paper-plane"></i> Send Test Message';
             }
         }
     </script>

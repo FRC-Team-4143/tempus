@@ -40,6 +40,12 @@ class SlackNotifier:
                 logger.error(f"❌ Failed to connect to Slack: {e}")
                 self.enabled = False
                 self.client = None
+            except Exception as e:
+                logger.error(f"❌ Unexpected error connecting to Slack: {e}")
+                self.enabled = False
+                self.client = None
+                self.enabled = False
+                self.client = None
         else:
             self.client = None
             if not self.enabled:
