@@ -557,6 +557,57 @@ def get_preset_names():
 
     return jsonify({'success': True, 'names': names_with_teams})
 
+def get_slack_test_users():
+    """Get list of users and mentors for Slack test notifications"""
+    try:
+        # Get students from PRESET_NAMES
+        team_mapping = get_team_roster_mapping()
+        users_list = []
+        
+        # Add students
+        for name in PRESET_NAMES:
+            if not name.startswith('--- Team'):
+                team = team_mapping.get(name, 'unknown')
+                users_list.append({
+                    'name': name,
+                    'team': team,
+                    'type': 'student'
+                })
+        
+        # Add mentors from mentors.csv
+        mentors_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'mentors.csv')
+        if os.path.exists(mentors_path):
+            with open(mentors_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('"TeamNumber"'):  # Skip header
+                        # Parse CSV: "TeamNumber","Category","MentorName","SlackUserID"
+                        parts = [part.strip('"') for part in line.split(',')]
+                        if len(parts) >= 4:
+                            team = parts[0]
+                            category = parts[1]
+                            mentor_name = parts[2]
+                            slack_id = parts[3]
+                            
+                            if slack_id and mentor_name:  # Only add if has Slack ID and name
+                                # Avoid duplicates
+                                if not any(u['name'] == mentor_name for u in users_list):
+                                    users_list.append({
+                                        'name': mentor_name,
+                                        'team': team,
+                                        'type': 'mentor',
+                                        'category': category
+                                    })
+        
+        # Sort by type (students first), then by name
+        users_list.sort(key=lambda x: (x['type'] == 'mentor', x['name']))
+        
+        return jsonify({'success': True, 'users': users_list})
+        
+    except Exception as e:
+        logger.error(f"Error loading users for Slack test: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 def upload_names():
     """Upload names from CSV"""
     if 'file' not in request.files:
@@ -874,10 +925,17 @@ def api_slack_notify():
     try:
         from .slack_notifier import SlackNotifier
         
-        weeks_back = int(request.args.get('weeks_back', 0))
+        # Get data from request body if present, otherwise from query params (backwards compatibility)
+        if request.is_json:
+            data = request.get_json()
+            weeks_back = data.get('weeks_back', 0)
+            custom_message = data.get('custom_message')
+        else:
+            weeks_back = int(request.args.get('weeks_back', 0))
+            custom_message = None
         
         notifier = SlackNotifier()
-        result = notifier.check_and_notify_weekly_attendance(weeks_back)
+        result = notifier.check_and_notify_weekly_attendance(weeks_back, custom_message)
         
         return jsonify(result)
         

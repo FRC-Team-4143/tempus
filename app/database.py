@@ -564,8 +564,15 @@ class LocalDatabase:
 
                 records = cursor.fetchall()
 
-                # Get total hours for all users
-                cursor.execute('SELECT name, total_hours FROM user_hours')
+                # Calculate total hours for all users up to the end of this week
+                # This ensures historical weeks show the correct cumulative totals
+                cursor.execute('''
+                    SELECT name, SUM(duration_hours) as total_hours
+                    FROM attendance_records
+                    WHERE ((action = 'check-out' AND duration_hours > 0) OR action = 'manual_adjustment')
+                    AND date(timestamp) <= ?
+                    GROUP BY name
+                ''', (week_end_str,))
                 user_total_hours = {name: hours for name, hours in cursor.fetchall()}
 
                 conn.close()

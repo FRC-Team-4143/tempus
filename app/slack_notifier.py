@@ -192,11 +192,12 @@ class SlackNotifier:
             logger.error(f"❌ Failed to send Slack group DM to {user_ids}: {e}")
             return False
     
-    def check_and_notify_weekly_attendance(self, weeks_back: int = 0) -> Dict[str, any]:
+    def check_and_notify_weekly_attendance(self, weeks_back: int = 0, custom_message: str = None) -> Dict[str, any]:
         """Send weekly attendance summaries to all students
         
         Args:
             weeks_back: Number of weeks back to check (0 = current week)
+            custom_message: Optional custom message to append to notifications
             
         Returns:
             Dictionary with notification results
@@ -254,7 +255,7 @@ class SlackNotifier:
                 needs_mentor = season_status in ['warning', 'danger']
                 
                 # Format the notification message
-                message = self._format_attendance_message(name, data, team_mapping, category_mapping)
+                message = self._format_attendance_message(name, data, team_mapping, category_mapping, custom_message=custom_message)
                 
                 # If student needs intervention, include mentor(s) in group DM
                 if needs_mentor and team and category:
@@ -270,7 +271,7 @@ class SlackNotifier:
                     
                     if len(recipients) > 1:  # At least student + one mentor
                         # Send as group DM with mentor(s) - use condensed mentor alert format
-                        mentor_message = self._format_attendance_message(name, data, team_mapping, category_mapping, mentor_alert=True)
+                        mentor_message = self._format_attendance_message(name, data, team_mapping, category_mapping, mentor_alert=True, custom_message=custom_message)
                         if self.send_group_dm(recipients, mentor_message):
                             notified_users.append(name)
                             logger.info(f"Sent group DM to {name} with {len(recipients)-1} mentor(s)")
@@ -314,7 +315,7 @@ class SlackNotifier:
     
     def _format_attendance_message(self, name: str, data: Dict, 
                                    team_mapping: Dict, category_mapping: Dict,
-                                   mentor_alert: bool = False) -> str:
+                                   mentor_alert: bool = False, custom_message: str = None) -> str:
         """Format the attendance notification message
         
         Args:
@@ -367,6 +368,10 @@ Week of *{data['week_start']} to {data['week_end']}*
         elif season_status_key == 'good':
             message += "\n🎉 Keep up the great work!\n"
         
+        # Add custom message if provided
+        if custom_message and custom_message.strip():
+            message += f"\n📝 *Custom Message:*\n{custom_message.strip()}\n"
+        
         return message
     
     def send_test_notification(self, user_name: str) -> Dict[str, any]:
@@ -385,10 +390,30 @@ Week of *{data['week_start']} to {data['week_end']}*
             }
         
         try:
-            # Load Slack user mapping
+            # Load Slack user mapping (students)
             slack_mapping = self.load_slack_user_mapping()
             
             slack_id = slack_mapping.get(user_name)
+            
+            # If not found in student mapping, check mentor mapping
+            if not slack_id:
+                mentor_mapping, lead_mentor_id = self.load_mentor_mapping()
+                # Search through mentor mapping for the user name
+                mentors_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'mentors.csv')
+                if os.path.exists(mentors_path):
+                    with open(mentors_path, 'r', encoding='utf-8') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line and not line.startswith('"TeamNumber"'):  # Skip header
+                                # Parse CSV: "TeamNumber","Category","MentorName","SlackUserID"
+                                parts = [part.strip('"') for part in line.split(',')]
+                                if len(parts) >= 4:
+                                    mentor_name = parts[2]
+                                    mentor_slack_id = parts[3]
+                                    if mentor_name == user_name and mentor_slack_id:
+                                        slack_id = mentor_slack_id
+                                        break
+            
             if not slack_id:
                 return {
                     'success': False,

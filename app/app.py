@@ -16,7 +16,7 @@ from .database import LocalDatabase
 from .routes import (
     index, admin, leaderboard, check_in, check_out, get_status, get_summary,
     get_records, health_check, quick_status, global_status, status_stream,
-    get_preset_names, upload_names, add_name, remove_name, toggle_attendance,
+    get_preset_names, get_slack_test_users, upload_names, add_name, remove_name, toggle_attendance,
     sign_out_all, api_manual_sync, api_user_hours_summary,
     api_weekly_attendance, api_slack_notify, api_slack_test, auth,
     api_get_all_records, api_get_record, api_update_record, api_delete_record,
@@ -74,6 +74,7 @@ app.add_url_rule('/api/quick-status', 'quick_status', quick_status, methods=['GE
 app.add_url_rule('/api/global-status', 'global_status', global_status, methods=['GET'])
 app.add_url_rule('/api/status-stream/<name>', 'status_stream', status_stream, methods=['GET'])
 app.add_url_rule('/api/preset-names', 'get_preset_names', get_preset_names, methods=['GET'])
+app.add_url_rule('/api/slack-test-users', 'get_slack_test_users', get_slack_test_users, methods=['GET'])
 app.add_url_rule('/api/upload-names', 'upload_names', upload_names, methods=['POST'])
 app.add_url_rule('/api/add-name', 'add_name', add_name, methods=['POST'])
 app.add_url_rule('/api/remove-name', 'remove_name', remove_name, methods=['POST'])

@@ -713,6 +713,11 @@
                                         <option value="3">3 Weeks Ago</option>
                                     </select>
                                 </div>
+                                <div class="mb-3">
+                                    <label for="customMessage" class="form-label">Custom Message (optional):</label>
+                                    <textarea class="form-control" id="customMessage" rows="3" placeholder="Add a custom message to include with the attendance summary..."></textarea>
+                                    <small class="text-muted">This message will be added to the end of each attendance notification.</small>
+                                </div>
                                 <button class="btn btn-success" onclick="sendSlackNotifications()">
                                     <i class="fab fa-slack"></i> Send Weekly Notifications
                                 </button>
@@ -1900,21 +1905,43 @@
         // Slack notification functions
         async function loadUsersForSlack() {
             try {
-                const response = await fetch('/api/preset-names');
+                const response = await fetch('/api/slack-test-users');
                 const data = await response.json();
                 const select = document.getElementById('testUserSelect');
                 
                 select.innerHTML = '<option value="">Select a user...</option>';
                 
-                data.names.forEach(user => {
-                    // Skip team headers
-                    if (user.team !== 'header') {
-                        const option = document.createElement('option');
-                        option.value = user.name;
-                        option.textContent = user.name;
-                        select.appendChild(option);
+                if (data.success && data.users) {
+                    // Group users by type
+                    const students = data.users.filter(u => u.type === 'student');
+                    const mentors = data.users.filter(u => u.type === 'mentor');
+                    
+                    // Add students first
+                    if (students.length > 0) {
+                        const studentsGroup = document.createElement('optgroup');
+                        studentsGroup.label = 'Students';
+                        students.forEach(user => {
+                            const option = document.createElement('option');
+                            option.value = user.name;
+                            option.textContent = `${user.name} (Team ${user.team})`;
+                            studentsGroup.appendChild(option);
+                        });
+                        select.appendChild(studentsGroup);
                     }
-                });
+                    
+                    // Add mentors
+                    if (mentors.length > 0) {
+                        const mentorsGroup = document.createElement('optgroup');
+                        mentorsGroup.label = 'Mentors';
+                        mentors.forEach(user => {
+                            const option = document.createElement('option');
+                            option.value = user.name;
+                            option.textContent = `${user.name} (${user.category} - Team ${user.team})`;
+                            mentorsGroup.appendChild(option);
+                        });
+                        select.appendChild(mentorsGroup);
+                    }
+                }
                 
             } catch (error) {
                 console.error('Error loading users for Slack test:', error);
@@ -1949,6 +1976,7 @@
 
         async function sendSlackNotifications() {
             const weeksBack = document.getElementById('weeksBackSelect').value;
+            const customMessage = document.getElementById('customMessage').value.trim();
             const statusDiv = document.getElementById('slackNotifyStatus');
             
             try {
@@ -1957,11 +1985,18 @@
                 statusDiv.className = 'alert alert-info';
                 statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending Slack notifications...';
                 
-                const response = await fetch(`/api/slack-notify?weeks_back=${weeksBack}`, {
+                // Prepare request body
+                const requestBody = {
+                    weeks_back: parseInt(weeksBack),
+                    custom_message: customMessage || null
+                };
+                
+                const response = await fetch('/api/slack-notify', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    body: JSON.stringify(requestBody)
                 });
                 
                 const data = await response.json();
