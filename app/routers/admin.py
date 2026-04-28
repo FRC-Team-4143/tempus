@@ -1,0 +1,820 @@
+"""
+Admin routes — password-protected web UI.
+
+Auth: session cookie signed with itsdangerous.
+"""
+import csv
+import hashlib
+import io
+from datetime import date, datetime, timedelta
+from typing import Optional
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.templating import Jinja2Templates
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.config import settings
+from app.database import get_db
+from app.models import (
+    AttendanceSession, FocusCategory, Mentor, SessionStatus, Student, Team, WeeklyRequirement,
+)
+
+router = APIRouter(prefix="/admin")
+templates = Jinja2Templates(directory="app/templates")
+
+_signer = URLSafeTimedSerializer(settings.session_secret, salt="admin-session")
+_COOKIE = "admin_session"
+_MAX_AGE = 60 * 60 * 12  # 12 hours
+
+
+# ── Auth helpers ───────────────────────────────────────────────────────────────
+
+def _is_authenticated(request: Request) -> bool:
+    token = request.cookies.get(_COOKIE)
+    if not token:
+        return False
+    try:
+        _signer.loads(token, max_age=_MAX_AGE)
+        return True
+    except (BadSignature, SignatureExpired):
+        return False
+
+
+def _require_auth(request: Request) -> None | RedirectResponse:
+    if not _is_authenticated(request):
+        return RedirectResponse("/admin/login", status_code=303)
+    return None
+
+
+def _make_session_cookie() -> str:
+    return _signer.dumps("authenticated")
+
+
+# ── Login / logout ─────────────────────────────────────────────────────────────
+
+@router.get("/login", response_class=HTMLResponse)
+async def admin_login_get(request: Request, error: str = ""):
+    return templates.TemplateResponse(
+        "admin/login.html", {"request": request, "error": error}
+    )
+
+
+@router.post("/login")
+async def admin_login_post(
+    request: Request,
+    password: str = Form(...),
+):
+    if password != settings.admin_password:
+        return templates.TemplateResponse(
+            "admin/login.html",
+            {"request": request, "error": "Incorrect password."},
+            status_code=401,
+        )
+    response = RedirectResponse("/admin", status_code=303)
+    response.set_cookie(
+        _COOKIE,
+        _make_session_cookie(),
+        httponly=True,
+        samesite="lax",
+        max_age=_MAX_AGE,
+    )
+    return response
+
+
+@router.get("/logout")
+async def admin_logout():
+    response = RedirectResponse("/admin/login", status_code=303)
+    response.delete_cookie(_COOKIE)
+    return response
+
+
+# ── Dashboard ──────────────────────────────────────────────────────────────────
+
+@router.get("", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse)
+async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
+    if redirect := _require_auth(request):
+        return redirect
+
+    # Currently signed in
+    signed_in_result = await db.execute(
+        select(AttendanceSession)
+        .options(selectinload(AttendanceSession.student).selectinload(Student.team))
+        .where(AttendanceSession.sign_out_time.is_(None))
+        .order_by(AttendanceSession.sign_in_time)
+    )
+    signed_in = signed_in_result.scalars().all()
+
+    # Leaderboard: total hours per student
+    lboard_result = await db.execute(
+        select(
+            Student.id,
+            Student.name,
+            Team.number.label("team_number"),
+            func.coalesce(func.sum(AttendanceSession.hours_counted), 0.0).label("total"),
+        )
+        .join(AttendanceSession, AttendanceSession.student_id == Student.id, isouter=True)
+        .join(Team, Team.id == Student.team_id)
+        .where(Student.active.is_(True))
+        .group_by(Student.id)
+        .order_by(func.coalesce(func.sum(AttendanceSession.hours_counted), 0.0).desc())
+    )
+    leaderboard = lboard_result.all()
+
+    # Active students not currently signed in (for manual sign-in dropdown)
+    signed_in_ids = {s.student_id for s in signed_in}
+    all_active_result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.team))
+        .where(Student.active.is_(True))
+        .order_by(Student.name)
+    )
+    all_active = all_active_result.scalars().all()
+    not_signed_in = [s for s in all_active if s.id not in signed_in_ids]
+
+    return templates.TemplateResponse(
+        "admin/dashboard.html",
+        {
+            "request": request,
+            "signed_in": signed_in,
+            "leaderboard": leaderboard,
+            "not_signed_in": not_signed_in,
+        },
+    )
+
+
+# ── Manual sign-in ────────────────────────────────────────────────────────────
+
+@router.post("/manual-signin")
+async def admin_manual_signin(
+    request: Request,
+    student_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    from app.services.attendance import get_open_session
+    from app.services.broadcaster import broadcaster
+
+    result = await db.execute(select(Student).where(Student.id == student_id))
+    student = result.scalars().first()
+    if student:
+        open_session = await get_open_session(db, student.id)
+        if not open_session:
+            db.add(AttendanceSession(
+                student_id=student.id,
+                sign_in_time=datetime.utcnow(),
+            ))
+            await db.commit()
+            await broadcaster.broadcast("update")
+
+    return RedirectResponse("/admin", status_code=303)
+
+
+# ── Students ───────────────────────────────────────────────────────────────────
+
+@router.get("/students", response_class=HTMLResponse)
+async def admin_students_list(request: Request, db: AsyncSession = Depends(get_db)):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.team))
+        .order_by(Student.name)
+    )
+    students = result.scalars().all()
+
+    teams_result = await db.execute(select(Team).order_by(Team.number))
+    teams = teams_result.scalars().all()
+
+    return templates.TemplateResponse(
+        "admin/students.html",
+        {"request": request, "students": students, "teams": teams, "categories": list(FocusCategory)},
+    )
+
+
+@router.post("/students")
+async def admin_students_create(
+    request: Request,
+    name: str = Form(...),
+    team_id: int = Form(...),
+    category: Optional[str] = Form(None),
+    slack_user_id: Optional[str] = Form(None),
+    active: bool = Form(True),
+    db: AsyncSession = Depends(get_db),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    if not category:
+        teams_result = await db.execute(select(Team).order_by(Team.number))
+        students_result = await db.execute(
+            select(Student).options(selectinload(Student.team)).order_by(Student.name)
+        )
+        return templates.TemplateResponse(
+            "admin/students.html",
+            {
+                "request": request,
+                "students": students_result.scalars().all(),
+                "teams": teams_result.scalars().all(),
+                "categories": list(FocusCategory),
+                "error": "Category is required.",
+            },
+        )
+
+    student = Student(
+        name=name.strip(),
+        student_code=hashlib.sha256(name.strip().lower().encode()).hexdigest()[:8],
+        team_id=team_id,
+        category=FocusCategory(category),
+        slack_user_id=slack_user_id.strip() if slack_user_id else None,
+        active=active,
+    )
+    db.add(student)
+    await db.commit()
+    return RedirectResponse("/admin/students", status_code=303)
+
+
+@router.get("/students/{student_id}/edit", response_class=HTMLResponse)
+async def admin_students_edit_get(
+    student_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(
+        select(Student).options(selectinload(Student.team)).where(Student.id == student_id)
+    )
+    student = result.scalars().first()
+    if not student:
+        return RedirectResponse("/admin/students", status_code=303)
+
+    teams_result = await db.execute(select(Team).order_by(Team.number))
+    teams = teams_result.scalars().all()
+
+    return templates.TemplateResponse(
+        "admin/student_edit.html",
+        {"request": request, "student": student, "teams": teams, "categories": list(FocusCategory)},
+    )
+
+
+@router.post("/students/{student_id}/edit")
+async def admin_students_edit_post(
+    student_id: int,
+    request: Request,
+    name: str = Form(...),
+    team_id: int = Form(...),
+    category: Optional[str] = Form(None),
+    slack_user_id: Optional[str] = Form(None),
+    active: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    if not category:
+        s_result = await db.execute(
+            select(Student).options(selectinload(Student.team)).where(Student.id == student_id)
+        )
+        student = s_result.scalars().first()
+        teams_result = await db.execute(select(Team).order_by(Team.number))
+        return templates.TemplateResponse(
+            "admin/student_edit.html",
+            {
+                "request": request,
+                "student": student,
+                "teams": teams_result.scalars().all(),
+                "categories": list(FocusCategory),
+                "error": "Category is required.",
+            },
+        )
+
+    result = await db.execute(select(Student).where(Student.id == student_id))
+    student = result.scalars().first()
+    if student:
+        student.name = name.strip()
+        student.team_id = team_id
+        student.category = FocusCategory(category)
+        student.slack_user_id = slack_user_id.strip() if slack_user_id else None
+        student.active = active == "on"
+        await db.commit()
+    return RedirectResponse("/admin/students", status_code=303)
+
+
+@router.post("/students/{student_id}/delete")
+async def admin_students_delete(
+    student_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    await db.execute(delete(Student).where(Student.id == student_id))
+    await db.commit()
+    return RedirectResponse("/admin/students", status_code=303)
+
+
+@router.post("/students/{student_id}/notify")
+async def admin_students_notify(
+    student_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    from app.services.slack_client import notify_student_hours
+    background_tasks.add_task(notify_student_hours, student_id)
+    return RedirectResponse("/admin/students?notified=1", status_code=303)
+
+
+@router.post("/students/notify-all")
+async def admin_students_notify_all(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    from app.services.slack_client import notify_student_hours
+    result = await db.execute(
+        select(Student).where(Student.active.is_(True), Student.slack_user_id.is_not(None))
+    )
+    students = result.scalars().all()
+    for s in students:
+        background_tasks.add_task(notify_student_hours, s.id)
+    return RedirectResponse(f"/admin/students?notified={len(students)}", status_code=303)
+
+
+# ── Mentors ────────────────────────────────────────────────────────────────────
+
+@router.get("/mentors", response_class=HTMLResponse)
+async def admin_mentors_list(request: Request, db: AsyncSession = Depends(get_db)):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(
+        select(Mentor).options(selectinload(Mentor.team)).order_by(Mentor.name)
+    )
+    mentors = result.scalars().all()
+
+    teams_result = await db.execute(select(Team).order_by(Team.number))
+    teams = teams_result.scalars().all()
+
+    return templates.TemplateResponse(
+        "admin/mentors.html",
+        {"request": request, "mentors": mentors, "teams": teams, "categories": list(FocusCategory)},
+    )
+
+
+@router.post("/mentors")
+async def admin_mentors_create(
+    request: Request,
+    name: str = Form(...),
+    slack_user_id: str = Form(...),
+    team_id: Optional[int] = Form(None),
+    category: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    db.add(Mentor(
+        name=name.strip(),
+        slack_user_id=slack_user_id.strip(),
+        team_id=team_id or None,
+        category=FocusCategory(category) if category else None,
+    ))
+    await db.commit()
+    return RedirectResponse("/admin/mentors", status_code=303)
+
+
+@router.post("/mentors/{mentor_id}/delete")
+async def admin_mentors_delete(
+    mentor_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    await db.execute(delete(Mentor).where(Mentor.id == mentor_id))
+    await db.commit()
+    return RedirectResponse("/admin/mentors", status_code=303)
+
+
+# ── Weekly Requirements ────────────────────────────────────────────────────────
+
+@router.get("/requirements", response_class=HTMLResponse)
+async def admin_requirements_list(request: Request, db: AsyncSession = Depends(get_db)):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(
+        select(WeeklyRequirement)
+        .options(selectinload(WeeklyRequirement.team))
+        .order_by(WeeklyRequirement.week_start.desc())
+    )
+    requirements = result.scalars().all()
+
+    teams_result = await db.execute(select(Team).order_by(Team.number))
+    teams = teams_result.scalars().all()
+
+    return templates.TemplateResponse(
+        "admin/requirements.html",
+        {"request": request, "requirements": requirements, "teams": teams, "categories": list(FocusCategory)},
+    )
+
+
+@router.post("/requirements")
+async def admin_requirements_create(
+    request: Request,
+    team_id: int = Form(...),
+    category: Optional[str] = Form(None),
+    week_start: date = Form(...),
+    required_hours: float = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    # Normalise to Monday
+    week_monday = week_start - timedelta(days=week_start.weekday())
+    parsed_category = FocusCategory(category) if category else None
+
+    # Upsert: update if exists
+    existing_result = await db.execute(
+        select(WeeklyRequirement).where(
+            WeeklyRequirement.team_id == team_id,
+            WeeklyRequirement.category == parsed_category,
+            WeeklyRequirement.week_start == week_monday,
+        )
+    )
+    existing = existing_result.scalars().first()
+    if existing:
+        existing.required_hours = required_hours
+    else:
+        db.add(
+            WeeklyRequirement(
+                team_id=team_id, category=parsed_category, week_start=week_monday, required_hours=required_hours
+            )
+        )
+    await db.commit()
+    return RedirectResponse("/admin/requirements", status_code=303)
+
+
+@router.post("/requirements/{req_id}/delete")
+async def admin_requirements_delete(
+    req_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    await db.execute(delete(WeeklyRequirement).where(WeeklyRequirement.id == req_id))
+    await db.commit()
+    return RedirectResponse("/admin/requirements", status_code=303)
+
+
+# ── Sessions ───────────────────────────────────────────────────────────────────
+
+@router.get("/sessions", response_class=HTMLResponse)
+async def admin_sessions_list(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    page: int = 1,
+    student_id: Optional[str] = None,
+    team_id: Optional[str] = None,
+    category: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    # Sanitize integer params — empty string from blank form select becomes None
+    sid = int(student_id) if student_id and student_id.strip().isdigit() else None
+    tid = int(team_id) if team_id and team_id.strip().isdigit() else None
+    cat_str = category.strip() if category and category.strip() else None
+    try:
+        cat = FocusCategory(cat_str) if cat_str else None
+    except ValueError:
+        cat = None
+    try:
+        d_from = date.fromisoformat(date_from.strip()) if date_from and date_from.strip() else None
+    except ValueError:
+        d_from = None
+    try:
+        d_to = date.fromisoformat(date_to.strip()) if date_to and date_to.strip() else None
+    except ValueError:
+        d_to = None
+
+    PAGE_SIZE = 50
+    query = (
+        select(AttendanceSession)
+        .options(selectinload(AttendanceSession.student).selectinload(Student.team))
+        .order_by(AttendanceSession.sign_in_time.desc())
+    )
+    if sid:
+        query = query.where(AttendanceSession.student_id == sid)
+    if tid or cat:
+        query = query.join(Student)
+        if tid:
+            query = query.where(Student.team_id == tid)
+        if cat:
+            query = query.where(Student.category == cat)
+    if d_from:
+        query = query.where(
+            AttendanceSession.sign_in_time >= datetime.combine(d_from, datetime.min.time())
+        )
+    if d_to:
+        query = query.where(
+            AttendanceSession.sign_in_time <= datetime.combine(d_to, datetime.max.time())
+        )
+
+    total_result = await db.execute(
+        select(func.count()).select_from(query.subquery())
+    )
+    total = total_result.scalar() or 0
+
+    sessions_result = await db.execute(
+        query.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)
+    )
+    sessions = sessions_result.scalars().all()
+
+    students_result = await db.execute(select(Student).order_by(Student.name))
+    all_students = students_result.scalars().all()
+
+    teams_result = await db.execute(select(Team).order_by(Team.number))
+    teams = teams_result.scalars().all()
+
+    return templates.TemplateResponse(
+        "admin/sessions.html",
+        {
+            "request": request,
+            "sessions": sessions,
+            "page": page,
+            "total": total,
+            "page_size": PAGE_SIZE,
+            "total_pages": max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE),
+            "all_students": all_students,
+            "teams": teams,
+            "categories": list(FocusCategory),
+            "filters": {
+                "student_id": sid,
+                "team_id": tid,
+                "category": cat.value if cat else None,
+                "date_from": d_from,
+                "date_to": d_to,
+            },
+        },
+    )
+
+
+@router.get("/sessions/export")
+async def admin_sessions_export(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    student_id: Optional[str] = None,
+    team_id: Optional[str] = None,
+    category: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+):
+    if not _is_authenticated(request):
+        return RedirectResponse("/admin/login", status_code=303)
+
+    sid = int(student_id) if student_id and student_id.strip().isdigit() else None
+    tid = int(team_id) if team_id and team_id.strip().isdigit() else None
+    cat_str = category.strip() if category and category.strip() else None
+    try:
+        cat = FocusCategory(cat_str) if cat_str else None
+    except ValueError:
+        cat = None
+    try:
+        d_from = date.fromisoformat(date_from.strip()) if date_from and date_from.strip() else None
+    except ValueError:
+        d_from = None
+    try:
+        d_to = date.fromisoformat(date_to.strip()) if date_to and date_to.strip() else None
+    except ValueError:
+        d_to = None
+
+    query = (
+        select(AttendanceSession)
+        .options(selectinload(AttendanceSession.student).selectinload(Student.team))
+        .order_by(AttendanceSession.sign_in_time.desc())
+    )
+    if sid:
+        query = query.where(AttendanceSession.student_id == sid)
+    if tid or cat:
+        query = query.join(Student)
+        if tid:
+            query = query.where(Student.team_id == tid)
+        if cat:
+            query = query.where(Student.category == cat)
+    if d_from:
+        query = query.where(
+            AttendanceSession.sign_in_time >= datetime.combine(d_from, datetime.min.time())
+        )
+    if d_to:
+        query = query.where(
+            AttendanceSession.sign_in_time <= datetime.combine(d_to, datetime.max.time())
+        )
+
+    result = await db.execute(query)
+    sessions = result.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        ["Session ID", "Student", "Team", "Sign In", "Sign Out", "Status", "Hours Counted"]
+    )
+    for s in sessions:
+        writer.writerow(
+            [
+                s.id,
+                s.student.name,
+                s.student.team.number,
+                s.sign_in_time.isoformat() if s.sign_in_time else "",
+                s.sign_out_time.isoformat() if s.sign_out_time else "",
+                s.status.value if s.status else "",
+                s.hours_counted if s.hours_counted is not None else "",
+            ]
+        )
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sessions.csv"},
+    )
+
+
+@router.get("/sessions/{session_id}/edit")
+async def admin_sessions_edit_form(
+    session_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(
+        select(AttendanceSession)
+        .options(selectinload(AttendanceSession.student).selectinload(Student.team))
+        .where(AttendanceSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        return RedirectResponse("/admin/sessions", status_code=303)
+
+    return templates.TemplateResponse(
+        "admin/session_edit.html",
+        {"request": request, "s": session, "statuses": [s for s in SessionStatus if s != SessionStatus.auto]},
+    )
+
+
+@router.post("/sessions/{session_id}/edit")
+async def admin_sessions_edit(
+    session_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    sign_in_time: str = Form(...),
+    sign_out_time: str = Form(""),
+    status: str = Form(""),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(
+        select(AttendanceSession).where(AttendanceSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        return RedirectResponse("/admin/sessions", status_code=303)
+
+    parsed_sign_in = datetime.fromisoformat(sign_in_time)
+    parsed_sign_out = datetime.fromisoformat(sign_out_time) if sign_out_time else None
+    parsed_status = SessionStatus(status) if status else None
+
+    session.sign_in_time = parsed_sign_in
+    session.sign_out_time = parsed_sign_out
+    session.status = parsed_status
+
+    if parsed_sign_out and parsed_status:
+        from app.services.attendance import _status_multiplier
+        elapsed_hours = (parsed_sign_out - parsed_sign_in).total_seconds() / 3600.0
+        session.hours_counted = round(elapsed_hours * _status_multiplier(parsed_status), 4)
+    else:
+        session.hours_counted = None
+
+    await db.commit()
+    return RedirectResponse("/admin/sessions", status_code=303)
+
+
+@router.post("/sessions/{session_id}/delete")
+async def admin_sessions_delete(
+    session_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    await db.execute(delete(AttendanceSession).where(AttendanceSession.id == session_id))
+    await db.commit()
+    return RedirectResponse("/admin/sessions", status_code=303)
+
+
+# ── Settings ───────────────────────────────────────────────────────────────────
+
+@router.get("/settings", response_class=HTMLResponse)
+async def admin_settings_get(request: Request):
+    if redirect := _require_auth(request):
+        return redirect
+
+    return templates.TemplateResponse(
+        "admin/settings.html",
+        {
+            "request": request,
+            "auto_signout_time": settings.auto_signout_time,
+            "weekly_dm_day": settings.weekly_dm_day,
+            "weekly_dm_time": settings.weekly_dm_time,
+            "signin_ip_whitelist": settings.signin_ip_whitelist,
+            "timezone": settings.timezone,
+            "contributor_multiplier": settings.contributor_multiplier,
+            "present_multiplier": settings.present_multiplier,
+            "distraction_multiplier": settings.distraction_multiplier,
+        },
+    )
+
+
+def _update_env_multipliers(
+    contributor: float,
+    present: float,
+    distraction: float,
+) -> None:
+    """Write multiplier values into .env and update the live settings object."""
+    updates = {
+        "CONTRIBUTOR_MULTIPLIER": str(contributor),
+        "PRESENT_MULTIPLIER": str(present),
+        "DISTRACTION_MULTIPLIER": str(distraction),
+    }
+    env_path = ".env"
+    try:
+        with open(env_path, "r") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        lines = []
+
+    written: set[str] = set()
+    new_lines = []
+    for line in lines:
+        key = line.split("=", 1)[0].strip().upper()
+        if key in updates:
+            new_lines.append(f"{key}={updates[key]}\n")
+            written.add(key)
+        else:
+            new_lines.append(line)
+    for key, val in updates.items():
+        if key not in written:
+            new_lines.append(f"{key}={val}\n")
+
+    with open(env_path, "w") as f:
+        f.writelines(new_lines)
+
+    # Update the live singleton so changes take effect immediately
+    settings.contributor_multiplier = contributor
+    settings.present_multiplier = present
+    settings.distraction_multiplier = distraction
+
+
+@router.post("/settings", response_class=HTMLResponse)
+async def admin_settings_post(
+    request: Request,
+    contributor_multiplier: float = Form(...),
+    present_multiplier: float = Form(...),
+    distraction_multiplier: float = Form(...),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    _update_env_multipliers(
+        contributor_multiplier,
+        present_multiplier,
+        distraction_multiplier,
+    )
+    return templates.TemplateResponse(
+        "admin/settings.html",
+        {
+            "request": request,
+            "auto_signout_time": settings.auto_signout_time,
+            "weekly_dm_day": settings.weekly_dm_day,
+            "weekly_dm_time": settings.weekly_dm_time,
+            "signin_ip_whitelist": settings.signin_ip_whitelist,
+            "timezone": settings.timezone,
+            "contributor_multiplier": settings.contributor_multiplier,
+            "present_multiplier": settings.present_multiplier,
+            "distraction_multiplier": settings.distraction_multiplier,
+            "saved": True,
+        },
+    )

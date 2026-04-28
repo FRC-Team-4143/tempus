@@ -1,0 +1,102 @@
+{% extends "admin/base.html" %}
+{% set active_page = "sessions" %}
+{% block title %}Sessions — FRC Attendance Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Sessions</h2>
+  <a href="/admin/sessions/export?{% if filters.student_id %}student_id={{ filters.student_id }}&{% endif %}{% if filters.team_id %}team_id={{ filters.team_id }}&{% endif %}{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.date_from %}date_from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}date_to={{ filters.date_to }}{% endif %}"
+     class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-download me-1"></i> Export CSV
+  </a>
+</div>
+
+<!-- Filters -->
+<form method="get" class="row g-2 mb-3">
+  <div class="col-auto">
+    <select name="student_id" class="form-select form-select-sm">
+      <option value="">All Students</option>
+      {% for s in all_students %}
+      <option value="{{ s.id }}" {% if filters.student_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <select name="team_id" class="form-select form-select-sm">
+      <option value="">All Teams</option>
+      {% for t in teams %}
+      <option value="{{ t.id }}" {% if filters.team_id == t.id %}selected{% endif %}>Team {{ t.number }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <select name="category" class="form-select form-select-sm">
+      <option value="">All Categories</option>
+      {% for c in categories %}
+      <option value="{{ c.value }}" {% if filters.category == c.value %}selected{% endif %}>{{ c.value | capitalize }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <input type="date" name="date_from" class="form-control form-control-sm"
+           value="{{ filters.date_from or '' }}" placeholder="From">
+  </div>
+  <div class="col-auto">
+    <input type="date" name="date_to" class="form-control form-control-sm"
+           value="{{ filters.date_to or '' }}" placeholder="To">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+    <a href="/admin/sessions" class="btn btn-sm btn-outline-secondary">Clear</a>
+  </div>
+</form>
+
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr><th>Student</th><th>Team</th><th>Sign In</th><th>Sign Out</th><th>Status</th><th>Hours</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for s in sessions %}
+        <tr>
+          <td>{{ s.student.name }}</td>
+          <td>{{ s.student.team.number }}</td>
+          <td>{{ s.sign_in_time.strftime('%m/%d %I:%M %p') }}</td>
+          <td>{{ s.sign_out_time.strftime('%I:%M %p') if s.sign_out_time else '<span class="badge bg-warning text-dark">Open</span>' }}</td>
+          <td>
+            {% if s.status %}
+              {% if s.status.value == 'contributor' %}<span class="badge bg-success">Contributor</span>
+              {% elif s.status.value == 'present' %}<span class="badge bg-warning text-dark">Present</span>
+              {% elif s.status.value == 'distraction' %}<span class="badge bg-danger">Distraction</span>
+              {% else %}<span class="badge bg-secondary">Auto</span>{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td>{{ '%.2f'|format(s.hours_counted) if s.hours_counted is not none else '—' }}</td>
+          <td>
+            <a href="/admin/sessions/{{ s.id }}/edit" class="btn btn-sm btn-outline-secondary me-1">Edit</a>
+            <form method="post" action="/admin/sessions/{{ s.id }}/delete" class="d-inline"
+                  onsubmit="return confirm('Delete this session record?')">
+              <button class="btn btn-sm btn-outline-danger">Del</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Pagination -->
+<nav class="mt-3">
+  <ul class="pagination pagination-sm">
+    {% if page > 1 %}
+    <li class="page-item"><a class="page-link" href="?page={{ page - 1 }}">Previous</a></li>
+    {% endif %}
+    <li class="page-item disabled"><span class="page-link">Page {{ page }} of {{ total_pages }} ({{ total }} records)</span></li>
+    {% if page < total_pages %}
+    <li class="page-item"><a class="page-link" href="?page={{ page + 1 }}">Next</a></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endblock %}
