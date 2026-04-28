@@ -15,15 +15,25 @@ fi
 echo "✅ Python found: $(python3 --version)"
 
 # Create virtual environment if it doesn't exist
-if [ ! -d "../venv" ]; then
+if [ ! -d "venv" ]; then
     echo "📦 Creating virtual environment..."
-    python3 -m venv ../venv
-    echo "✅ Virtual environment created"
+    python3 -m venv venv
+    if [ $? -eq 0 ]; then
+        echo "✅ Virtual environment created"
+    else
+        echo "❌ Failed to create virtual environment"
+        exit 1
+    fi
 fi
 
 # Activate virtual environment
 echo "🔄 Activating virtual environment..."
-source ../venv/bin/activate
+source venv/bin/activate
+
+if [ $? -ne 0 ]; then
+    echo "❌ Failed to activate virtual environment"
+    exit 1
+fi
 
 # Install dependencies
 echo "📚 Installing Python dependencies..."

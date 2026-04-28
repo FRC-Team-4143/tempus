@@ -85,6 +85,36 @@ class LocalDatabase:
                 )
             ''')
 
+            # Table for default hour requirements per team
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS default_hours (
+                    team_number TEXT PRIMARY KEY,
+                    default_hours REAL NOT NULL
+                )
+            ''')
+
+            # Table for date range overrides for hour requirements
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS hour_requirements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    team_number TEXT NOT NULL,
+                    start_date TEXT NOT NULL,
+                    end_date TEXT NOT NULL,
+                    required_hours REAL NOT NULL,
+                    description TEXT
+                )
+            ''')
+
+            # Initialize default hours if not already set
+            cursor.execute('SELECT COUNT(*) FROM default_hours')
+            if cursor.fetchone()[0] == 0:
+                cursor.execute('''
+                    INSERT INTO default_hours (team_number, default_hours) VALUES
+                    ('4143', 11.0),
+                    ('4423', 11.0)
+                ''')
+                logger.info("✅ Initialized default hours for both teams (11 hours)")
+
             conn.commit()
             conn.close()
             logger.debug("✅ Local database initialized successfully")
@@ -508,6 +538,228 @@ class LocalDatabase:
                 logger.error(f"Error getting leaderboard data: {e}")
                 return []
 
+    def get_default_hours(self, team_number: str) -> float:
+        """Get default required hours for a team"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('SELECT default_hours FROM default_hours WHERE team_number = ?', (team_number,))
+            result = cursor.fetchone()
+            conn.close()
+            
+            return result[0] if result else 11.0  # Default to 11 if not found
+        except Exception as e:
+            logger.error(f"Error getting default hours for team {team_number}: {e}")
+            return 11.0
+
+    def set_default_hours(self, team_number: str, hours: float) -> bool:
+        """Update default required hours for a team"""
+        with db_lock:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    INSERT INTO default_hours (team_number, default_hours)
+                    VALUES (?, ?)
+                    ON CONFLICT(team_number) DO UPDATE SET default_hours = ?
+                ''', (team_number, hours, hours))
+                
+                conn.commit()
+                conn.close()
+                logger.info(f"✅ Updated default hours for team {team_number}: {hours}")
+                return True
+            except Exception as e:
+                logger.error(f"Error setting default hours for team {team_number}: {e}")
+                return False
+
+    def get_required_hours_for_date(self, team_number: str, date: str) -> float:
+        """
+        Get required hours for a specific date and team.
+        Checks for date range overrides first, then falls back to default hours.
+        
+        Args:
+            team_number: Team number as string (e.g., '4143' or '4423')
+            date: Date in YYYY-MM-DD format
+            
+        Returns:
+            Required hours for that date
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Check for active override matching this date and team
+            cursor.execute('''
+                SELECT required_hours FROM hour_requirements
+                WHERE team_number = ?
+                AND start_date <= ?
+                AND end_date >= ?
+                ORDER BY id DESC
+                LIMIT 1
+            ''', (team_number, date, date))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                return result[0]
+            else:
+                # Fall back to default hours
+                return self.get_default_hours(team_number)
+                
+        except Exception as e:
+            logger.error(f"Error getting required hours for team {team_number} on {date}: {e}")
+            return 11.0
+
+    def get_all_hour_requirements(self) -> Dict:
+        """Get all hour requirements (defaults and overrides)"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Get defaults
+            cursor.execute('SELECT team_number, default_hours FROM default_hours ORDER BY team_number')
+            defaults = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            # Get overrides
+            cursor.execute('''
+                SELECT id, team_number, start_date, end_date, required_hours, description
+                FROM hour_requirements
+                ORDER BY start_date DESC
+            ''')
+            
+            overrides = []
+            for row in cursor.fetchall():
+                overrides.append({
+                    'id': row[0],
+                    'team_number': row[1],
+                    'start_date': row[2],
+                    'end_date': row[3],
+                    'required_hours': row[4],
+                    'description': row[5]
+                })
+            
+            conn.close()
+            
+            return {
+                'defaults': defaults,
+                'overrides': overrides
+            }
+        except Exception as e:
+            logger.error(f"Error getting all hour requirements: {e}")
+            return {'defaults': {}, 'overrides': []}
+
+    def add_hour_requirement(self, team_number: str, start_date: str, end_date: str, 
+                            required_hours: float, description: str = '') -> tuple[bool, str]:
+        """Add a new hour requirement override"""
+        with db_lock:
+            try:
+                # Validate inputs
+                if not team_number or team_number not in ['4143', '4423']:
+                    return False, "Invalid team number. Must be 4143 or 4423"
+                
+                if required_hours < 0:
+                    return False, "Hours must be non-negative"
+                
+                # Validate dates
+                try:
+                    start_dt = datetime.fromisoformat(start_date)
+                    end_dt = datetime.fromisoformat(end_date)
+                    if start_dt > end_dt:
+                        return False, "Start date must be before or equal to end date"
+                except ValueError as e:
+                    return False, f"Invalid date format: {e}"
+                
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    INSERT INTO hour_requirements (team_number, start_date, end_date, required_hours, description)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (team_number, start_date, end_date, required_hours, description))
+                
+                conn.commit()
+                requirement_id = cursor.lastrowid
+                conn.close()
+                
+                logger.info(f"✅ Added hour requirement override (ID: {requirement_id}) for team {team_number}: {start_date} to {end_date}, {required_hours} hours")
+                return True, f"Successfully added requirement (ID: {requirement_id})"
+                
+            except Exception as e:
+                logger.error(f"Error adding hour requirement: {e}")
+                return False, f"Database error: {str(e)}"
+
+    def update_hour_requirement(self, requirement_id: int, team_number: str, start_date: str, 
+                               end_date: str, required_hours: float, description: str = '') -> tuple[bool, str]:
+        """Update an existing hour requirement override"""
+        with db_lock:
+            try:
+                # Validate inputs
+                if not team_number or team_number not in ['4143', '4423']:
+                    return False, "Invalid team number. Must be 4143 or 4423"
+                
+                if required_hours < 0:
+                    return False, "Hours must be non-negative"
+                
+                # Validate dates
+                try:
+                    start_dt = datetime.fromisoformat(start_date)
+                    end_dt = datetime.fromisoformat(end_date)
+                    if start_dt > end_dt:
+                        return False, "Start date must be before or equal to end date"
+                except ValueError as e:
+                    return False, f"Invalid date format: {e}"
+                
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    UPDATE hour_requirements
+                    SET team_number = ?, start_date = ?, end_date = ?, required_hours = ?, description = ?
+                    WHERE id = ?
+                ''', (team_number, start_date, end_date, required_hours, description, requirement_id))
+                
+                if cursor.rowcount == 0:
+                    conn.close()
+                    return False, f"Requirement with ID {requirement_id} not found"
+                
+                conn.commit()
+                conn.close()
+                
+                logger.info(f"✅ Updated hour requirement (ID: {requirement_id})")
+                return True, "Successfully updated requirement"
+                
+            except Exception as e:
+                logger.error(f"Error updating hour requirement: {e}")
+                return False, f"Database error: {str(e)}"
+
+    def delete_hour_requirement(self, requirement_id: int) -> tuple[bool, str]:
+        """Delete an hour requirement override"""
+        with db_lock:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                
+                # Check if requirement exists
+                cursor.execute('SELECT id FROM hour_requirements WHERE id = ?', (requirement_id,))
+                if not cursor.fetchone():
+                    conn.close()
+                    return False, f"Requirement with ID {requirement_id} not found"
+                
+                cursor.execute('DELETE FROM hour_requirements WHERE id = ?', (requirement_id,))
+                
+                conn.commit()
+                conn.close()
+                
+                logger.info(f"✅ Deleted hour requirement (ID: {requirement_id})")
+                return True, "Successfully deleted requirement"
+                
+            except Exception as e:
+                logger.error(f"Error deleting hour requirement: {e}")
+                return False, f"Database error: {str(e)}"
+
     def mark_records_synced(self, record_ids: List[int]):
         """Mark records as synced to Google Sheets"""
         with db_lock:
@@ -523,11 +775,12 @@ class LocalDatabase:
             except Exception as e:
                 logger.error(f"Error marking records as synced: {e}")
 
-    def get_weekly_attendance(self, weeks_back: int = 0) -> Dict[str, Dict]:
+    def get_weekly_attendance(self, weeks_back: int = 0, team_number: str = None) -> Dict[str, Dict]:
         """Get weekly attendance metrics for all users
         
         Args:
             weeks_back: Number of weeks back from current week (0 = current week)
+            team_number: Optional team number to filter/calculate requirements for
         
         Returns:
             Dict with user names as keys and attendance data as values
@@ -592,6 +845,9 @@ class LocalDatabase:
 
                 # Calculate attendance metrics for each user
                 for name, user_recs in user_records.items():
+                    # Get team for this user
+                    user_team = team_mapping.get(name, '4143')
+                    
                     # Calculate total hours for the week
                     total_weekly_hours = 0
                     sessions_completed = 0
@@ -623,29 +879,33 @@ class LocalDatabase:
                             # Add manual adjustment directly to weekly hours
                             total_weekly_hours += record['duration_hours']
 
-                    # Calculate attendance percentage
-                    # Check if we're before the expected hours start date
-                    from .utils import get_expected_hours_config
-                    config = get_expected_hours_config()
-                    start_date = config['start_date']
-                    
-                    if week_start < start_date:
-                        required_hours = 0.0
-                    else:
-                        required_hours = 11.0
+                    # Calculate required hours for this week using team-specific requirements
+                    # Sum the required hours for each day in the week
+                    required_hours = 0.0
+                    current_day = week_start
+                    for day_offset in range(7):  # 7 days in a week
+                        day = (week_start + timedelta(days=day_offset)).strftime('%Y-%m-%d')
+                        required_hours += self.get_required_hours_for_date(user_team, day)
                     
                     attendance_percentage = min(100.0, (total_weekly_hours / required_hours) * 100) if required_hours > 0 else 0
                     
                     # Calculate total expected hours up to the end of this week
-                    from .utils import calculate_total_expected_hours, calculate_week_number, get_expected_hours_config
-                    total_expected_hours = calculate_total_expected_hours(week_end)
-                    # Use the expected hours for this specific week for comparison
+                    # Sum daily requirements from start date to end of this week
+                    from .utils import get_expected_hours_config
                     config = get_expected_hours_config()
-                    if week_start < config['start_date']:
-                        total_expected_hours = 0.0
-                    else:
-                        week_number = calculate_week_number(week_start)
-                        total_expected_hours = 11.0 * week_number
+                    start_date = config['start_date']
+                    
+                    total_expected_hours = 0.0
+                    if week_end >= start_date:
+                        # Calculate from start_date to week_end
+                        current_date = start_date if start_date > datetime(1900, 1, 1).date() else week_start
+                        end_date = week_end
+                        
+                        while current_date <= end_date:
+                            date_str = current_date.strftime('%Y-%m-%d')
+                            total_expected_hours += self.get_required_hours_for_date(user_team, date_str)
+                            current_date += timedelta(days=1)
+                    
                     total_hours_ratio = round((user_total_hours.get(name, 0) / total_expected_hours * 100), 1) if total_expected_hours > 0 else 0
                     
                     # Determine total status (similar to weekly)
@@ -666,17 +926,17 @@ class LocalDatabase:
                     
                     weekly_data[name] = {
                         'total_hours': round(total_weekly_hours, 2),
-                        'required_hours': required_hours,
+                        'required_hours': round(required_hours, 2),
                         'attendance_percentage': round(attendance_percentage, 1),
                         'sessions_completed': sessions_completed,
                         'status': status,
                         'week_start': week_start_str,
                         'week_end': week_end_str,
-                        'team': team_mapping.get(name, '4143'),  # Add team information
+                        'team': user_team,  # Add team information
                         'category': category_mapping.get(name, ''),  # Add category information
                         'sessions': sessions,
                         'all_time_hours': round(user_total_hours.get(name, 0), 2),  # Add total hours
-                        'total_expected_hours': total_expected_hours,
+                        'total_expected_hours': round(total_expected_hours, 2),
                         'total_hours_ratio': total_hours_ratio,
                         'total_status': total_status
                     }

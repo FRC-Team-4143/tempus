@@ -1208,3 +1208,122 @@ def api_verify_hours_consistency():
     except Exception as e:
         logger.error(f"Error during hours consistency check: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+# Hour Requirements API Endpoints
+
+def api_get_hour_requirements():
+    """Get all hour requirements (defaults and overrides) - Public endpoint for displaying current requirements"""
+    try:
+        requirements = local_db.get_all_hour_requirements()
+        return jsonify({
+            'success': True,
+            'defaults': requirements['defaults'],
+            'overrides': requirements['overrides']
+        })
+    except Exception as e:
+        logger.error(f"Error getting hour requirements: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@auth.login_required
+def api_set_default_hours():
+    """Update default hours for a team"""
+    try:
+        data = request.get_json()
+        team_number = str(data.get('team_number', ''))
+        hours = float(data.get('hours', 0))
+        
+        if team_number not in ['4143', '4423']:
+            return jsonify({'success': False, 'error': 'Invalid team number. Must be 4143 or 4423'})
+        
+        if hours < 0:
+            return jsonify({'success': False, 'error': 'Hours must be non-negative'})
+        
+        success = local_db.set_default_hours(team_number, hours)
+        
+        if success:
+            logger.info(f"✅ Admin updated default hours for team {team_number}: {hours}")
+            return jsonify({
+                'success': True,
+                'message': f'Successfully updated default hours for team {team_number}'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update default hours'})
+            
+    except ValueError as e:
+        return jsonify({'success': False, 'error': 'Invalid hours value. Must be a number'})
+    except Exception as e:
+        logger.error(f"Error setting default hours: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@auth.login_required
+def api_add_hour_requirement():
+    """Add a new hour requirement override"""
+    try:
+        data = request.get_json()
+        team_number = str(data.get('team_number', ''))
+        start_date = data.get('start_date', '')
+        end_date = data.get('end_date', '')
+        required_hours = float(data.get('required_hours', 0))
+        description = data.get('description', '')
+        
+        success, message = local_db.add_hour_requirement(
+            team_number, start_date, end_date, required_hours, description
+        )
+        
+        if success:
+            logger.info(f"✅ Admin added hour requirement: {message}")
+        
+        return jsonify({'success': success, 'message': message})
+        
+    except ValueError as e:
+        return jsonify({'success': False, 'error': f'Invalid input: {str(e)}'})
+    except Exception as e:
+        logger.error(f"Error adding hour requirement: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@auth.login_required
+def api_update_hour_requirement():
+    """Update an existing hour requirement override"""
+    try:
+        data = request.get_json()
+        requirement_id = int(data.get('id', 0))
+        team_number = str(data.get('team_number', ''))
+        start_date = data.get('start_date', '')
+        end_date = data.get('end_date', '')
+        required_hours = float(data.get('required_hours', 0))
+        description = data.get('description', '')
+        
+        success, message = local_db.update_hour_requirement(
+            requirement_id, team_number, start_date, end_date, required_hours, description
+        )
+        
+        if success:
+            logger.info(f"✅ Admin updated hour requirement ID {requirement_id}")
+        
+        return jsonify({'success': success, 'message': message})
+        
+    except ValueError as e:
+        return jsonify({'success': False, 'error': f'Invalid input: {str(e)}'})
+    except Exception as e:
+        logger.error(f"Error updating hour requirement: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@auth.login_required
+def api_delete_hour_requirement():
+    """Delete an hour requirement override"""
+    try:
+        data = request.get_json()
+        requirement_id = int(data.get('id', 0))
+        
+        success, message = local_db.delete_hour_requirement(requirement_id)
+        
+        if success:
+            logger.info(f"✅ Admin deleted hour requirement ID {requirement_id}")
+        
+        return jsonify({'success': success, 'message': message})
+        
+    except ValueError as e:
+        return jsonify({'success': False, 'error': f'Invalid input: {str(e)}'})
+    except Exception as e:
+        logger.error(f"Error deleting hour requirement: {e}")
+        return jsonify({'success': False, 'error': str(e)})

@@ -673,6 +673,143 @@
                 </div>
             </div>
 
+            <!-- Hour Requirements Configuration -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h3 class="mb-0">
+                                <i class="fas fa-clock"></i>
+                                Hour Requirements Configuration
+                            </h3>
+                            <p class="mb-0 mt-1">Manage default hours and special overrides for each team</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Default Hours Panel -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 class="card-title">
+                                        <i class="fas fa-calendar-week"></i> Default Weekly Hours
+                                    </h5>
+                                    <p class="text-muted mb-3">Set the standard required hours per week for each team</p>
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold">Team 4143</label>
+                                            <div class="input-group">
+                                                <input type="number" class="form-control" id="default4143" min="0" step="0.5" value="11">
+                                                <span class="input-group-text">hours</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold">Team 4423</label>
+                                            <div class="input-group">
+                                                <input type="number" class="form-control" id="default4423" min="0" step="0.5" value="11">
+                                                <span class="input-group-text">hours</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-primary mt-3 w-100" onclick="saveDefaultHours()">
+                                        <i class="fas fa-save"></i> Save Default Hours
+                                    </button>
+                                    <div id="defaultHoursAlert" class="mt-2"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="alert alert-info">
+                                <h6><i class="fas fa-info-circle"></i> How It Works</h6>
+                                <ul class="mb-0 small">
+                                    <li>Default hours apply to all weeks unless an override is set</li>
+                                    <li>Each team can have different requirements</li>
+                                    <li>Use overrides below for special periods (competitions, breaks, etc.)</li>
+                                    <li>Changes apply immediately to all calculations</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Hour Requirement Overrides Panel -->
+                    <div class="row">
+                        <div class="col-12">
+                            <h5 class="mb-3">
+                                <i class="fas fa-calendar-alt"></i> Date Range Overrides
+                            </h5>
+                            <p class="text-muted">Set special hour requirements for specific date ranges (e.g., spring break, competition weeks)</p>
+                            
+                            <!-- Add Override Form -->
+                            <div class="card bg-light mb-4">
+                                <div class="card-body">
+                                    <h6 class="card-title">Add New Override</h6>
+                                    <div class="row g-3">
+                                        <div class="col-md-3">
+                                            <label class="form-label">Team</label>
+                                            <select class="form-select" id="overrideTeam">
+                                                <option value="4143">Team 4143</option>
+                                                <option value="4423">Team 4423</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Start Date</label>
+                                            <input type="date" class="form-control" id="overrideStartDate">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">End Date</label>
+                                            <input type="date" class="form-control" id="overrideEndDate">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Required Hours</label>
+                                            <div class="input-group">
+                                                <input type="number" class="form-control" id="overrideHours" min="0" step="0.5" value="0">
+                                                <span class="input-group-text">hrs</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-9">
+                                            <label class="form-label">Description (Optional)</label>
+                                            <input type="text" class="form-control" id="overrideDescription" placeholder="e.g., Spring Break, Competition Week">
+                                        </div>
+                                        <div class="col-md-3 d-flex align-items-end">
+                                            <button class="btn btn-success w-100" onclick="addOverride()">
+                                                <i class="fas fa-plus"></i> Add Override
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div id="overrideAlert" class="mt-2"></div>
+                                </div>
+                            </div>
+
+                            <!-- Overrides Table -->
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Team</th>
+                                            <th>Start Date</th>
+                                            <th>End Date</th>
+                                            <th>Required Hours</th>
+                                            <th>Description</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="overridesTableBody">
+                                        <tr>
+                                            <td colspan="6" class="text-center py-4">
+                                                <i class="fas fa-spinner fa-spin"></i> Loading overrides...
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Slack Notifications -->
             <div class="card">
                 <div class="card-header">
@@ -2079,6 +2216,166 @@
                 button.innerHTML = '<i class="fas fa-paper-plane"></i> Send Test Message';
             }
         }
+
+        // Hour Requirements Management Functions
+
+        async function loadHourRequirements() {
+            try {
+                const response = await fetch('/api/admin/hour-requirements');
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Update default hours inputs
+                    if (data.defaults['4143'] !== undefined) {
+                        document.getElementById('default4143').value = data.defaults['4143'];
+                    }
+                    if (data.defaults['4423'] !== undefined) {
+                        document.getElementById('default4423').value = data.defaults['4423'];
+                    }
+                    
+                    // Update overrides table
+                    const tbody = document.getElementById('overridesTableBody');
+                    if (data.overrides.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">No overrides configured</td></tr>';
+                    } else {
+                        tbody.innerHTML = data.overrides.map(override => `
+                            <tr>
+                                <td><span class="badge bg-primary">Team ${override.team_number}</span></td>
+                                <td>${override.start_date}</td>
+                                <td>${override.end_date}</td>
+                                <td><strong>${override.required_hours}</strong> hours</td>
+                                <td>${override.description || '<em class="text-muted">No description</em>'}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteOverride(${override.id})">
+                                        <i class="fas fa-trash"></i> Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading hour requirements:', error);
+            }
+        }
+
+        async function saveDefaultHours() {
+            const hours4143 = parseFloat(document.getElementById('default4143').value);
+            const hours4423 = parseFloat(document.getElementById('default4423').value);
+            const alertDiv = document.getElementById('defaultHoursAlert');
+            
+            try {
+                // Save Team 4143
+                const response1 = await fetch('/api/admin/default-hours', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({team_number: '4143', hours: hours4143})
+                });
+                const data1 = await response1.json();
+                
+                // Save Team 4423
+                const response2 = await fetch('/api/admin/default-hours', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({team_number: '4423', hours: hours4423})
+                });
+                const data2 = await response2.json();
+                
+                if (data1.success && data2.success) {
+                    alertDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check-circle"></i> Default hours updated successfully!</div>';
+                    setTimeout(() => alertDiv.innerHTML = '', 3000);
+                } else {
+                    alertDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times-circle"></i> Error: ${data1.error || data2.error}</div>`;
+                }
+            } catch (error) {
+                console.error('Error saving default hours:', error);
+                alertDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-times-circle"></i> Error saving default hours</div>';
+            }
+        }
+
+        async function addOverride() {
+            const team = document.getElementById('overrideTeam').value;
+            const startDate = document.getElementById('overrideStartDate').value;
+            const endDate = document.getElementById('overrideEndDate').value;
+            const hours = parseFloat(document.getElementById('overrideHours').value);
+            const description = document.getElementById('overrideDescription').value;
+            const alertDiv = document.getElementById('overrideAlert');
+            
+            // Validation
+            if (!startDate || !endDate) {
+                alertDiv.innerHTML = '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Please enter both start and end dates</div>';
+                return;
+            }
+            
+            if (new Date(startDate) > new Date(endDate)) {
+                alertDiv.innerHTML = '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Start date must be before or equal to end date</div>';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/hour-requirement', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        team_number: team,
+                        start_date: startDate,
+                        end_date: endDate,
+                        required_hours: hours,
+                        description: description
+                    })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alertDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check-circle"></i> Override added successfully!</div>';
+                    setTimeout(() => alertDiv.innerHTML = '', 3000);
+                    
+                    // Clear form
+                    document.getElementById('overrideStartDate').value = '';
+                    document.getElementById('overrideEndDate').value = '';
+                    document.getElementById('overrideHours').value = '0';
+                    document.getElementById('overrideDescription').value = '';
+                    
+                    // Reload table
+                    await loadHourRequirements();
+                } else {
+                    alertDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times-circle"></i> ${data.message || data.error}</div>`;
+                }
+            } catch (error) {
+                console.error('Error adding override:', error);
+                alertDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-times-circle"></i> Error adding override</div>';
+            }
+        }
+
+        async function deleteOverride(id) {
+            if (!confirm('Are you sure you want to delete this override?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/hour-requirement/delete', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({id: id})
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    await loadHourRequirements();
+                } else {
+                    alert(`Error: ${data.message || data.error}`);
+                }
+            } catch (error) {
+                console.error('Error deleting override:', error);
+                alert('Error deleting override');
+            }
+        }
+
+        // Load hour requirements when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadHourRequirements();
+        });
+
     </script>
 </body>
 </html>

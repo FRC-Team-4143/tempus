@@ -21,7 +21,8 @@ from .routes import (
     api_weekly_attendance, api_slack_notify, api_slack_test, auth,
     api_get_all_records, api_get_record, api_update_record, api_delete_record,
     api_recalculate_durations, api_add_manual_record, api_add_manual_session,
-    api_verify_hours_consistency
+    api_verify_hours_consistency, api_get_hour_requirements, api_set_default_hours,
+    api_add_hour_requirement, api_update_hour_requirement, api_delete_hour_requirement
 )
 
 # Load environment variables
@@ -93,6 +94,13 @@ app.add_url_rule('/api/recalculate-durations', 'api_recalculate_durations', api_
 app.add_url_rule('/api/add-manual-record', 'api_add_manual_record', api_add_manual_record, methods=['POST'])
 app.add_url_rule('/api/add-manual-session', 'api_add_manual_session', api_add_manual_session, methods=['POST'])
 app.add_url_rule('/api/verify-hours-consistency', 'api_verify_hours_consistency', api_verify_hours_consistency, methods=['POST'])
+
+# Hour Requirements API endpoints
+app.add_url_rule('/api/admin/hour-requirements', 'api_get_hour_requirements', api_get_hour_requirements, methods=['GET'])
+app.add_url_rule('/api/admin/default-hours', 'api_set_default_hours', api_set_default_hours, methods=['POST'])
+app.add_url_rule('/api/admin/hour-requirement', 'api_add_hour_requirement', api_add_hour_requirement, methods=['POST'])
+app.add_url_rule('/api/admin/hour-requirement/update', 'api_update_hour_requirement', api_update_hour_requirement, methods=['POST'])
+app.add_url_rule('/api/admin/hour-requirement/delete', 'api_delete_hour_requirement', api_delete_hour_requirement, methods=['POST'])
 
 if __name__ == '__main__':
     # Start the scheduler for automated tasks
