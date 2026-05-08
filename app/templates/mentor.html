@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+
+{% block title %}Mentor Board — FRC Attendance{% endblock %}
+
+{% block head %}
+<style>
+  body {
+    background: #0a0a0a;
+    color: #e8e0e0;
+    font-family: 'Segoe UI', sans-serif;
+    overflow: hidden;
+    height: 100vh;
+  }
+  .kiosk-header {
+    background: #111111;
+    border-bottom: 2px solid #8b0000;
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .kiosk-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #cc2200;
+    margin: 0;
+  }
+  #clock {
+    font-size: 1.9rem;
+    font-weight: 600;
+    color: #7a6060;
+  }
+  .mentor-panel {
+    background: #111111;
+    border: 1px solid #2a1a1a;
+    border-radius: 10px;
+    height: calc(100vh - 130px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .mentor-panel-header {
+    font-size: 1.6rem;
+    font-weight: 700;
+    padding: 16px 24px;
+    border-bottom: 1px solid #2a1a1a;
+    background: #1a0f0f;
+    border-radius: 10px 10px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    color: #e05540;
+  }
+  .mentor-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 24px;
+    border-bottom: 1px solid #1e1010;
+    font-size: 1.3rem;
+  }
+  .mentor-row:last-child { border-bottom: none; }
+  .mentor-name { font-weight: 600; color: #f0e8e8; }
+  .mentor-meta { color: #9a7878; font-size: 1.1rem; }
+  .empty-state {
+    text-align: center;
+    color: #5a3a3a;
+    padding: 40px 20px;
+    font-size: 1.2rem;
+  }
+  .scroll-list::-webkit-scrollbar { display: none; }
+  .scroll-list { -ms-overflow-style: none; scrollbar-width: none; overflow-y: hidden; flex: 1; }
+  /* Stats panel */
+  .stats-section-header {
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 12px 18px 6px;
+    border-bottom: 1px solid #2a1a1a;
+    background: #1a0f0f;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .stats-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 18px;
+    border-bottom: 1px solid #1e1010;
+    font-size: 1.15rem;
+  }
+  .stats-row:last-child { border-bottom: none; }
+  .stats-rank { font-size: 1rem; width: 22px; flex-shrink: 0; }
+  .stats-name { flex: 1; padding: 0 10px; font-weight: 500; color: #f0e8e8; }
+  .stats-value { color: #e05540; font-weight: 700; font-size: 1.05rem; }
+  .stats-empty { color: #5a3a3a; padding: 8px 18px; font-size: 1rem; }
+</style>
+{% endblock %}
+
+{% block body %}
+<header class="kiosk-header">
+  <h1><i class="bi bi-person-badge"></i> Mentor Sign-In</h1>
+  <div id="clock"></div>
+</header>
+
+<div class="container-fluid px-3 pt-3">
+  <div class="row g-3">
+    <!-- Currently signed-in mentors -->
+    <div class="col-6">
+      <div class="mentor-panel">
+        <div class="mentor-panel-header">
+          <span><i class="bi bi-person-check me-2"></i>Signed In Now</span>
+          <span class="badge bg-secondary" id="count-signed-in">{{ signed_in|length }}</span>
+        </div>
+        <div id="list-signed-in" class="scroll-list">
+          {% if signed_in %}
+            {% for m in signed_in %}
+            <div class="mentor-row">
+              <span class="mentor-name">{{ m.name }}</span>
+              <span class="mentor-meta">
+                {% if m.team %}Team {{ m.team }} &nbsp;·&nbsp; {% endif %}{{ m.elapsed }}
+              </span>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No mentors signed in yet</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="col-6">
+      <div class="mentor-panel" id="stats-panel">
+        <div class="mentor-panel-header">
+          <span><i class="bi bi-trophy me-1"></i>Mentor Leaderboard</span>
+        </div>
+        <div id="stats-content" class="scroll-list">
+          <div class="empty-state">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ── Clock ───────────────────────────────────────────────────────────────────
+  function updateClock() {
+    document.getElementById('clock').textContent = new Date().toLocaleTimeString([], {
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  function escHtml(str) {
+    const d = document.createElement('div');
+    d.appendChild(document.createTextNode(str));
+    return d.innerHTML;
+  }
+
+  // ── Leaderboard sections (same as student kiosk) ────────────────────────────
+  const STAT_SECTIONS = [
+    { key: 'alltime',         icon: 'bi-trophy-fill',    label: 'All-Time Hours',  color: '#e05540' },
+    { key: 'week',            icon: 'bi-calendar-week',  label: 'This Week',       color: '#c44030' },
+    { key: 'longest_session', icon: 'bi-lightning-fill', label: 'Longest Session', color: '#e05540' },
+    { key: 'streak',          icon: 'bi-fire',           label: 'Longest Streak',  color: '#c44030' },
+  ];
+  const medals = ['🥇', '🥈', '🥉'];
+
+  // ── Refresh signed-in list ──────────────────────────────────────────────────
+  async function refreshList() {
+    try {
+      const resp = await fetch('/mentor/data');
+      const data = await resp.json();
+      const mentors = data.signed_in;
+      const listEl = document.getElementById('list-signed-in');
+      document.getElementById('count-signed-in').textContent = mentors.length;
+      if (mentors.length === 0) {
+        listEl.innerHTML = '<div class="empty-state">No mentors signed in yet</div>';
+      } else {
+        listEl.innerHTML = mentors.map(m => {
+          const meta = (m.team ? `Team ${escHtml(String(m.team))} &nbsp;·&nbsp; ` : '') + escHtml(m.elapsed);
+          return `<div class="mentor-row">
+            <span class="mentor-name">${escHtml(m.name)}</span>
+            <span class="mentor-meta">${meta}</span>
+          </div>`;
+        }).join('');
+      }
+    } catch (_) {}
+  }
+
+  // ── Stats/leaderboard ───────────────────────────────────────────────────────
+  async function refreshStats() {
+    try {
+      const resp = await fetch('/mentor/stats');
+      const data = await resp.json();
+      const container = document.getElementById('stats-content');
+      container.innerHTML = STAT_SECTIONS.map(sec => {
+        const rows = data[sec.key] || [];
+        const rowsHtml = rows.length === 0
+          ? `<div class="stats-empty">No data yet</div>`
+          : rows.map((r, i) => `
+              <div class="stats-row">
+                <span class="stats-rank">${medals[i]}</span>
+                <span class="stats-name">${escHtml(r.name)}</span>
+                <span class="stats-value">${escHtml(r.value)}</span>
+              </div>`).join('');
+        return `
+          <div class="stats-section-header" style="color:${sec.color}">
+            <i class="bi ${sec.icon}"></i>${sec.label}
+          </div>
+          ${rowsHtml}`;
+      }).join('');
+    } catch (_) {}
+  }
+
+  // ── SSE ─────────────────────────────────────────────────────────────────────
+  function connectSSE() {
+    const es = new EventSource('/mentor/stream');
+    es.addEventListener('mentor_update', () => {
+      refreshList();
+      refreshStats();
+    });
+    es.onerror = () => { es.close(); setTimeout(connectSSE, 3000); };
+  }
+
+  // Initial load
+  refreshStats();
+  connectSSE();
+
+  // Refresh elapsed times every minute
+  setInterval(refreshList, 60000);
+  setInterval(refreshStats, 60000);
+</script>
+{% endblock %}

@@ -19,12 +19,12 @@
       <div class="mb-3">
         <label class="form-label">Sign-In Time</label>
         <input type="datetime-local" name="sign_in_time" class="form-control"
-               value="{{ s.sign_in_time.strftime('%Y-%m-%dT%H:%M') }}" required>
+               value="{{ s.sign_in_time | localdt('%Y-%m-%dT%H:%M') }}" required>
       </div>
       <div class="mb-3">
         <label class="form-label">Sign-Out Time <span class="text-muted">(leave blank if open)</span></label>
         <input type="datetime-local" name="sign_out_time" class="form-control"
-               value="{{ s.sign_out_time.strftime('%Y-%m-%dT%H:%M') if s.sign_out_time else '' }}">
+               value="{{ s.sign_out_time | localdt('%Y-%m-%dT%H:%M') if s.sign_out_time else '' }}">
       </div>
       <div class="mb-3">
         <label class="form-label">Status</label>

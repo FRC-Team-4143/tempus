@@ -5,67 +5,70 @@
 {% block head %}
 <style>
   body {
-    background: #0d1117;
-    color: #e6edf3;
+    background: #0a0a0a;
+    color: #e8e0e0;
     font-family: 'Segoe UI', sans-serif;
     overflow: hidden;
     height: 100vh;
   }
   .kiosk-header {
-    background: #161b22;
-    border-bottom: 2px solid #21262d;
+    background: #111111;
+    border-bottom: 2px solid #8b0000;
     padding: 12px 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
   }
   .kiosk-header h1 {
-    font-size: 1.5rem;
+    font-size: 2rem;
     font-weight: 700;
-    color: #58a6ff;
+    color: #cc2200;
     margin: 0;
   }
   #clock {
-    font-size: 1.4rem;
+    font-size: 1.9rem;
     font-weight: 600;
-    color: #8b949e;
+    color: #7a6060;
   }
   .team-panel {
-    background: #161b22;
-    border: 1px solid #21262d;
+    background: #111111;
+    border: 1px solid #2a1a1a;
     border-radius: 10px;
     height: calc(100vh - 130px);
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
   .team-panel-header {
-    font-size: 1.2rem;
+    font-size: 1.6rem;
     font-weight: 700;
-    padding: 14px 20px;
-    border-bottom: 1px solid #21262d;
-    background: #1c2128;
+    padding: 16px 24px;
+    border-bottom: 1px solid #2a1a1a;
+    background: #1a0f0f;
     border-radius: 10px 10px 0 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-shrink: 0;
   }
-  .team-4143 { color: #f78166; }
-  .team-4423 { color: #56d364; }
+  .team-4143 { color: #e05540; }
+  .team-4423 { color: #c44030; }
   .student-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 20px;
-    border-bottom: 1px solid #21262d;
-    font-size: 1.05rem;
+    padding: 14px 24px;
+    border-bottom: 1px solid #1e1010;
+    font-size: 1.3rem;
   }
   .student-row:last-child { border-bottom: none; }
-  .student-name { font-weight: 600; }
-  .student-time { color: #8b949e; font-size: 0.9rem; }
+  .student-name { font-weight: 600; color: #f0e8e8; }
+  .student-time { color: #9a7878; font-size: 1.1rem; }
   .empty-state {
     text-align: center;
-    color: #484f58;
+    color: #5a3a3a;
     padding: 40px 20px;
-    font-size: 1rem;
+    font-size: 1.2rem;
   }
   #feedback-toast {
     position: fixed;
@@ -85,19 +88,69 @@
     border: none;
     top: 0; left: 0;
   }
+  /* Stats panel */
+  .stats-section-header {
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #7a6060;
+    padding: 12px 18px 6px;
+    border-bottom: 1px solid #2a1a1a;
+    background: #1a0f0f;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .stats-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 18px;
+    border-bottom: 1px solid #1e1010;
+    font-size: 1.15rem;
+  }
+  .stats-row:last-child { border-bottom: none; }
+  .stats-rank {
+    font-size: 1rem;
+    width: 22px;
+    flex-shrink: 0;
+  }
+  .stats-name { flex: 1; padding: 0 10px; font-weight: 500; color: #f0e8e8; }
+  .stats-value { color: #e05540; font-weight: 700; font-size: 1.05rem; }
+  /* Hide scrollbars on all panels */
+  .scroll-list::-webkit-scrollbar { display: none; }
+  .scroll-list { -ms-overflow-style: none; scrollbar-width: none; overflow-y: hidden; flex: 1; }
+  /* Team totals footer */
+  .stats-footer {
+    display: flex;
+    border-top: 1px solid #2a1a1a;
+    background: #1a0f0f;
+    border-radius: 0 0 10px 10px;
+    flex-shrink: 0;
+  }
+  .stats-footer-cell {
+    flex: 1;
+    text-align: center;
+    padding: 10px 8px;
+    border-right: 1px solid #2a1a1a;
+  }
+  .stats-footer-cell:last-child { border-right: none; }
+  .stats-footer-label { font-size: 0.75rem; color: #f0e8e8; text-transform: uppercase; letter-spacing: 0.06em; }
+  .stats-footer-value { font-size: 1.1rem; font-weight: 700; color: #e05540; }
 </style>
 {% endblock %}
 
 {% block body %}
 <header class="kiosk-header">
-  <h1><i class="bi bi-tools"></i> Shop Sign-In</h1>
+  <h1><i class="bi bi-tools"></i> Shop Sign-In{% if demo %} <span class="badge bg-warning text-dark ms-2" style="font-size:0.7rem;vertical-align:middle">DEMO</span>{% endif %}</h1>
   <div id="clock"></div>
 </header>
 
 <div class="container-fluid px-3 pt-3">
-  <div class="row g-3" id="teams-container">
+  <div class="row g-3">
     {% for team_number in teams %}
-    <div class="col-6">
+    <div class="col-4">
       <div class="team-panel" id="panel-{{ team_number }}">
         <div class="team-panel-header team-{{ team_number }}">
           <span>Team {{ team_number }}</span>
@@ -105,7 +158,7 @@
             {{ (by_team.get(team_number, [])|length) }}
           </span>
         </div>
-        <div id="list-{{ team_number }}">
+        <div id="list-{{ team_number }}" class="scroll-list">
           {% set students = by_team.get(team_number, []) %}
           {% if students %}
             {% for s in students %}
@@ -121,6 +174,32 @@
       </div>
     </div>
     {% endfor %}
+
+    <!-- Stats / Leaderboard column -->
+    <div class="col-4">
+      <div class="team-panel" id="stats-panel">
+        <div class="team-panel-header" style="color:#cc2200">
+          <span><i class="bi bi-trophy me-1"></i>Leaderboard</span>
+        </div>
+        <div id="stats-content" class="scroll-list">
+          <div class="empty-state">Loading…</div>
+        </div>
+        <div class="stats-footer" id="stats-footer">
+          <div class="stats-footer-cell">
+            <div class="stats-footer-label">Team 4143</div>
+            <div class="stats-footer-value" id="footer-4143">—</div>
+          </div>
+          <div class="stats-footer-cell">
+            <div class="stats-footer-label">Team 4423</div>
+            <div class="stats-footer-value" id="footer-4423">—</div>
+          </div>
+          <div class="stats-footer-cell">
+            <div class="stats-footer-label">Combined</div>
+            <div class="stats-footer-value" id="footer-combined">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -187,7 +266,7 @@
   // ── SSE – refresh student lists on any update event ───────────────────────────
   function connectSSE() {
     const es = new EventSource('/kiosk/stream');
-    es.addEventListener('update', () => refreshLists());
+    es.addEventListener('update', () => { refreshLists(); refreshStats(); });
     es.onerror = () => {
       es.close();
       setTimeout(connectSSE, 3000); // reconnect after 3s
@@ -213,6 +292,7 @@
             </div>
           `).join('');
         }
+        startAutoScroll(listEl);
       }
     } catch (_) { /* will retry on next SSE event */ }
   }
@@ -223,8 +303,128 @@
     return d.innerHTML;
   }
 
+  // ── Auto-scroll ──────────────────────────────────────────────────────────────
+  const SCROLL_PX_PER_SEC = 45;   // scroll speed
+  const PAUSE_TOP_MS      = 2500; // pause before starting to scroll
+  const PAUSE_BOTTOM_MS   = 1500; // pause at bottom before resetting
+
+  const _scrollState = {};
+
+  function startAutoScroll(el) {
+    const id = el.id;
+    // Cancel any existing loop for this element
+    if (_scrollState[id]) {
+      cancelAnimationFrame(_scrollState[id].raf);
+      clearTimeout(_scrollState[id].timer);
+    }
+    el.scrollTop = 0;
+
+    let lastTs = null;
+    let phase = 'pause-top';   // 'pause-top' | 'down' | 'pause-bottom' | 'up'
+    let phaseStart = null;
+    let direction = 1;
+
+    function tick(ts) {
+      // If content fits in the panel, no scroll needed
+      if (el.scrollHeight <= el.clientHeight + 2) {
+        _scrollState[id] = { raf: requestAnimationFrame(tick), timer: null };
+        return;
+      }
+
+      if (phase === 'pause-top') {
+        if (phaseStart === null) phaseStart = ts;
+        if (ts - phaseStart >= PAUSE_TOP_MS) {
+          phase = 'down';
+          phaseStart = null;
+          lastTs = ts;
+        }
+      } else if (phase === 'down') {
+        const dt = (ts - lastTs) / 1000;
+        el.scrollTop += SCROLL_PX_PER_SEC * dt;
+        lastTs = ts;
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 2) {
+          phase = 'pause-bottom';
+          phaseStart = null;
+        }
+      } else if (phase === 'pause-bottom') {
+        if (phaseStart === null) phaseStart = ts;
+        if (ts - phaseStart >= PAUSE_BOTTOM_MS) {
+          phase = 'up';
+          lastTs = ts;
+          phaseStart = null;
+        }
+      } else if (phase === 'up') {
+        const dt = (ts - lastTs) / 1000;
+        el.scrollTop -= SCROLL_PX_PER_SEC * dt;
+        lastTs = ts;
+        if (el.scrollTop <= 2) {
+          el.scrollTop = 0;
+          phase = 'pause-top';
+          phaseStart = null;
+        }
+      }
+
+      _scrollState[id] = { raf: requestAnimationFrame(tick), timer: null };
+    }
+
+    _scrollState[id] = { raf: requestAnimationFrame(tick), timer: null };
+  }
+
+  function initScrollers() {
+    document.querySelectorAll('.scroll-list').forEach(el => startAutoScroll(el));
+  }
+
+  // ── Stats leaderboard ────────────────────────────────────────────────────────
+  const STAT_SECTIONS = [
+    { key: 'alltime',         icon: 'bi-trophy-fill',    label: 'All-Time Hours',    color: '#e05540' },
+    { key: 'week',            icon: 'bi-calendar-week',  label: 'This Week',         color: '#c44030' },
+    { key: 'longest_session', icon: 'bi-lightning-fill', label: 'Longest Session',   color: '#e05540' },
+    { key: 'streak',          icon: 'bi-fire',           label: 'Longest Streak',    color: '#c44030' },
+  ];
+
+  async function refreshStats() {
+    try {
+      {% if demo_stats %}
+      const data = {{ demo_stats | tojson }};
+      {% else %}
+      const resp = await fetch('/kiosk/stats');
+      const data = await resp.json();
+      {% endif %}
+      const container = document.getElementById('stats-content');
+      const medals = ['🥇', '🥈', '🥉'];
+      container.innerHTML = STAT_SECTIONS.map(sec => {
+        const rows = data[sec.key] || [];
+        const rowsHtml = rows.length === 0
+          ? `<div class="stats-empty">No data yet</div>`
+          : rows.map((r, i) => `
+              <div class="stats-row">
+                <span class="stats-rank">${medals[i]}</span>
+                <span class="stats-name">${escHtml(r.name)}</span>
+                <span class="stats-value">${escHtml(r.value)}</span>
+              </div>`).join('');
+        return `
+          <div class="stats-section-header" style="color:${sec.color}">
+            <i class="bi ${sec.icon}"></i>${sec.label}
+          </div>
+          ${rowsHtml}`;
+      }).join('');
+      // Populate the pinned team totals footer
+      const totals = data.team_totals || [];
+      const byName = Object.fromEntries(totals.map(r => [r.name, r.value]));
+      document.getElementById('footer-4143').textContent     = byName['Team 4143'] || '—';
+      document.getElementById('footer-4423').textContent     = byName['Team 4423'] || '—';
+      document.getElementById('footer-combined').textContent = byName['Combined']   || '—';
+    } catch (_) { /* silent — will retry */ }
+  }
+
+  refreshStats();
+  setInterval(refreshStats, 60000);
+
   connectSSE();
   // Refresh elapsed times every 60 seconds
   setInterval(refreshLists, 60000);
+
+  // Start auto-scrollers on initial load
+  initScrollers();
 </script>
 {% endblock %}

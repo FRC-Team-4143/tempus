@@ -38,16 +38,16 @@
   <div class="card-body p-0">
     <table class="table table-hover mb-0">
       <thead class="table-light">
-        <tr><th>Code</th><th>Name</th><th>Team</th><th>Category</th><th>Slack UID</th><th>Active</th><th></th></tr>
+        <tr><th>Name</th><th>Team</th><th>Category</th><th>Slack UID</th><th>Tracker UID</th><th>Active</th><th></th></tr>
       </thead>
       <tbody>
         {% for s in students %}
         <tr>
-          <td><code class="text-muted">{{ s.student_code or '—' }}</code></td>
           <td>{{ s.name }}</td>
           <td>{{ s.team.number }}</td>
           <td>{{ s.category.value | capitalize if s.category else '—' }}</td>
           <td>{{ s.slack_user_id or '—' }}</td>
+          <td><span class="text-muted">{{ s.student_code or '—' }}</span></td>
           <td>
             {% if s.active %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}
           </td>

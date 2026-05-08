@@ -60,6 +60,7 @@ class Mentor(Base):
     __tablename__ = "mentors"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mentor_code: Mapped[Optional[str]] = mapped_column(String(8), unique=True, nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
     category: Mapped[Optional[FocusCategory]] = mapped_column(
@@ -68,6 +69,7 @@ class Mentor(Base):
     slack_user_id: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
 
     team: Mapped[Optional["Team"]] = relationship("Team")
+    sessions: Mapped[List["MentorSession"]] = relationship("MentorSession", back_populates="mentor")
 
 
 class WeeklyRequirement(Base):
@@ -103,3 +105,16 @@ class AttendanceSession(Base):
     slack_channel_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     student: Mapped["Student"] = relationship("Student", back_populates="sessions")
+
+
+class MentorSession(Base):
+    """Tracks mentor sign-ins — just for fun, separate from student attendance."""
+    __tablename__ = "mentor_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mentor_id: Mapped[int] = mapped_column(Integer, ForeignKey("mentors.id"), nullable=False)
+    sign_in_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    sign_out_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    hours_counted: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    mentor: Mapped["Mentor"] = relationship("Mentor", back_populates="sessions")

@@ -20,11 +20,15 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import get_db
 from app.models import (
-    AttendanceSession, FocusCategory, Mentor, SessionStatus, Student, Team, WeeklyRequirement,
+    AttendanceSession, FocusCategory, Mentor, MentorSession, SessionStatus, Student, Team, WeeklyRequirement,
 )
+from app.utils import utc_to_local, today_local, local_to_utc
 
 router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory="app/templates")
+templates.env.filters["localdt"] = (
+    lambda dt, fmt="%m/%d %I:%M %p": utc_to_local(dt).strftime(fmt) if dt else ""
+)
 
 _signer = URLSafeTimedSerializer(settings.session_secret, salt="admin-session")
 _COOKIE = "admin_session"
@@ -387,6 +391,7 @@ async def admin_mentors_create(
 
     db.add(Mentor(
         name=name.strip(),
+        mentor_code=hashlib.sha256(name.strip().lower().encode()).hexdigest()[:8],
         slack_user_id=slack_user_id.strip(),
         team_id=team_id or None,
         category=FocusCategory(category) if category else None,
@@ -486,6 +491,7 @@ async def admin_sessions_list(
     request: Request,
     db: AsyncSession = Depends(get_db),
     page: int = 1,
+    person_type: Optional[str] = "student",
     student_id: Optional[str] = None,
     team_id: Optional[str] = None,
     category: Optional[str] = None,
@@ -495,8 +501,11 @@ async def admin_sessions_list(
     if redirect := _require_auth(request):
         return redirect
 
+    is_mentor = (person_type or "student").strip().lower() == "mentor"
+
     # Sanitize integer params — empty string from blank form select becomes None
     sid = int(student_id) if student_id and student_id.strip().isdigit() else None
+    mid = sid if is_mentor else None
     tid = int(team_id) if team_id and team_id.strip().isdigit() else None
     cat_str = category.strip() if category and category.strip() else None
     try:
@@ -513,40 +522,61 @@ async def admin_sessions_list(
         d_to = None
 
     PAGE_SIZE = 50
-    query = (
-        select(AttendanceSession)
-        .options(selectinload(AttendanceSession.student).selectinload(Student.team))
-        .order_by(AttendanceSession.sign_in_time.desc())
-    )
-    if sid:
-        query = query.where(AttendanceSession.student_id == sid)
-    if tid or cat:
-        query = query.join(Student)
-        if tid:
-            query = query.where(Student.team_id == tid)
-        if cat:
-            query = query.where(Student.category == cat)
-    if d_from:
-        query = query.where(
-            AttendanceSession.sign_in_time >= datetime.combine(d_from, datetime.min.time())
+
+    if is_mentor:
+        query = (
+            select(MentorSession)
+            .options(selectinload(MentorSession.mentor).selectinload(Mentor.team))
+            .order_by(MentorSession.sign_in_time.desc())
         )
-    if d_to:
-        query = query.where(
-            AttendanceSession.sign_in_time <= datetime.combine(d_to, datetime.max.time())
+        if mid:
+            query = query.where(MentorSession.mentor_id == mid)
+        if tid or cat:
+            query = query.join(Mentor)
+            if tid:
+                query = query.where(Mentor.team_id == tid)
+            if cat:
+                query = query.where(Mentor.category == cat)
+        if d_from:
+            query = query.where(
+                MentorSession.sign_in_time >= local_to_utc(datetime.combine(d_from, datetime.min.time()))
+            )
+        if d_to:
+            query = query.where(
+                MentorSession.sign_in_time <= local_to_utc(datetime.combine(d_to, datetime.max.time()))
+            )
+        total_result = await db.execute(select(func.count()).select_from(query.subquery()))
+        total = total_result.scalar() or 0
+        sessions_result = await db.execute(query.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE))
+        sessions = sessions_result.scalars().all()
+        all_students = (await db.execute(select(Mentor).order_by(Mentor.name))).scalars().all()
+    else:
+        query = (
+            select(AttendanceSession)
+            .options(selectinload(AttendanceSession.student).selectinload(Student.team))
+            .order_by(AttendanceSession.sign_in_time.desc())
         )
-
-    total_result = await db.execute(
-        select(func.count()).select_from(query.subquery())
-    )
-    total = total_result.scalar() or 0
-
-    sessions_result = await db.execute(
-        query.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)
-    )
-    sessions = sessions_result.scalars().all()
-
-    students_result = await db.execute(select(Student).order_by(Student.name))
-    all_students = students_result.scalars().all()
+        if sid:
+            query = query.where(AttendanceSession.student_id == sid)
+        if tid or cat:
+            query = query.join(Student)
+            if tid:
+                query = query.where(Student.team_id == tid)
+            if cat:
+                query = query.where(Student.category == cat)
+        if d_from:
+            query = query.where(
+                AttendanceSession.sign_in_time >= local_to_utc(datetime.combine(d_from, datetime.min.time()))
+            )
+        if d_to:
+            query = query.where(
+                AttendanceSession.sign_in_time <= local_to_utc(datetime.combine(d_to, datetime.max.time()))
+            )
+        total_result = await db.execute(select(func.count()).select_from(query.subquery()))
+        total = total_result.scalar() or 0
+        sessions_result = await db.execute(query.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE))
+        sessions = sessions_result.scalars().all()
+        all_students = (await db.execute(select(Student).order_by(Student.name))).scalars().all()
 
     teams_result = await db.execute(select(Team).order_by(Team.number))
     teams = teams_result.scalars().all()
@@ -556,6 +586,7 @@ async def admin_sessions_list(
         {
             "request": request,
             "sessions": sessions,
+            "is_mentor": is_mentor,
             "page": page,
             "total": total,
             "page_size": PAGE_SIZE,
@@ -564,7 +595,8 @@ async def admin_sessions_list(
             "teams": teams,
             "categories": list(FocusCategory),
             "filters": {
-                "student_id": sid,
+                "person_type": "mentor" if is_mentor else "student",
+                "student_id": mid if is_mentor else sid,
                 "team_id": tid,
                 "category": cat.value if cat else None,
                 "date_from": d_from,
@@ -618,11 +650,11 @@ async def admin_sessions_export(
             query = query.where(Student.category == cat)
     if d_from:
         query = query.where(
-            AttendanceSession.sign_in_time >= datetime.combine(d_from, datetime.min.time())
+            AttendanceSession.sign_in_time >= local_to_utc(datetime.combine(d_from, datetime.min.time()))
         )
     if d_to:
         query = query.where(
-            AttendanceSession.sign_in_time <= datetime.combine(d_to, datetime.max.time())
+            AttendanceSession.sign_in_time <= local_to_utc(datetime.combine(d_to, datetime.max.time()))
         )
 
     result = await db.execute(query)
@@ -639,8 +671,8 @@ async def admin_sessions_export(
                 s.id,
                 s.student.name,
                 s.student.team.number,
-                s.sign_in_time.isoformat() if s.sign_in_time else "",
-                s.sign_out_time.isoformat() if s.sign_out_time else "",
+                utc_to_local(s.sign_in_time).isoformat() if s.sign_in_time else "",
+                utc_to_local(s.sign_out_time).isoformat() if s.sign_out_time else "",
                 s.status.value if s.status else "",
                 s.hours_counted if s.hours_counted is not None else "",
             ]
@@ -694,8 +726,8 @@ async def admin_sessions_edit(
     if not session:
         return RedirectResponse("/admin/sessions", status_code=303)
 
-    parsed_sign_in = datetime.fromisoformat(sign_in_time)
-    parsed_sign_out = datetime.fromisoformat(sign_out_time) if sign_out_time else None
+    parsed_sign_in = local_to_utc(datetime.fromisoformat(sign_in_time))
+    parsed_sign_out = local_to_utc(datetime.fromisoformat(sign_out_time)) if sign_out_time else None
     parsed_status = SessionStatus(status) if status else None
 
     session.sign_in_time = parsed_sign_in

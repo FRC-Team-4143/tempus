@@ -23,6 +23,7 @@ from app.models import AttendanceSession, Mentor, SessionStatus, Student
 from app.services.attendance import sign_out, get_signed_in_students
 from app.services.broadcaster import broadcaster
 from app.services.slack_client import get_slack_client, update_message
+from app.utils import utc_to_local, today_local, local_to_utc
 
 router = APIRouter(prefix="/slack")
 
@@ -64,7 +65,7 @@ def _checkout_blocks(
     elapsed = datetime.utcnow() - session.sign_in_time
     hours, remainder = divmod(int(elapsed.total_seconds()), 3600)
     minutes = remainder // 60
-    sign_in_str = session.sign_in_time.strftime("%I:%M %p")
+    sign_in_str = utc_to_local(session.sign_in_time).strftime("%I:%M %p")
 
     return [
         {
@@ -116,8 +117,10 @@ async def _send_hours_dm(slack_user_id: str) -> None:
     from sqlalchemy import func
     from datetime import date, timedelta
 
-    week_start = date.today() - timedelta(days=date.today().weekday())
+    week_start = today_local() - timedelta(days=today_local().weekday())
     week_end = week_start + timedelta(days=7)
+    week_start_utc = local_to_utc(datetime.combine(week_start, datetime.min.time()))
+    week_end_utc = local_to_utc(datetime.combine(week_end, datetime.min.time()))
 
     async with AsyncSessionLocal() as db:
         s_result = await db.execute(
@@ -140,8 +143,8 @@ async def _send_hours_dm(slack_user_id: str) -> None:
             .where(
                 AttendanceSession.student_id == student.id,
                 AttendanceSession.sign_out_time.is_not(None),
-                AttendanceSession.sign_in_time >= datetime.combine(week_start, datetime.min.time()),
-                AttendanceSession.sign_in_time < datetime.combine(week_end, datetime.min.time()),
+                AttendanceSession.sign_in_time >= week_start_utc,
+                AttendanceSession.sign_in_time < week_end_utc,
             )
         )
         week_hours = float(week_result.scalar() or 0.0)
@@ -339,7 +342,7 @@ async def slack_interact(
     await broadcaster.broadcast("update")
 
     student = session.student
-    out_time = session.sign_out_time.strftime("%I:%M %p")
+    out_time = utc_to_local(session.sign_out_time).strftime("%I:%M %p")
     hours = session.hours_counted
     status_label = (
         "✅ Contributor" if status == SessionStatus.contributor

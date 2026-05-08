@@ -14,15 +14,16 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import AttendanceSession, Mentor, SessionStatus, Student, FocusCategory, WeeklyRequirement
-from app.services.attendance import sign_out_all_open
+from app.services.attendance import sign_out_all_open, mentor_sign_out_all_open
 from app.services.slack_client import send_dm, send_group_dm
+from app.utils import today_local, local_to_utc
 
 log = logging.getLogger(__name__)
 
 
 def _current_week_start() -> date:
-    """Return the Monday of the current week."""
-    today = date.today()
+    """Return the Monday of the current week in local (CST) time."""
+    today = today_local()
     return today - timedelta(days=today.weekday())
 
 
@@ -51,13 +52,15 @@ async def _get_requirement(team_id: int, week_start: date, category=None) -> flo
 
 async def _weekly_hours_for_student(db, student_id: int, week_start: date) -> float:
     week_end = week_start + timedelta(days=7)
+    week_start_utc = local_to_utc(datetime.combine(week_start, datetime.min.time()))
+    week_end_utc = local_to_utc(datetime.combine(week_end, datetime.min.time()))
     result = await db.execute(
         select(func.coalesce(func.sum(AttendanceSession.hours_counted), 0.0))
         .where(
             AttendanceSession.student_id == student_id,
             AttendanceSession.sign_out_time.is_not(None),
-            AttendanceSession.sign_in_time >= datetime.combine(week_start, datetime.min.time()),
-            AttendanceSession.sign_in_time < datetime.combine(week_end, datetime.min.time()),
+            AttendanceSession.sign_in_time >= week_start_utc,
+            AttendanceSession.sign_in_time < week_end_utc,
         )
     )
     return float(result.scalar() or 0.0)
@@ -67,10 +70,14 @@ async def job_auto_signout() -> None:
     log.info("Running auto sign-out job")
     async with AsyncSessionLocal() as db:
         count = await sign_out_all_open(db, status=SessionStatus.auto)
+        mentor_count = await mentor_sign_out_all_open(db)
     if count:
         from app.services.broadcaster import broadcaster
         await broadcaster.broadcast("update")
-    log.info("Auto sign-out: closed %d open session(s)", count)
+    if mentor_count:
+        from app.services.broadcaster import broadcaster
+        await broadcaster.broadcast("mentor_update")
+    log.info("Auto sign-out: closed %d student session(s), %d mentor session(s)", count, mentor_count)
 
 
 async def job_weekly_dms() -> None:

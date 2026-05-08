@@ -13,14 +13,15 @@
 <div class="card shadow-sm">
   <div class="card-body p-0">
     <table class="table table-hover mb-0">
-      <thead class="table-light"><tr><th>Name</th><th>Team</th><th>Category</th><th>Slack User ID</th><th></th></tr></thead>
+      <thead class="table-light"><tr><th>Name</th><th>Team</th><th>Category</th><th>Slack User ID</th><th>Tracker UID</th><th></th></tr></thead>
       <tbody>
         {% for m in mentors %}
         <tr>
           <td>{{ m.name }}</td>
           <td>{{ m.team.number if m.team else '—' }}</td>
           <td>{{ m.category.value | capitalize if m.category else '—' }}</td>
-          <td><code>{{ m.slack_user_id }}</code></td>
+          <td>{{ m.slack_user_id }}</td>
+          <td><span class="text-muted">{{ m.mentor_code or '—' }}</span></td>
           <td>
             <form method="post" action="/admin/mentors/{{ m.id }}/delete" class="d-inline"
                   onsubmit="return confirm('Remove {{ m.name }}?')">

@@ -6,6 +6,7 @@ from typing import Optional
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.config import settings
+from app.utils import today_local, local_to_utc
 
 _client: Optional[AsyncWebClient] = None
 
@@ -82,8 +83,10 @@ async def notify_student_hours(
     from app.database import AsyncSessionLocal
     from app.models import AttendanceSession, Mentor, Student, WeeklyRequirement
 
-    week_start = date.today() - timedelta(days=date.today().weekday())
+    week_start = today_local() - timedelta(days=today_local().weekday())
     week_end = week_start + timedelta(days=7)
+    week_start_utc = local_to_utc(datetime.combine(week_start, datetime.min.time()))
+    week_end_utc = local_to_utc(datetime.combine(week_end, datetime.min.time()))
 
     async with AsyncSessionLocal() as db:
         # Load student
@@ -110,8 +113,8 @@ async def notify_student_hours(
             .where(
                 AttendanceSession.student_id == student_id,
                 AttendanceSession.sign_out_time.is_not(None),
-                AttendanceSession.sign_in_time >= datetime.combine(week_start, datetime.min.time()),
-                AttendanceSession.sign_in_time < datetime.combine(week_end, datetime.min.time()),
+                AttendanceSession.sign_in_time >= week_start_utc,
+                AttendanceSession.sign_in_time < week_end_utc,
             )
         )
         week_hours = float(week_result.scalar() or 0.0)

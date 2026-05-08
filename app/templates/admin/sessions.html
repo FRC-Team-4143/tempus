@@ -4,18 +4,27 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h2>Sessions</h2>
+  <h2>{{ "Mentor" if is_mentor else "Student" }} Sessions</h2>
+  {% if not is_mentor %}
   <a href="/admin/sessions/export?{% if filters.student_id %}student_id={{ filters.student_id }}&{% endif %}{% if filters.team_id %}team_id={{ filters.team_id }}&{% endif %}{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.date_from %}date_from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}date_to={{ filters.date_to }}{% endif %}"
      class="btn btn-outline-secondary btn-sm">
     <i class="bi bi-download me-1"></i> Export CSV
   </a>
+  {% endif %}
+</div>
+
+<!-- Person type toggle -->
+<div class="btn-group mb-3" role="group">
+  <a href="/admin/sessions?person_type=student" class="btn btn-sm {{ 'btn-primary' if not is_mentor else 'btn-outline-primary' }}">Students</a>
+  <a href="/admin/sessions?person_type=mentor" class="btn btn-sm {{ 'btn-primary' if is_mentor else 'btn-outline-primary' }}">Mentors</a>
 </div>
 
 <!-- Filters -->
 <form method="get" class="row g-2 mb-3">
+  <input type="hidden" name="person_type" value="{{ 'mentor' if is_mentor else 'student' }}">
   <div class="col-auto">
     <select name="student_id" class="form-select form-select-sm">
-      <option value="">All Students</option>
+      <option value="">All {{ "Mentors" if is_mentor else "Students" }}</option>
       {% for s in all_students %}
       <option value="{{ s.id }}" {% if filters.student_id == s.id %}selected{% endif %}>{{ s.name }}</option>
       {% endfor %}
@@ -47,7 +56,7 @@
   </div>
   <div class="col-auto">
     <button type="submit" class="btn btn-sm btn-primary">Filter</button>
-    <a href="/admin/sessions" class="btn btn-sm btn-outline-secondary">Clear</a>
+    <a href="/admin/sessions?person_type={{ 'mentor' if is_mentor else 'student' }}" class="btn btn-sm btn-outline-secondary">Clear</a>
   </div>
 </form>
 
@@ -55,15 +64,28 @@
   <div class="card-body p-0">
     <table class="table table-sm table-hover mb-0">
       <thead class="table-light">
+        {% if is_mentor %}
+        <tr><th>Mentor</th><th>Team</th><th>Sign In</th><th>Sign Out</th><th>Hours</th></tr>
+        {% else %}
         <tr><th>Student</th><th>Team</th><th>Sign In</th><th>Sign Out</th><th>Status</th><th>Hours</th><th></th></tr>
+        {% endif %}
       </thead>
       <tbody>
         {% for s in sessions %}
+        {% if is_mentor %}
+        <tr>
+          <td>{{ s.mentor.name }}</td>
+          <td>{{ s.mentor.team.number if s.mentor.team else '—' }}</td>
+          <td>{{ s.sign_in_time | localdt('%m/%d %I:%M %p') }}</td>
+          <td>{{ s.sign_out_time | localdt('%I:%M %p') if s.sign_out_time else '<span class="badge bg-warning text-dark">Open</span>' }}</td>
+          <td>{{ '%.2f'|format(s.hours_counted) if s.hours_counted is not none else '—' }}</td>
+        </tr>
+        {% else %}
         <tr>
           <td>{{ s.student.name }}</td>
           <td>{{ s.student.team.number }}</td>
-          <td>{{ s.sign_in_time.strftime('%m/%d %I:%M %p') }}</td>
-          <td>{{ s.sign_out_time.strftime('%I:%M %p') if s.sign_out_time else '<span class="badge bg-warning text-dark">Open</span>' }}</td>
+          <td>{{ s.sign_in_time | localdt('%m/%d %I:%M %p') }}</td>
+          <td>{{ s.sign_out_time | localdt('%I:%M %p') if s.sign_out_time else '<span class="badge bg-warning text-dark">Open</span>' }}</td>
           <td>
             {% if s.status %}
               {% if s.status.value == 'contributor' %}<span class="badge bg-success">Contributor</span>
@@ -81,6 +103,7 @@
             </form>
           </td>
         </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>

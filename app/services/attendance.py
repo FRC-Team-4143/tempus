@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
-from app.models import Student, AttendanceSession, SessionStatus
+from app.models import Student, AttendanceSession, SessionStatus, Mentor, MentorSession
 
 
 def _status_multiplier(status: SessionStatus) -> float:
@@ -128,5 +128,58 @@ async def get_signed_in_students(db: AsyncSession) -> list[AttendanceSession]:
         )
         .where(AttendanceSession.sign_out_time.is_(None))
         .order_by(AttendanceSession.sign_in_time)
+    )
+    return result.scalars().all()
+
+
+# ── Mentor sign-in/out ─────────────────────────────────────────────────────────
+
+async def mentor_sign_in(db: AsyncSession, name: str) -> tuple[bool, str, Optional[Mentor]]:
+    """Sign in a mentor by name (case-insensitive). Returns (success, message, mentor)."""
+    from sqlalchemy import func as sqlfunc
+    result = await db.execute(
+        select(Mentor)
+        .where(sqlfunc.lower(Mentor.name) == name.lower())
+    )
+    mentor = result.scalars().first()
+    if not mentor:
+        return False, f"Mentor '{name}' not found. Please ask an admin to add you.", None
+
+    # Check for open session
+    open_result = await db.execute(
+        select(MentorSession).where(
+            MentorSession.mentor_id == mentor.id,
+            MentorSession.sign_out_time.is_(None),
+        )
+    )
+    if open_result.scalars().first():
+        return False, f"{mentor.name} is already signed in.", None
+
+    session = MentorSession(mentor_id=mentor.id, sign_in_time=datetime.utcnow())
+    db.add(session)
+    await db.commit()
+    return True, f"Welcome, {mentor.name}!", mentor
+
+
+async def mentor_sign_out_all_open(db: AsyncSession) -> int:
+    """Auto sign-out all open mentor sessions. Returns count closed."""
+    result = await db.execute(
+        select(MentorSession).where(MentorSession.sign_out_time.is_(None))
+    )
+    open_sessions = result.scalars().all()
+    for s in open_sessions:
+        now = datetime.utcnow()
+        s.sign_out_time = now
+        s.hours_counted = round((now - s.sign_in_time).total_seconds() / 3600.0, 4)
+    await db.commit()
+    return len(open_sessions)
+
+
+async def get_signed_in_mentors(db: AsyncSession) -> list[MentorSession]:
+    result = await db.execute(
+        select(MentorSession)
+        .options(selectinload(MentorSession.mentor))
+        .where(MentorSession.sign_out_time.is_(None))
+        .order_by(MentorSession.sign_in_time)
     )
     return result.scalars().all()
