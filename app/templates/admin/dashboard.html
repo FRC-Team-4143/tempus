@@ -1,0 +1,116 @@
+{% extends "admin/base.html" %}
+{% set active_page = "dashboard" %}
+
+{% block title %}Dashboard — FRC Attendance Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">Dashboard</h2>
+  {% if not_signed_in %}
+  <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#manualSigninModal">
+    <i class="bi bi-person-plus me-1"></i> Manual Sign-In
+  </button>
+  {% endif %}
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card text-bg-primary">
+      <div class="card-body">
+        <div class="fs-2 fw-bold">{{ signed_in|length }}</div>
+        <div class="small">Currently Signed In</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Currently signed in -->
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-header fw-semibold"><i class="bi bi-person-check me-1"></i> Signed In Now</div>
+      <div class="card-body p-0">
+        {% if signed_in %}
+        <table class="table table-sm mb-0">
+          <thead class="table-light"><tr><th>Name</th><th>Team</th><th>Since</th></tr></thead>
+          <tbody>
+            {% for s in signed_in %}
+            <tr>
+              <td>{{ s.student.name }}</td>
+              <td>{{ s.student.team.number }}</td>
+              <td>{{ s.sign_in_time.strftime('%I:%M %p') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <p class="text-muted p-3 mb-0">No one currently signed in.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaderboard -->
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-trophy me-1"></i> Season Leaderboard</span>
+        <form method="post" action="/admin/leaderboard/reset" class="d-inline m-0"
+              onsubmit="return confirm('Reset the leaderboard to count from today onward? This does not delete any recorded hours — older sessions are kept and still exportable.')">
+          <span class="text-muted small me-2">
+            {% if leaderboard_since %}Counting since {{ leaderboard_since.strftime('%b %d, %Y') }}{% else %}All time{% endif %}
+          </span>
+          <button type="submit" class="btn btn-outline-secondary btn-sm" title="Reset leaderboard to count from today">
+            <i class="bi bi-arrow-counterclockwise"></i> Reset
+          </button>
+        </form>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead class="table-light"><tr><th>#</th><th>Name</th><th>Team</th><th>Hours</th></tr></thead>
+          <tbody>
+            {% for row in leaderboard %}
+            <tr>
+              <td class="text-muted">{{ loop.index }}</td>
+              <td>{{ row.name }}</td>
+              <td>{{ row.team_number }}</td>
+              <td><span class="badge bg-success">{{ '%.1f' % row.total }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Manual Sign-In Modal -->
+{% if not_signed_in %}
+<div class="modal fade" id="manualSigninModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form method="post" action="/admin/manual-signin">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-person-plus me-1"></i> Manual Sign-In</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label fw-semibold">Select Student</label>
+          <select name="student_id" class="form-select" required>
+            <option value="" disabled selected>— choose a student —</option>
+            {% for s in not_signed_in %}
+            <option value="{{ s.id }}">{{ s.name }} ({{ s.team.number }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success btn-sm">Sign In</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

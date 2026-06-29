@@ -1,0 +1,56 @@
+{% extends "admin/base.html" %}
+{% set active_page = "sessions" %}
+{% block title %}Edit Session — FRC Attendance Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Edit Session</h2>
+  <a href="/admin/sessions" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i> Back to Sessions
+  </a>
+</div>
+
+<div class="card shadow-sm" style="max-width: 540px;">
+  <div class="card-body">
+    {% if is_mentor %}
+    <p class="text-muted mb-3">
+      <strong>{{ s.mentor.name }}</strong> &mdash; {{ 'Team ' ~ s.mentor.team.number if s.mentor.team else 'No team' }}
+    </p>
+    <form method="post" action="/admin/mentor-sessions/{{ s.id }}/edit">
+    {% else %}
+    <p class="text-muted mb-3">
+      <strong>{{ s.student.name }}</strong> &mdash; Team {{ s.student.team.number }}
+    </p>
+    <form method="post" action="/admin/sessions/{{ s.id }}/edit">
+    {% endif %}
+      <div class="mb-3">
+        <label class="form-label">Sign-In Time</label>
+        <input type="datetime-local" name="sign_in_time" class="form-control"
+               value="{{ s.sign_in_time | localdt('%Y-%m-%dT%H:%M') }}" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Sign-Out Time <span class="text-muted">(leave blank if open)</span></label>
+        <input type="datetime-local" name="sign_out_time" class="form-control"
+               value="{{ s.sign_out_time | localdt('%Y-%m-%dT%H:%M') if s.sign_out_time else '' }}">
+      </div>
+      {% if not is_mentor %}
+      <div class="mb-3">
+        <label class="form-label">Status</label>
+        <select name="status" class="form-select">
+          <option value="">— None —</option>
+          {% for st in statuses %}
+          <option value="{{ st.value }}" {% if s.status == st %}selected{% endif %}>
+            {{ st.value | capitalize }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <a href="/admin/sessions" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

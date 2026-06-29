@@ -1,0 +1,94 @@
+{% extends "admin/base.html" %}
+{% set active_page = "settings" %}
+{% block title %}Settings — FRC Attendance Admin{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Settings</h2>
+
+{% if saved %}
+<div class="alert alert-success alert-dismissible fade show py-2" style="max-width:500px" role="alert">
+  <i class="bi bi-check-circle me-1"></i> Settings saved. Changes take effect immediately.
+  <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<p class="text-muted">
+  Runtime settings are read from <code>.env</code> at startup.
+  To change non-multiplier settings, edit <code>.env</code> and restart the service.
+</p>
+
+<div class="card shadow-sm mb-4" style="max-width:500px">
+  <div class="card-body">
+    <table class="table table-borderless mb-0">
+      <tbody>
+        <tr><th class="w-50">Auto Sign-Out Time</th><td>{{ auto_signout_time }}</td></tr>
+        <tr><th>Weekly DM Day</th>
+          <td>{{ ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][weekly_dm_day] }}</td>
+        </tr>
+        <tr><th>Weekly DM Time</th><td>{{ weekly_dm_time }}</td></tr>
+        <tr><th>Sign-In IP Whitelist</th><td>{{ signin_ip_whitelist or '(disabled)' }}</td></tr>
+        <tr><th>Timezone</th><td>{{ timezone }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<form method="post" action="/admin/settings" style="max-width:400px">
+  <h5 class="mb-3">Leaderboard / Season</h5>
+  <p class="text-muted small">
+    Leaderboard and all-time totals count hours from this date onward.
+    Leave blank to count <strong>all-time</strong>. Changing this never deletes any
+    hours — sessions before the date are still recorded and exportable, they just
+    stop counting toward the leaderboard.
+  </p>
+  <div class="mb-4 row align-items-center">
+    <label class="col-sm-5 col-form-label">Counts hours since</label>
+    <div class="col-sm-7">
+      <input type="date" name="leaderboard_since" class="form-control"
+             value="{{ leaderboard_since.isoformat() if leaderboard_since else '' }}">
+      <div class="form-text">Blank = all-time</div>
+    </div>
+  </div>
+
+  <h5 class="mb-3">Hours Multipliers</h5>
+  <p class="text-muted small">Controls what percentage of elapsed time counts toward hours for each session status. <em>Auto sign-out always uses the Contributor multiplier.</em></p>
+  <div class="mb-3 row align-items-center">
+    <label class="col-sm-5 col-form-label">✅ Contributor</label>
+    <div class="col-sm-7">
+      <div class="input-group">
+        <input type="number" name="contributor_multiplier" class="form-control"
+               step="0.05" min="0" max="1" value="{{ contributor_multiplier }}" required>
+        <span class="input-group-text">× elapsed</span>
+      </div>
+    </div>
+  </div>
+  <div class="mb-3 row align-items-center">
+    <label class="col-sm-5 col-form-label">🔸 Present</label>
+    <div class="col-sm-7">
+      <div class="input-group">
+        <input type="number" name="present_multiplier" class="form-control"
+               step="0.05" min="0" max="1" value="{{ present_multiplier }}" required>
+        <span class="input-group-text">× elapsed</span>
+      </div>
+    </div>
+  </div>
+  <div class="mb-3 row align-items-center">
+
+    <label class="col-sm-5 col-form-label">🚫 Distraction</label>
+    <div class="col-sm-7">
+      <div class="input-group">
+        <input type="number" name="distraction_multiplier" class="form-control"
+               step="0.05" min="0" max="1" value="{{ distraction_multiplier }}" required>
+        <span class="input-group-text">× elapsed</span>
+      </div>
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary">Save Settings</button>
+</form>
+
+<div class="alert alert-info mt-4 small" style="max-width:500px">
+  <i class="bi bi-info-circle me-1"></i>
+  To update other settings restart the server after editing <code>.env</code>:
+  <pre class="mb-0 mt-1">sudo systemctl restart frc-tracker</pre>
+</div>
+{% endblock %}

@@ -1,260 +1,211 @@
-# FRC Attendance Tracking System
+# FRC Time Tracker
 
-A comprehensive web-based attendance tracking system for FIRST Robotics Competition teams, featuring local-first data storage with optional cloud sync and automated notifications.
+A web-based attendance tracking system for FIRST Robotics Competition teams **4143 (MARS/WARS)** and **4423 (MARS' Minions)**. Students sign in and out at a kiosk using QR badges, mentors can edit session ratings via Slack, and an admin UI provides full session management and reporting.
 
 ## Features
 
-### Core Functionality
-- **Real-time Check-in/Check-out**: Simple web interface for attendance tracking
-- **Local Database**: SQLite-based storage ensures data is never lost
-- **Multi-device Support**: Access from any device on your network
-- **Automatic Calculations**: Tracks hours, percentages, and season totals
-- **Weekly Metrics**: Monitors progress against weekly hour requirements
-- **Leaderboard**: Displays top performers and attendance stats
-- **Admin Dashboard**: Manage users, adjust hours, and view analytics
+- **Kiosk sign-in / self sign-out** — QR badge scan signs students in; a second scan signs them out (with a 60-second debounce to prevent accidental double-scans)
+- **Slack integration** — mentors edit session ratings via `/edit`, query the current roster with `/shop`, and students check their hours with `/hours`
+- **Automated sign-out** — nightly auto sign-out at a configurable time
+- **Weekly Slack DMs** — automatic hour-summary messages to students (and mentors if a student is falling behind)
+- **Hours multipliers** — session quality ratings (Contributor / Present / Distraction) apply configurable multipliers to counted hours
+- **Admin UI** — full CRUD for students, mentors, weekly requirements, and sessions; CSV export; live settings editor
+- **Stats & leaderboard** — all-time and weekly hours leaders, longest single session, streak tracking, and team totals on the kiosk
 
-### Cloud Integration (Optional)
-- **Google Sheets Sync**: Automatic background sync every 5 minutes
-- **Slack Notifications**: Weekly attendance summaries with mentor alerts
-- **Offline Mode**: Full functionality without internet, syncs when reconnected
+---
 
-### Automated Features
-- **Midnight Sign-out**: Automatically signs out all users at midnight
-- **Weekly Notifications**: Scheduled Slack messages every Sunday at 8 PM
-- **Mentor Escalation**: Group DMs with mentors for students below 80% attendance
-- **Smart Scheduling**: Configurable notification times and frequencies
+## Getting Started
 
-## Quick Start
+### Prerequisites
 
-### 1. Prerequisites
-- Python 3.8 or higher
-- Git
-- (Optional) Google Cloud account for Sheets integration
-- (Optional) Slack workspace for notifications
+- Python 3.11+
+- A Slack app with a bot token and signing secret (see [Slack Setup](#slack-setup))
 
-### 2. Installation
+### Installation
 
 ```bash
-# Clone the repository
-cd /path/to/project
-
-# Run setup script
-cd config
-./setup.sh
+git clone <repo-url>
+cd time-tracker
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-The setup script will:
-- Create a Python virtual environment
-- Install all dependencies
-- Initialize the database
-- Create configuration files
+### Configuration
 
-### 3. Configuration
-
-#### Basic Setup (Required)
-Edit `config/.env`:
-```env
-SECRET_KEY=your-secret-key-here
-PORT=5000
-EXPECTED_HOURS_START_DATE=2026-01-05
-EXPECTED_HOURS_END_DATE=2026-03-14
-EXPECTED_HOURS_WEEKLY_INCREASE=11
-```
-
-#### User Roster
-Add your team members to `data/users.csv`:
-```csv
-"Name","TeamNumber","Category","SlackUserID"
-"Cole Hunt","4143","Software","U2XB520MA"
-"Jane Doe","4423","Design",""
-```
-
-### 4. Start the Application
+Copy the example env file and fill in your values:
 
 ```bash
-# From the project root
-./start.sh
+cp .env.example .env
 ```
 
-Access the application:
-- **Local**: http://localhost:5000
-- **Network**: http://YOUR_IP:5000 (shown in terminal output)
+See the full [Configuration Reference](#configuration-reference) below for all available settings.
 
-## Usage
+### Run (development)
 
-### For Team Members
-1. Navigate to the attendance tracker URL
-2. Find your name in the list
-3. Click to check in when you arrive
-4. Click again to check out when you leave
-5. View your stats on the leaderboard
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-### For Admins
-- Access admin dashboard at `/admin`
-  - **Authentication**: You'll be prompted with a browser login popup
-  - **Username**: Can be anything (e.g., "admin")
-  - **Password**: Use the `ADMIN_PASSWORD` value from `config/.env` (default: `admin`)
-- Upload new user lists
-- Manually adjust hours
-- Sign out all users at end of day
-- Trigger manual Google Sheets sync
-- Send test Slack notifications
+The app will be available at `http://localhost:8000`. On first start, the database is created automatically and seeded with the two teams.
 
-## Optional Integrations
+### Run (production — systemd on Raspberry Pi)
 
-### Google Sheets Sync
-Automatically backup attendance records to Google Sheets.
+A systemd unit file is included:
 
-**Setup Steps:**
-1. Create Google Cloud project
-2. Enable Google Sheets API and Google Drive API
-3. Create service account and download credentials
-4. Follow detailed instructions in [docs/GOOGLE_SHEETS_SETUP.md](./docs/GOOGLE_SHEETS_SETUP.md)
+```bash
+sudo cp frc-tracker.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable frc-tracker
+sudo systemctl start frc-tracker
+```
 
-### Slack Notifications
-Send weekly attendance summaries and mentor alerts.
+The service expects:
+- User: `pi`
+- Working directory: `/home/pi/time-tracker`
+- Environment file: `/home/pi/time-tracker/.env`
+- Virtualenv at `/home/pi/time-tracker/venv/`
 
-**Setup Steps:**
-1. Create Slack app with bot permissions
-2. Configure bot token in `.env`
-3. Add Slack user IDs to `data/users.csv`
-4. Create `config/mentors.csv` for mentor mappings
-5. Follow detailed instructions in [docs/SLACK_SETUP.md](./docs/SLACK_SETUP.md)
+---
 
-## Documentation
+## Configuration Reference
 
-- **[docs/OFFLINE_MODE.md](./docs/OFFLINE_MODE.md)** - Complete guide to offline capabilities and connectivity handling
-- **[docs/GOOGLE_SHEETS_SETUP.md](./docs/GOOGLE_SHEETS_SETUP.md)** - Step-by-step Google Sheets integration
-- **[docs/SLACK_SETUP.md](./docs/SLACK_SETUP.md)** - Slack bot setup and configuration
-- **[data/DATA.md](./data/DATA.md)** - Data structure and file formats
+All settings are read from a `.env` file in the working directory (or from environment variables with matching uppercase names).
+
+| Setting | Env Var | Default | Description |
+|---|---|---|---|
+| `slack_bot_token` | `SLACK_BOT_TOKEN` | *(required for Slack)* | Slack Bot OAuth token (`xoxb-...`) |
+| `slack_signing_secret` | `SLACK_SIGNING_SECRET` | *(required for Slack)* | Slack app signing secret for request verification |
+| `admin_password` | `ADMIN_PASSWORD` | `changeme` | Password for the `/admin` web UI — **change this** |
+| `session_secret` | `SESSION_SECRET` | `dev-secret-change-in-production` | Secret for signing admin session cookies — **change this** |
+| `database_url` | `DATABASE_URL` | `sqlite+aiosqlite:///./tracker.db` | SQLAlchemy async database URL; swap for PostgreSQL if needed |
+| `timezone` | `TIMEZONE` | `America/New_York` | IANA timezone name used for scheduling and display |
+| `auto_signout_time` | `AUTO_SIGNOUT_TIME` | `22:00` | Daily auto sign-out time in 24-hour `HH:MM` format |
+| `weekly_dm_day` | `WEEKLY_DM_DAY` | `6` | Day of week for weekly Slack DMs (0 = Monday … 6 = Sunday) |
+| `weekly_dm_time` | `WEEKLY_DM_TIME` | `21:00` | Time for weekly Slack DMs in 24-hour `HH:MM` format |
+| `signin_ip_whitelist` | `SIGNIN_IP_WHITELIST` | *(unrestricted)* | Comma-separated CIDR ranges allowed to submit sign-ins (e.g. `192.168.1.0/24`); leave blank to allow all |
+| `contributor_multiplier` | `CONTRIBUTOR_MULTIPLIER` | `1.0` | Hours multiplier for "Contributor" rated sessions |
+| `present_multiplier` | `PRESENT_MULTIPLIER` | `0.5` | Hours multiplier for "Present" rated sessions |
+| `distraction_multiplier` | `DISTRACTION_MULTIPLIER` | `0.0` | Hours multiplier for "Distraction" rated sessions |
+
+> **Note:** `contributor_multiplier` applies to both self sign-outs (QR badge rescan) and sessions closed by the nightly auto sign-out job.
+>
+> Multipliers can be updated at runtime from **Admin → Settings** without restarting the server. Changes are written back to `.env` and take effect immediately.
+
+### Minimal `.env` example
+
+```dotenv
+SLACK_BOT_TOKEN=xoxb-your-token-here
+SLACK_SIGNING_SECRET=your-signing-secret-here
+ADMIN_PASSWORD=a-strong-password
+SESSION_SECRET=a-long-random-string
+TIMEZONE=America/Chicago
+AUTO_SIGNOUT_TIME=21:30
+```
+
+---
+
+## Slack Setup
+
+1. Create a Slack app at https://api.slack.com/apps
+2. Under **OAuth & Permissions**, add these bot scopes:
+   - `chat:write`
+   - `im:write`
+   - `mpim:write`
+   - `commands`
+3. Add slash commands (all point to the same URL):
+   - `/hours` → `https://<your-host>/slack/command`
+   - `/edit` → `https://<your-host>/slack/command`
+   - `/shop` → `https://<your-host>/slack/command`
+4. Under **Interactivity & Shortcuts**, set the Request URL to `https://<your-host>/slack/interact`
+5. Install the app to your workspace and copy the **Bot User OAuth Token** and **Signing Secret** to `.env`
+
+Mentors must have their Slack user ID recorded in the admin UI under **Mentors**. Students need their Slack UID set under **Students** to receive DMs.
+
+---
+
+## Admin UI
+
+Navigate to `/admin` and log in with your configured `ADMIN_PASSWORD`. Sessions expire after 12 hours.
+
+| Section | Description |
+|---|---|
+| **Dashboard** | View currently signed-in students, all-time hours leaderboard, and manually sign in any student |
+| **Students** | Create, edit, and delete students; set team, focus category (software / design / business), Slack UID, and active status |
+| **Mentors** | Manage mentors with their Slack UIDs and optional team/category for hours-notification matching |
+| **Requirements** | Set per-team, per-category, per-week required hours |
+| **Sessions** | Filterable and paginated session log; edit individual sessions (recalculates counted hours); CSV export |
+| **Settings** | Live-edit the three session-status hour multipliers |
+
+---
+
+## Kiosk
+
+The kiosk page (`/kiosk`) is designed for a dedicated touchscreen display. It shows currently signed-in students grouped by team with elapsed sign-in time and auto-refreshes via Server-Sent Events — no polling required.
+
+- **Sign-in:** scan a QR badge — the scanner acts as a keyboard and submits the student's tracker UID to `POST /kiosk/signin`
+- **Self sign-out:** scanning the same badge again signs the student out (minimum 60 seconds must have elapsed to prevent accidental double-scans)
+- **Default sign-out status:** self sign-outs are recorded as **Contributor** (full hours); a mentor can adjust this later with `/edit`
+- **Demo mode:** `/kiosk/demo` renders a realistic preview with fake data — useful for layout testing
+- **IP whitelist:** set `SIGNIN_IP_WHITELIST` to restrict which network addresses can submit sign-ins (the kiosk device's subnet, for example)
+
+---
+
+## Slack Workflow
+
+### Student sign-in / sign-out
+
+1. Student scans their QR badge at the kiosk → signed in
+2. Student scans their badge again when leaving → signed out as **Contributor** (full hours)
+3. If the contribution level needs adjusting, a mentor runs `/edit <student name>` in Slack
+4. The mentor receives a DM listing the student's last 5 sessions; selecting one shows three rating buttons: **Contributor**, **Present**, **Distraction**
+5. Clicking a button updates the session's counted hours and confirms in the DM thread
+
+### Roster lookup
+
+- `/shop` — shows all currently signed-in students, grouped by team with elapsed time
+- `/shop 4143` or `/shop 4423` — filters to a single team
+
+### Hours queries
+
+- Students run `/hours` in any Slack channel to get a private summary of their hours this week and for the season vs. their requirement
+
+### Weekly summary DMs
+
+On the configured day and time (`WEEKLY_DM_DAY` / `WEEKLY_DM_TIME`), the scheduler sends every active, Slack-linked student a summary of their weekly hours vs. requirement. Students who are **behind** receive a group DM that also includes any mentors matching their team and focus category.
+
+---
+
+## Database
+
+SQLite is used by default (`tracker.db` in the working directory). No manual schema creation is needed — tables are created on first startup.
+
+To use PostgreSQL, set `DATABASE_URL` to an async-compatible URL:
+
+```dotenv
+DATABASE_URL=postgresql+asyncpg://user:password@host/dbname
+```
+
+---
 
 ## Project Structure
 
 ```
-time-tracker/
-├── app/
-│   ├── app.py              # Main Flask application
-│   ├── routes.py           # API endpoints and route handlers
-│   ├── database.py         # SQLite database management
-│   ├── slack_notifier.py   # Slack integration
-│   ├── scheduler.py        # Automated task scheduling
-│   ├── connectivity.py     # Internet connectivity checks
-│   └── utils.py            # Helper functions
-├── config/
-│   ├── .env                # Configuration (create from .env.example)
-│   ├── credentials.json    # Google Sheets credentials (optional)
-│   └── mentors.csv         # Mentor mappings for Slack alerts
-├── data/
-│   ├── users.csv           # Team member roster
-│   └── attendance.db       # SQLite database (auto-created)
-├── templates/
-│   ├── index.html          # Main attendance interface
-│   ├── admin.html          # Admin dashboard
-│   └── scoreboard.html     # Leaderboard view
-├── setup.sh                # Initial setup script
-├── start.sh                # Application launcher
-└── requirements.txt        # Python dependencies
+app/
+├── main.py            # FastAPI app setup, startup/shutdown hooks
+├── config.py          # Pydantic-settings configuration
+├── database.py        # Async SQLAlchemy engine, session factory, init_db
+├── models.py          # ORM models (Team, Student, Mentor, AttendanceSession, …)
+├── schemas.py         # Pydantic request/response schemas
+├── utils.py           # Timezone helpers (utc_to_local, local_to_utc, today_local)
+├── routers/
+│   ├── admin.py       # /admin — password-protected management UI
+│   ├── kiosk.py       # / — kiosk display, sign-in endpoint, SSE stream
+│   └── slack.py       # /slack — slash commands and interactive button handler
+├── services/
+│   ├── attendance.py  # Sign-in/sign-out logic and queries
+│   ├── broadcaster.py # SSE event broadcaster (asyncio.Queue fan-out)
+│   ├── scheduler.py   # APScheduler jobs for auto sign-out and weekly DMs
+│   └── slack_client.py# Slack AsyncWebClient wrapper and DM notification logic
+└── templates/         # Jinja2 HTML templates
 ```
-
-## API Endpoints
-
-### Attendance Operations
-- `POST /api/check-in` - Check in a user
-- `POST /api/check-out` - Check out a user
-- `POST /api/toggle-attendance` - Toggle user status
-- `GET /api/status/<name>` - Get user's current status
-- `GET /api/global-status` - Get all users' status
-
-### Admin Operations
-- `POST /api/upload-names` - Upload new user roster
-- `POST /api/adjust-user-hours` - Manually adjust user hours
-- `POST /api/sign-out-all` - Sign out all checked-in users
-- `GET /api/user-hours-summary` - Get hours summary for all users
-
-### Sync & Notifications
-- `POST /api/manual-sync` - Trigger Google Sheets sync
-- `POST /api/slack-notify` - Send Slack notifications
-- `POST /api/slack-test` - Test Slack integration
-- `GET /health` - System health and connectivity status
-
-### Analytics
-- `GET /api/weekly-attendance` - Get weekly attendance metrics
-- `GET /api/records` - Retrieve attendance records with filters
-
-## Offline Mode
-
-The system is designed to work seamlessly with or without internet:
-
-- ✅ **Always Available**: Check-in/out, database, leaderboard, admin functions
-- 🌐 **Internet Required**: Google Sheets sync, Slack notifications
-- 🔄 **Auto-Recovery**: Syncs automatically when connection is restored
-
-See [OFFLINE_MODE.md](OFFLINE_MODE.md) for complete details.
-
-## Monitoring & Health
-
-Check system status:
-```bash
-curl http://localhost:5000/health
-```
-
-Returns connectivity status for:
-- Database (always available)
-- Internet connection
-- Google Sheets API
-- Slack API
-
-## Troubleshooting
-
-### Application won't start
-- Verify virtual environment: `source ../venv/bin/activate`
-- Check Python version: `python --version` (3.8+)
-- Reinstall dependencies: `cd config && ./setup.sh`
-
-### Google Sheets not syncing
-- Verify credentials in `config/credentials.json`
-- Check spreadsheet is shared with service account
-- Verify internet connectivity: `curl http://localhost:5000/health`
-- Check logs for specific errors
-
-### Slack notifications failing
-- Verify `SLACK_ENABLED=True` in `.env`
-- Check bot token is correct
-- Ensure all required permissions are granted
-- Verify Slack user IDs in `data/users.csv`
-- Test with: `curl -X POST http://localhost:5000/api/slack-test`
-
-### Users not appearing
-- Check `data/users.csv` format (4 columns, quoted values)
-- Restart application to reload user list
-- Verify database initialized: Check for `data/attendance.db`
-
-## Development
-
-### Technology Stack
-- **Backend**: Flask (Python)
-- **Database**: SQLite
-- **Frontend**: HTML, CSS, JavaScript
-- **Cloud**: Google Sheets API, Slack API
-- **Scheduling**: APScheduler
-
-### Running in Development
-```bash
-# Activate virtual environment
-source ../venv/bin/activate
-
-# Run with debug mode
-export FLASK_DEBUG=true
-python -m app.app
-```
-
-## Security Notes
-
-- **Never commit** `config/.env` or `config/credentials.json` to version control
-- Keep Slack bot tokens secure
-- Regularly backup `data/attendance.db`
-- Use strong `SECRET_KEY` in production
-- Run on trusted networks only
----
-
-**Built with ❤️ for the MARS/WARS Robotics Program with lots of help from Copilot**
