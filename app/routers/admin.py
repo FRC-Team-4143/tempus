@@ -815,11 +815,20 @@ async def admin_sessions_edit(
         return redirect
 
     result = await db.execute(
-        select(AttendanceSession).where(AttendanceSession.id == session_id)
+        select(AttendanceSession)
+        .options(selectinload(AttendanceSession.student))
+        .where(AttendanceSession.id == session_id)
     )
     session = result.scalar_one_or_none()
     if not session:
         return RedirectResponse("/admin/sessions", status_code=303)
+
+    before = {
+        "sign_in_time": str(session.sign_in_time),
+        "sign_out_time": str(session.sign_out_time),
+        "status": session.status.value if session.status else None,
+        "hours_counted": session.hours_counted,
+    }
 
     parsed_sign_in = local_to_utc(datetime.fromisoformat(sign_in_time))
     parsed_sign_out = local_to_utc(datetime.fromisoformat(sign_out_time)) if sign_out_time else None
@@ -836,6 +845,20 @@ async def admin_sessions_edit(
     else:
         session.hours_counted = None
 
+    after = {
+        "sign_in_time": str(session.sign_in_time),
+        "sign_out_time": str(session.sign_out_time),
+        "status": session.status.value if session.status else None,
+        "hours_counted": session.hours_counted,
+    }
+    date_str = utc_to_local(session.sign_in_time).strftime("%b %d")
+    status_label = session.status.value.capitalize() if session.status else "None"
+    await audit.record(
+        db, request, "session.edit",
+        f"admin changed {session.student.name}'s session ({date_str}) to {status_label} via Admin",
+        entity_type="session", entity_id=session_id,
+        detail={"before": before, "after": after},
+    )
     await db.commit()
     return RedirectResponse("/admin/sessions", status_code=303)
 
@@ -847,6 +870,10 @@ async def admin_sessions_delete(
     if redirect := _require_auth(request):
         return redirect
 
+    await audit.record(
+        db, request, "session.delete", f"Deleted session #{session_id}",
+        entity_type="session", entity_id=session_id,
+    )
     await db.execute(delete(AttendanceSession).where(AttendanceSession.id == session_id))
     await db.commit()
     return RedirectResponse("/admin/sessions", status_code=303)
@@ -855,9 +882,12 @@ async def admin_sessions_delete(
 # ── Settings ───────────────────────────────────────────────────────────────────
 
 @router.get("/settings", response_class=HTMLResponse)
-async def admin_settings_get(request: Request):
+async def admin_settings_get(request: Request, db: AsyncSession = Depends(get_db)):
     if redirect := _require_auth(request):
         return redirect
+
+    from app.services.app_settings import get_leaderboard_since
+    leaderboard_since = await get_leaderboard_since(db)
 
     return templates.TemplateResponse(
         "admin/settings.html",

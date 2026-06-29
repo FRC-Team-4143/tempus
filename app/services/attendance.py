@@ -99,6 +99,32 @@ async def sign_out(
     return session
 
 
+async def update_session_status(
+    db: AsyncSession,
+    session_id: int,
+    status: SessionStatus,
+) -> Optional[AttendanceSession]:
+    """
+    Update the contribution status of an already-closed session and recalculate hours.
+    Returns the updated session or None if not found.
+    """
+    result = await db.execute(
+        select(AttendanceSession)
+        .options(selectinload(AttendanceSession.student).selectinload(Student.team))
+        .where(AttendanceSession.id == session_id)
+    )
+    session = result.scalars().first()
+    if not session or session.sign_out_time is None:
+        return None
+
+    elapsed_hours = (session.sign_out_time - session.sign_in_time).total_seconds() / 3600.0
+    session.status = status
+    session.hours_counted = round(elapsed_hours * _status_multiplier(status), 4)
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
 async def sign_out_all_open(db: AsyncSession, status: SessionStatus = SessionStatus.auto) -> int:
     """
     Sign out every open session (used by the auto sign-out scheduler).

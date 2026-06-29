@@ -77,7 +77,7 @@
           <td>{{ s.mentor.name }}</td>
           <td>{{ s.mentor.team.number if s.mentor.team else '—' }}</td>
           <td>{{ s.sign_in_time | localdt('%m/%d %I:%M %p') }}</td>
-          <td>{{ s.sign_out_time | localdt('%I:%M %p') if s.sign_out_time else '<span class="badge bg-warning text-dark">Open</span>' }}</td>
+          <td>{{ s.sign_out_time | localdt('%I:%M %p') if s.sign_out_time else '<span class="badge bg-warning text-dark">Open</span>' | safe }}</td>
           <td>{{ '%.2f'|format(s.hours_counted) if s.hours_counted is not none else '—' }}</td>
         </tr>
         {% else %}
@@ -85,7 +85,7 @@
           <td>{{ s.student.name }}</td>
           <td>{{ s.student.team.number }}</td>
           <td>{{ s.sign_in_time | localdt('%m/%d %I:%M %p') }}</td>
-          <td>{{ s.sign_out_time | localdt('%I:%M %p') if s.sign_out_time else '<span class="badge bg-warning text-dark">Open</span>' }}</td>
+          <td>{{ s.sign_out_time | localdt('%I:%M %p') if s.sign_out_time else '<span class="badge bg-warning text-dark">Open</span>' | safe }}</td>
           <td>
             {% if s.status %}
               {% if s.status.value == 'contributor' %}<span class="badge bg-success">Contributor</span>
