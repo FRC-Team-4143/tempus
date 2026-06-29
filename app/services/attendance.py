@@ -181,15 +181,25 @@ async def mentor_sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optiona
     if not mentor:
         return False, f"Badge not recognized.", None
 
-    # Check for open session
+    # Check for open session — badging again toggles to sign-out
     open_result = await db.execute(
         select(MentorSession).where(
             MentorSession.mentor_id == mentor.id,
             MentorSession.sign_out_time.is_(None),
         )
     )
-    if open_result.scalars().first():
-        return False, f"{mentor.name} is already signed in.", None
+    open_session = open_result.scalars().first()
+    if open_session:
+        elapsed_seconds = (datetime.utcnow() - open_session.sign_in_time).total_seconds()
+        if elapsed_seconds < 60:
+            # Debounce: QR scanner fired twice in quick succession — ignore
+            return False, f"Duplicate scan ignored — {mentor.name} is still signed in.", None
+        # Self-checkout
+        now = datetime.utcnow()
+        open_session.sign_out_time = now
+        open_session.hours_counted = round((now - open_session.sign_in_time).total_seconds() / 3600.0, 4)
+        await db.commit()
+        return True, f"Goodbye, {mentor.name}! Signed out.", mentor
 
     session = MentorSession(mentor_id=mentor.id, sign_in_time=datetime.utcnow())
     db.add(session)
@@ -214,7 +224,7 @@ async def mentor_sign_out_all_open(db: AsyncSession) -> int:
 async def get_signed_in_mentors(db: AsyncSession) -> list[MentorSession]:
     result = await db.execute(
         select(MentorSession)
-        .options(selectinload(MentorSession.mentor))
+        .options(selectinload(MentorSession.mentor).selectinload(Mentor.team))
         .where(MentorSession.sign_out_time.is_(None))
         .order_by(MentorSession.sign_in_time)
     )

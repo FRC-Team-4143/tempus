@@ -733,8 +733,20 @@ async def admin_requirements_delete(
     if redirect := _require_auth(request):
         return redirect
 
+    result = await db.execute(
+        select(WeeklyRequirement)
+        .options(selectinload(WeeklyRequirement.team))
+        .where(WeeklyRequirement.id == req_id)
+    )
+    req = result.scalar_one_or_none()
+    if not req:
+        return RedirectResponse("/admin/requirements", status_code=303)
+
+    team_label = f"team {req.team.number}" if req.team else "all teams"
+    category_label = req.category.value if req.category else "all categories"
     await audit.record(
-        db, request, "requirement.delete", f"Deleted requirement #{req_id}",
+        db, request, "requirement.delete",
+        f"Deleted requirement: {req.required_hours}h for {team_label}, {category_label}, week {req.week_start}",
         entity_type="requirement", entity_id=req_id,
     )
     await db.execute(delete(WeeklyRequirement).where(WeeklyRequirement.id == req_id))
@@ -961,7 +973,8 @@ async def admin_sessions_edit_form(
 
     return templates.TemplateResponse(
         "admin/session_edit.html",
-        {"request": request, "s": session, "statuses": [s for s in SessionStatus if s != SessionStatus.auto]},
+        {"request": request, "s": session, "is_mentor": False,
+         "statuses": [s for s in SessionStatus if s != SessionStatus.auto]},
     )
 
 
@@ -1033,13 +1046,129 @@ async def admin_sessions_delete(
     if redirect := _require_auth(request):
         return redirect
 
+    result = await db.execute(
+        select(AttendanceSession)
+        .options(selectinload(AttendanceSession.student))
+        .where(AttendanceSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        return RedirectResponse("/admin/sessions", status_code=303)
+
+    date_str = utc_to_local(session.sign_in_time).strftime("%b %d %I:%M %p")
+    hours = f"{session.hours_counted:.2f}h" if session.hours_counted is not None else "open, no hours"
     await audit.record(
-        db, request, "session.delete", f"Deleted session #{session_id}",
+        db, request, "session.delete",
+        f"Deleted {session.student.name}'s session ({date_str}, {hours})",
         entity_type="session", entity_id=session_id,
     )
     await db.execute(delete(AttendanceSession).where(AttendanceSession.id == session_id))
     await db.commit()
     return RedirectResponse("/admin/sessions", status_code=303)
+
+
+@router.get("/mentor-sessions/{session_id}/edit")
+async def admin_mentor_sessions_edit_form(
+    session_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(
+        select(MentorSession)
+        .options(selectinload(MentorSession.mentor).selectinload(Mentor.team))
+        .where(MentorSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+
+    return templates.TemplateResponse(
+        "admin/session_edit.html",
+        {"request": request, "s": session, "is_mentor": True},
+    )
+
+
+@router.post("/mentor-sessions/{session_id}/edit")
+async def admin_mentor_sessions_edit(
+    session_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    sign_in_time: str = Form(...),
+    sign_out_time: str = Form(""),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(
+        select(MentorSession)
+        .options(selectinload(MentorSession.mentor))
+        .where(MentorSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+
+    before = {
+        "sign_in_time": str(session.sign_in_time),
+        "sign_out_time": str(session.sign_out_time),
+        "hours_counted": session.hours_counted,
+    }
+
+    parsed_sign_in = local_to_utc(datetime.fromisoformat(sign_in_time))
+    parsed_sign_out = local_to_utc(datetime.fromisoformat(sign_out_time)) if sign_out_time else None
+
+    session.sign_in_time = parsed_sign_in
+    session.sign_out_time = parsed_sign_out
+    if parsed_sign_out:
+        session.hours_counted = round((parsed_sign_out - parsed_sign_in).total_seconds() / 3600.0, 4)
+    else:
+        session.hours_counted = None
+
+    after = {
+        "sign_in_time": str(session.sign_in_time),
+        "sign_out_time": str(session.sign_out_time),
+        "hours_counted": session.hours_counted,
+    }
+    in_str = utc_to_local(session.sign_in_time).strftime("%b %d %I:%M %p")
+    out_str = utc_to_local(session.sign_out_time).strftime("%I:%M %p") if session.sign_out_time else "open"
+    hours = f"{session.hours_counted:.2f}h" if session.hours_counted is not None else "no hours"
+    await audit.record(
+        db, request, "mentor_session.edit",
+        f"admin edited {session.mentor.name}'s mentor session to {in_str} → {out_str} ({hours}) via Admin",
+        entity_type="mentor_session", entity_id=session_id,
+        detail={"before": before, "after": after},
+    )
+    await db.commit()
+    return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+
+
+@router.post("/mentor-sessions/{session_id}/delete")
+async def admin_mentor_sessions_delete(
+    session_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(
+        select(MentorSession)
+        .options(selectinload(MentorSession.mentor))
+        .where(MentorSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+
+    date_str = utc_to_local(session.sign_in_time).strftime("%b %d %I:%M %p")
+    hours = f"{session.hours_counted:.2f}h" if session.hours_counted is not None else "open, no hours"
+    await audit.record(
+        db, request, "mentor_session.delete",
+        f"Deleted {session.mentor.name}'s mentor session ({date_str}, {hours})",
+        entity_type="mentor_session", entity_id=session_id,
+    )
+    await db.execute(delete(MentorSession).where(MentorSession.id == session_id))
+    await db.commit()
+    return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
 
 
 # ── Settings ───────────────────────────────────────────────────────────────────

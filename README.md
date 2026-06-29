@@ -209,6 +209,3 @@ app/
 │   └── slack_client.py# Slack AsyncWebClient wrapper and DM notification logic
 └── templates/         # Jinja2 HTML templates
 ```
-
-# TODO:
-- Readd mentor leaderboard page at /mentor
