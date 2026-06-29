@@ -930,6 +930,140 @@ async def admin_settings_post(
             "present_multiplier": settings.present_multiplier,
             "distraction_multiplier": settings.distraction_multiplier,
             "saved": True,
+@router.get("/import", response_class=HTMLResponse)
+async def admin_import_get(request: Request):
+    if redirect := _require_auth(request):
+        return redirect
+    return templates.TemplateResponse("admin/import.html", {"request": request})
+
+
+@router.post("/import", response_class=HTMLResponse)
+async def admin_import_post(
+    request: Request,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    created = []
+    updated = []
+    errors = []
+
+    # Build team lookup by number
+    teams_result = await db.execute(select(Team).order_by(Team.number))
+    team_by_number = {t.number: t for t in teams_result.scalars().all()}
+
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    for i, row in enumerate(reader, start=2):  # row 1 = header
+        row_type = (row.get("type") or "").strip().lower()
+        name = (row.get("name") or "").strip()
+        team_num_str = (row.get("team_number") or "").strip()
+        category_str = (row.get("category") or "").strip().lower()
+        slack_uid = (row.get("slack_user_id") or "").strip() or None
+
+        if not row_type or not name:
+            errors.append({"row": i, "reason": "Missing type or name", "data": dict(row)})
+            continue
+
+        if row_type not in ("student", "mentor"):
+            errors.append({"row": i, "reason": f"Unknown type '{row_type}'", "data": dict(row)})
+            continue
+
+        if row_type == "student":
+            # Required: team_number, category
+            try:
+                team_num = int(team_num_str)
+                team = team_by_number.get(team_num)
+                if not team:
+                    raise ValueError
+            except (ValueError, TypeError):
+                errors.append({"row": i, "reason": f"Invalid team_number '{team_num_str}'", "data": dict(row)})
+                continue
+
+            if category_str not in ("software", "design", "business"):
+                errors.append({"row": i, "reason": f"Invalid category '{category_str}'", "data": dict(row)})
+                continue
+
+            category = FocusCategory(category_str)
+            result = await db.execute(
+                select(Student).where(func.lower(Student.name) == name.lower())
+            )
+            student = result.scalars().first()
+            if student:
+                student.team_id = team.id
+                student.category = category
+                student.slack_user_id = slack_uid
+                updated.append(name)
+            else:
+                db.add(Student(
+                    name=name,
+                    student_code=hashlib.sha256(name.strip().lower().encode()).hexdigest()[:8],
+                    team_id=team.id,
+                    category=category,
+                    slack_user_id=slack_uid,
+                ))
+                created.append(name)
+
+        else:  # mentor
+            team = None
+            if team_num_str:
+                try:
+                    team = team_by_number.get(int(team_num_str))
+                except (ValueError, TypeError):
+                    pass
+
+            category = FocusCategory(category_str) if category_str in ("software", "design", "business") else None
+
+            result = await db.execute(
+                select(Mentor).where(func.lower(Mentor.name) == name.lower())
+            )
+            mentor = result.scalars().first()
+            if mentor:
+                mentor.team_id = team.id if team else None
+                mentor.category = category
+                if slack_uid:
+                    mentor.slack_user_id = slack_uid
+                updated.append(name)
+            else:
+                db.add(Mentor(
+                    name=name,
+                    mentor_code=hashlib.sha256(name.strip().lower().encode()).hexdigest()[:8],
+                    slack_user_id=slack_uid or "",
+                    team_id=team.id if team else None,
+                    category=category,
+                ))
+                created.append(name)
+
+    if created or updated:
+        await audit.record(
+            db, request, "import.csv",
+            f"CSV import: {len(created)} created, {len(updated)} updated, {len(errors)} error(s)",
+            entity_type="import",
+            detail={"created": created, "updated": updated,
+                    "error_count": len(errors), "filename": file.filename},
+        )
+    await db.commit()
+
+    return templates.TemplateResponse(
+        "admin/import.html",
+        {
+            "request": request,
+            "created": created,
+            "updated": updated,
+            "errors": errors,
+        },
+    )
+
+
+# ── Audit log ──────────────────────────────────────────────────────────────────
+
         },
 @router.get("/audit", response_class=HTMLResponse)
 async def admin_audit(
