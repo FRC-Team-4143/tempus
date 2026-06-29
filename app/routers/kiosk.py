@@ -194,11 +194,21 @@ async def kiosk_data(db: AsyncSession = Depends(get_db)):
 async def kiosk_stats(db: AsyncSession = Depends(get_db)):
     """Return leaderboard stats for the kiosk stats panel."""
 
-    # ── 1. All-time top hours ─────────────────────────────────────────────────
-    alltime_result = await db.execute(
+    # Leaderboard cutoff — count cumulative stats only from this point (None = all-time)
+    from app.services.app_settings import get_leaderboard_since, leaderboard_since_utc
+    leaderboard_since = await get_leaderboard_since(db)
+    since_utc = await leaderboard_since_utc(db)
+
+    # ── 1. All-time top hours (since cutoff) ──────────────────────────────────
+    alltime_q = (
         select(Student.name, func.sum(AttendanceSession.hours_counted).label("total"))
         .join(Student, AttendanceSession.student_id == Student.id)
         .where(AttendanceSession.hours_counted.isnot(None))
+    )
+    if since_utc is not None:
+        alltime_q = alltime_q.where(AttendanceSession.sign_in_time >= since_utc)
+    alltime_result = await db.execute(
+        alltime_q
         .group_by(Student.id)
         .order_by(func.sum(AttendanceSession.hours_counted).desc())
         .limit(3)
@@ -221,31 +231,37 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
     )
     week = [{"name": r.name, "value": f"{r.total:.1f}h"} for r in week_result]
 
-    # ── 3. Longest single session ─────────────────────────────────────────────
-    longest_result = await db.execute(
+    # ── 3. Longest single session (since cutoff) ──────────────────────────────
+    longest_q = (
         select(Student.name, func.max(AttendanceSession.hours_counted).label("max_h"))
         .join(Student, AttendanceSession.student_id == Student.id)
         .where(AttendanceSession.hours_counted.isnot(None))
+    )
+    if since_utc is not None:
+        longest_q = longest_q.where(AttendanceSession.sign_in_time >= since_utc)
+    longest_result = await db.execute(
+        longest_q
         .group_by(Student.id)
         .order_by(func.max(AttendanceSession.hours_counted).desc())
         .limit(3)
     )
     longest = [{"name": r.name, "value": f"{r.max_h:.1f}h"} for r in longest_result]
 
-    # ── 4. Longest streak (consecutive days with >= 1 h) ──────────────────────
-    streak_rows = (
-        await db.execute(
-            select(
-                Student.id,
-                Student.name,
-                AttendanceSession.sign_in_time,
-                AttendanceSession.hours_counted,
-            )
-            .join(Student, AttendanceSession.student_id == Student.id)
-            .where(AttendanceSession.hours_counted.isnot(None))
-            .where(AttendanceSession.sign_out_time.isnot(None))
+    # ── 4. Longest streak (consecutive days with >= 1 h, since cutoff) ────────
+    streak_q = (
+        select(
+            Student.id,
+            Student.name,
+            AttendanceSession.sign_in_time,
+            AttendanceSession.hours_counted,
         )
-    ).all()
+        .join(Student, AttendanceSession.student_id == Student.id)
+        .where(AttendanceSession.hours_counted.isnot(None))
+        .where(AttendanceSession.sign_out_time.isnot(None))
+    )
+    if since_utc is not None:
+        streak_q = streak_q.where(AttendanceSession.sign_in_time >= since_utc)
+    streak_rows = (await db.execute(streak_q)).all()
 
     # Sum hours per (student, calendar day)
     student_daily: dict[int, dict[date, float]] = defaultdict(lambda: defaultdict(float))
@@ -271,13 +287,18 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
     streaks.sort(reverse=True)
     streak = [{"name": name, "value": f"{s}d"} for s, name in streaks[:3]]
 
-    # ── 5. Team totals (students only) ───────────────────────────────────────
-    team_totals_result = await db.execute(
+    # ── 5. Team totals (students only, since cutoff) ─────────────────────────
+    team_totals_q = (
         select(Team.number, func.coalesce(func.sum(AttendanceSession.hours_counted), 0.0).label("total"))
         .join(Student, Student.team_id == Team.id)
         .join(AttendanceSession, AttendanceSession.student_id == Student.id)
         .where(AttendanceSession.hours_counted.isnot(None))
         .where(Team.number.in_([4143, 4423]))
+    )
+    if since_utc is not None:
+        team_totals_q = team_totals_q.where(AttendanceSession.sign_in_time >= since_utc)
+    team_totals_result = await db.execute(
+        team_totals_q
         .group_by(Team.number)
         .order_by(Team.number)
     )
@@ -296,6 +317,7 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
         "longest_session": longest,
         "streak": streak,
         "team_totals": team_totals,
+        "leaderboard_since": leaderboard_since.isoformat() if leaderboard_since else None,
     }
 
 

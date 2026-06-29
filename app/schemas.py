@@ -94,7 +94,7 @@ class SessionOut(BaseModel):
 # ── Kiosk ──────────────────────────────────────────────────────────────────────
 
 class SignInRequest(BaseModel):
-    name: str  # Name as encoded in the student's QR code
+    name: str  # Tracker UID (student_code) encoded in the QR badge
 
 
 class SignInResponse(BaseModel):

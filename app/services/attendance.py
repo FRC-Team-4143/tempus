@@ -33,28 +33,35 @@ async def get_open_session(db: AsyncSession, student_id: int) -> Optional[Attend
     return result.scalars().first()
 
 
-async def sign_in(db: AsyncSession, qr_name: str) -> tuple[bool, str, Optional[Student]]:
+async def sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optional[Student]]:
     """
-    Look up a student by the name encoded in their QR code (case-insensitive).
+    Look up a student by their tracker UID (student_code on the QR badge).
     Returns (success, message, student).
     """
-    from sqlalchemy import func as sqlfunc
     result = await db.execute(
         select(Student)
         .options(selectinload(Student.team))
-        .where(
-            sqlfunc.lower(Student.name) == qr_name.lower(),
-            Student.active.is_(True),
-        )
+        .where(Student.student_code == uid, Student.is_active.is_(True))
     )
     student = result.scalars().first()
 
     if not student:
-        return False, f"Name '{qr_name}' not found. Please see a mentor.", None
+        return False, f"Badge not recognized. Please see a mentor.", None
 
     open_session = await get_open_session(db, student.id)
     if open_session:
-        return False, f"{student.name} is already signed in.", None
+        elapsed_seconds = (datetime.utcnow() - open_session.sign_in_time).total_seconds()
+        if elapsed_seconds < 60:
+            # Debounce: QR scanner fired twice in quick succession — ignore
+            return False, f"Duplicate scan ignored — {student.name} is still signed in.", None
+        # Self-checkout: sign them out with auto status
+        now = datetime.utcnow()
+        elapsed_hours = (now - open_session.sign_in_time).total_seconds() / 3600.0
+        open_session.sign_out_time = now
+        open_session.status = SessionStatus.contributor
+        open_session.hours_counted = round(elapsed_hours * _status_multiplier(SessionStatus.contributor), 4)
+        await db.commit()
+        return True, f"Goodbye, {student.name}! Signed out.", student
 
     session = AttendanceSession(
         student_id=student.id,
@@ -87,11 +94,12 @@ async def sign_out(
         return None
 
     now = datetime.utcnow()
-    elapsed_hours = (now - session.sign_in_time).total_seconds() / 3600.0
+    sign_out_time = session.checkout_requested_at or now
+    elapsed_hours = (sign_out_time - session.sign_in_time).total_seconds() / 3600.0
 
     hours_counted = round(elapsed_hours * _status_multiplier(status), 4)
 
-    session.sign_out_time = now
+    session.sign_out_time = sign_out_time
     session.status = status
     session.hours_counted = hours_counted
     await db.commit()
@@ -152,7 +160,10 @@ async def get_signed_in_students(db: AsyncSession) -> list[AttendanceSession]:
         .options(
             selectinload(AttendanceSession.student).selectinload(Student.team)
         )
-        .where(AttendanceSession.sign_out_time.is_(None))
+        .where(
+            AttendanceSession.sign_out_time.is_(None),
+            AttendanceSession.checkout_requested_at.is_(None),
+        )
         .order_by(AttendanceSession.sign_in_time)
     )
     return result.scalars().all()
@@ -160,16 +171,15 @@ async def get_signed_in_students(db: AsyncSession) -> list[AttendanceSession]:
 
 # ── Mentor sign-in/out ─────────────────────────────────────────────────────────
 
-async def mentor_sign_in(db: AsyncSession, name: str) -> tuple[bool, str, Optional[Mentor]]:
-    """Sign in a mentor by name (case-insensitive). Returns (success, message, mentor)."""
-    from sqlalchemy import func as sqlfunc
+async def mentor_sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optional[Mentor]]:
+    """Sign in a mentor by their tracker UID (mentor_code). Returns (success, message, mentor)."""
     result = await db.execute(
         select(Mentor)
-        .where(sqlfunc.lower(Mentor.name) == name.lower())
+        .where(Mentor.mentor_code == uid, Mentor.is_active.is_(True))
     )
     mentor = result.scalars().first()
     if not mentor:
-        return False, f"Mentor '{name}' not found. Please ask an admin to add you.", None
+        return False, f"Badge not recognized.", None
 
     # Check for open session
     open_result = await db.execute(

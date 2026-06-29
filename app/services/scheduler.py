@@ -112,7 +112,7 @@ async def job_weekly_dms() -> None:
             text += "\nYou're on track — great work! 💪"
         else:
             remaining = required - hours
-            text += f"\n_{remaining:.1f} hrs still needed. Get to the shop!_"
+            text += f"\n_{remaining:.1f} hrs still needed — you may need to make up hours in the upcoming week._"
 
         if not on_track and mentor_ids:
             await send_group_dm([student.slack_user_id] + mentor_ids, text)

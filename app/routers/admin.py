@@ -361,12 +361,69 @@ async def admin_students_edit_post(
 async def admin_students_delete(
     student_id: int, request: Request, db: AsyncSession = Depends(get_db)
 ):
+    """Archive a student (soft delete) — preserves their session history."""
     if redirect := _require_auth(request):
         return redirect
 
-    await db.execute(delete(Student).where(Student.id == student_id))
-    await db.commit()
-    return RedirectResponse("/admin/students", status_code=303)
+    result = await db.execute(select(Student).where(Student.id == student_id))
+    student = result.scalars().first()
+    if student and student.is_active:
+        student.is_active = False
+        student.archived_at = datetime.utcnow()
+        await audit.record(
+            db, request, "student.archive", f"Archived student {student.name}",
+            entity_type="student", entity_id=student.id,
+        )
+        await db.commit()
+    return RedirectResponse("/admin/students?show_archived=1", status_code=303)
+
+
+@router.post("/students/{student_id}/restore")
+async def admin_students_restore(
+    student_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(select(Student).where(Student.id == student_id))
+    student = result.scalars().first()
+    if student and not student.is_active:
+        student.is_active = True
+        student.archived_at = None
+        await audit.record(
+            db, request, "student.restore", f"Restored student {student.name}",
+            entity_type="student", entity_id=student.id,
+        )
+        await db.commit()
+    return RedirectResponse("/admin/students?show_archived=1", status_code=303)
+
+
+@router.post("/students/{student_id}/purge")
+async def admin_students_purge(
+    student_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    """Permanently delete a student — only allowed when they have no sessions."""
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(select(Student).where(Student.id == student_id))
+    student = result.scalars().first()
+    if student:
+        session_count = await db.scalar(
+            select(func.count()).select_from(AttendanceSession)
+            .where(AttendanceSession.student_id == student_id)
+        )
+        if session_count:
+            return RedirectResponse(
+                "/admin/students?show_archived=1&error=has_sessions", status_code=303
+            )
+        await audit.record(
+            db, request, "student.purge", f"Permanently deleted student {student.name}",
+            entity_type="student", entity_id=student.id,
+        )
+        await db.execute(delete(Student).where(Student.id == student_id))
+        await db.commit()
+    return RedirectResponse("/admin/students?show_archived=1", status_code=303)
 
 
 @router.post("/students/{student_id}/notify")
@@ -405,16 +462,65 @@ async def admin_students_notify_all(
     return RedirectResponse(f"/admin/students?notified={len(students)}", status_code=303)
 
 
-# ── Mentors ────────────────────────────────────────────────────────────────────
-
-@router.get("/mentors", response_class=HTMLResponse)
-async def admin_mentors_list(request: Request, db: AsyncSession = Depends(get_db)):
+@router.post("/students/send-qr-all")
+async def admin_students_send_qr_all(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     if redirect := _require_auth(request):
         return redirect
 
+    from app.services.slack_client import send_qr_dm
     result = await db.execute(
-        select(Mentor).options(selectinload(Mentor.team)).order_by(Mentor.name)
+        select(Student).where(
+            Student.slack_user_id.is_not(None),
+            Student.student_code.is_not(None),
+            Student.is_active.is_(True),
+        )
     )
+    students = result.scalars().all()
+    for s in students:
+        background_tasks.add_task(send_qr_dm, s.slack_user_id, s.student_code, s.name)
+    return RedirectResponse(f"/admin/students?qr_sent={len(students)}", status_code=303)
+
+
+@router.post("/mentors/send-qr-all")
+async def admin_mentors_send_qr_all(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    from app.services.slack_client import send_qr_dm
+    result = await db.execute(
+        select(Mentor).where(
+            Mentor.slack_user_id.is_not(None),
+            Mentor.mentor_code.is_not(None),
+            Mentor.is_active.is_(True),
+        )
+    )
+    mentors = result.scalars().all()
+    for m in mentors:
+        background_tasks.add_task(send_qr_dm, m.slack_user_id, m.mentor_code, m.name)
+    return RedirectResponse(f"/admin/mentors?qr_sent={len(mentors)}", status_code=303)
+
+
+# ── Mentors ────────────────────────────────────────────────────────────────────
+
+@router.get("/mentors", response_class=HTMLResponse)
+async def admin_mentors_list(
+    request: Request, show_archived: int = 0, db: AsyncSession = Depends(get_db)
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    mentor_q = select(Mentor).options(selectinload(Mentor.team)).order_by(Mentor.name)
+    if not show_archived:
+        mentor_q = mentor_q.where(Mentor.is_active.is_(True))
+    result = await db.execute(mentor_q)
     mentors = result.scalars().all()
 
     teams_result = await db.execute(select(Team).order_by(Team.number))
@@ -422,7 +528,13 @@ async def admin_mentors_list(request: Request, db: AsyncSession = Depends(get_db
 
     return templates.TemplateResponse(
         "admin/mentors.html",
-        {"request": request, "mentors": mentors, "teams": teams, "categories": list(FocusCategory)},
+        {
+            "request": request,
+            "mentors": mentors,
+            "teams": teams,
+            "categories": list(FocusCategory),
+            "show_archived": bool(show_archived),
+        },
     )
 
 
@@ -457,11 +569,62 @@ async def admin_mentors_create(
 async def admin_mentors_delete(
     mentor_id: int, request: Request, db: AsyncSession = Depends(get_db)
 ):
+    """Archive a mentor (soft delete) — preserves their session history."""
     if redirect := _require_auth(request):
         return redirect
 
-    await db.execute(delete(Mentor).where(Mentor.id == mentor_id))
-    await db.commit()
+    result = await db.execute(select(Mentor).where(Mentor.id == mentor_id))
+    mentor = result.scalars().first()
+    if mentor and mentor.is_active:
+        mentor.is_active = False
+        mentor.archived_at = datetime.utcnow()
+        await audit.record(
+            db, request, "mentor.archive", f"Archived mentor {mentor.name}",
+            entity_type="mentor", entity_id=mentor.id,
+        )
+        await db.commit()
+    return RedirectResponse("/admin/mentors?show_archived=1", status_code=303)
+
+
+@router.post("/mentors/{mentor_id}/restore")
+async def admin_mentors_restore(
+    mentor_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(select(Mentor).where(Mentor.id == mentor_id))
+    mentor = result.scalars().first()
+    if mentor and not mentor.is_active:
+        mentor.is_active = True
+        mentor.archived_at = None
+        await audit.record(
+            db, request, "mentor.restore", f"Restored mentor {mentor.name}",
+            entity_type="mentor", entity_id=mentor.id,
+        )
+        await db.commit()
+    return RedirectResponse("/admin/mentors?show_archived=1", status_code=303)
+
+
+@router.post("/mentors/{mentor_id}/toggle-lead")
+async def admin_mentors_toggle_lead(
+    mentor_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    """Toggle a mentor's lead flag — leads are the only mentors looped into
+    group DMs when a student falls behind."""
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(select(Mentor).where(Mentor.id == mentor_id))
+    mentor = result.scalars().first()
+    if mentor:
+        mentor.is_lead = not mentor.is_lead
+        await audit.record(
+            db, request, "mentor.toggle_lead",
+            f"{'Marked' if mentor.is_lead else 'Unmarked'} {mentor.name} as lead",
+            entity_type="mentor", entity_id=mentor.id,
+        )
+        await db.commit()
     return RedirectResponse("/admin/mentors", status_code=303)
 
 
@@ -1158,7 +1321,6 @@ async def admin_import_post(
 
 # ── Audit log ──────────────────────────────────────────────────────────────────
 
-        },
 @router.get("/audit", response_class=HTMLResponse)
 async def admin_audit(
     request: Request, page: int = 1, db: AsyncSession = Depends(get_db)
@@ -1189,6 +1351,8 @@ async def admin_audit(
         },
     )
 
+
+# ── Backup / Restore ─────────────────────────────────────────────────────────
 
 @router.get("/backup", response_class=HTMLResponse)
 async def admin_backup_get(request: Request):
@@ -1266,7 +1430,6 @@ async def admin_backup_restore(
 
 # ── Report ─────────────────────────────────────────────────────────────────────
 
-# ── Backup / Restore ─────────────────────────────────────────────────────────
 @router.get("/report", response_class=HTMLResponse)
 async def admin_report(
     request: Request,
@@ -1375,5 +1538,4 @@ async def admin_report_export(
         _generate(),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-
     )
