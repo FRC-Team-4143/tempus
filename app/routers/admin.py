@@ -113,16 +113,29 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     if redirect := _require_auth(request):
         return redirect
 
-    # Currently signed in
+    # Currently signed in (exclude pending-checkout sessions)
     signed_in_result = await db.execute(
         select(AttendanceSession)
         .options(selectinload(AttendanceSession.student).selectinload(Student.team))
-        .where(AttendanceSession.sign_out_time.is_(None))
+        .where(
+            AttendanceSession.sign_out_time.is_(None),
+            AttendanceSession.checkout_requested_at.is_(None),
+        )
         .order_by(AttendanceSession.sign_in_time)
     )
     signed_in = signed_in_result.scalars().all()
 
-    # Leaderboard: total hours per student
+    # Leaderboard: total hours per student, counted from the configured cutoff.
+    # The date condition lives in the outer-join ON clause so students with zero
+    # qualifying sessions still appear.
+    from app.services.app_settings import get_leaderboard_since, leaderboard_since_utc
+    leaderboard_since = await get_leaderboard_since(db)
+    since_utc = await leaderboard_since_utc(db)
+
+    join_clause = AttendanceSession.student_id == Student.id
+    if since_utc is not None:
+        join_clause = and_(join_clause, AttendanceSession.sign_in_time >= since_utc)
+
     lboard_result = await db.execute(
         select(
             Student.id,
@@ -130,9 +143,8 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
             Team.number.label("team_number"),
             func.coalesce(func.sum(AttendanceSession.hours_counted), 0.0).label("total"),
         )
-        .join(AttendanceSession, AttendanceSession.student_id == Student.id, isouter=True)
+        .join(AttendanceSession, join_clause, isouter=True)
         .join(Team, Team.id == Student.team_id)
-        .where(Student.active.is_(True))
         .group_by(Student.id)
         .order_by(func.coalesce(func.sum(AttendanceSession.hours_counted), 0.0).desc())
     )
@@ -155,6 +167,7 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
             "request": request,
             "signed_in": signed_in,
             "leaderboard": leaderboard,
+            "leaderboard_since": leaderboard_since,
             "not_signed_in": not_signed_in,
         },
     )
@@ -858,6 +871,7 @@ async def admin_settings_get(request: Request):
             "contributor_multiplier": settings.contributor_multiplier,
             "present_multiplier": settings.present_multiplier,
             "distraction_multiplier": settings.distraction_multiplier,
+            "leaderboard_since": leaderboard_since,
         },
     )
 
@@ -908,6 +922,8 @@ async def admin_settings_post(
     contributor_multiplier: float = Form(...),
     present_multiplier: float = Form(...),
     distraction_multiplier: float = Form(...),
+    leaderboard_since: str = Form(""),
+    db: AsyncSession = Depends(get_db),
 ):
     if redirect := _require_auth(request):
         return redirect
@@ -917,6 +933,30 @@ async def admin_settings_post(
         present_multiplier,
         distraction_multiplier,
     )
+
+    from app.services.app_settings import set_leaderboard_since, get_leaderboard_since
+    parsed: Optional[date] = None
+    if leaderboard_since.strip():
+        try:
+            parsed = date.fromisoformat(leaderboard_since.strip())
+        except ValueError:
+            parsed = None
+    await set_leaderboard_since(db, parsed)
+    current_since = await get_leaderboard_since(db)
+
+    await audit.record(
+        db, request, "settings.update",
+        f"Updated multipliers (contributor={contributor_multiplier}, "
+        f"present={present_multiplier}, distraction={distraction_multiplier}); "
+        f"leaderboard_since={current_since or 'all-time'}",
+        entity_type="settings",
+        detail={"contributor_multiplier": contributor_multiplier,
+                "present_multiplier": present_multiplier,
+                "distraction_multiplier": distraction_multiplier,
+                "leaderboard_since": str(current_since) if current_since else None},
+    )
+    await db.commit()
+
     return templates.TemplateResponse(
         "admin/settings.html",
         {
@@ -929,7 +969,31 @@ async def admin_settings_post(
             "contributor_multiplier": settings.contributor_multiplier,
             "present_multiplier": settings.present_multiplier,
             "distraction_multiplier": settings.distraction_multiplier,
+            "leaderboard_since": current_since,
             "saved": True,
+        },
+    )
+
+
+@router.post("/leaderboard/reset")
+async def admin_leaderboard_reset(request: Request, db: AsyncSession = Depends(get_db)):
+    """Reset the leaderboard to count from today onward. Non-destructive — no
+    sessions are deleted, only the cutoff date the totals count from changes."""
+    if redirect := _require_auth(request):
+        return redirect
+
+    from app.services.app_settings import set_leaderboard_since
+    await set_leaderboard_since(db, today_local())
+    await audit.record(
+        db, request, "leaderboard.reset",
+        f"Reset leaderboard cutoff to {today_local()}", entity_type="settings",
+    )
+    await db.commit()
+    return RedirectResponse("/admin", status_code=303)
+
+
+# ── CSV Import ─────────────────────────────────────────────────────────────────
+
 @router.get("/import", response_class=HTMLResponse)
 async def admin_import_get(request: Request):
     if redirect := _require_auth(request):

@@ -53,7 +53,18 @@
   <!-- Leaderboard -->
   <div class="col-lg-6">
     <div class="card shadow-sm">
-      <div class="card-header fw-semibold"><i class="bi bi-trophy me-1"></i> Season Leaderboard</div>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-trophy me-1"></i> Season Leaderboard</span>
+        <form method="post" action="/admin/leaderboard/reset" class="d-inline m-0"
+              onsubmit="return confirm('Reset the leaderboard to count from today onward? This does not delete any recorded hours — older sessions are kept and still exportable.')">
+          <span class="text-muted small me-2">
+            {% if leaderboard_since %}Counting since {{ leaderboard_since.strftime('%b %d, %Y') }}{% else %}All time{% endif %}
+          </span>
+          <button type="submit" class="btn btn-outline-secondary btn-sm" title="Reset leaderboard to count from today">
+            <i class="bi bi-arrow-counterclockwise"></i> Reset
+          </button>
+        </form>
+      </div>
       <div class="card-body p-0">
         <table class="table table-sm mb-0">
           <thead class="table-light"><tr><th>#</th><th>Name</th><th>Team</th><th>Hours</th></tr></thead>

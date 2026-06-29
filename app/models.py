@@ -24,6 +24,18 @@ class FocusCategory(str, enum.Enum):
     business = "business"
 
 
+class AppSetting(Base):
+    """Small key/value store for runtime-configurable app settings.
+
+    Currently holds the optional "leaderboard_since" cutoff date (ISO string);
+    a missing/blank value means leaderboard totals count all-time.
+    """
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
 class Team(Base):
     __tablename__ = "teams"
 

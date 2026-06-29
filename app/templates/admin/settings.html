@@ -7,7 +7,7 @@
 
 {% if saved %}
 <div class="alert alert-success alert-dismissible fade show py-2" style="max-width:500px" role="alert">
-  <i class="bi bi-check-circle me-1"></i> Multipliers saved. Changes take effect immediately.
+  <i class="bi bi-check-circle me-1"></i> Settings saved. Changes take effect immediately.
   <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
 </div>
 {% endif %}
@@ -33,9 +33,25 @@
   </div>
 </div>
 
-<h5 class="mb-3">Hours Multipliers</h5>
-<p class="text-muted small">Controls what percentage of elapsed time counts toward hours for each session status. <em>Auto sign-out always uses the Contributor multiplier.</em></p>
 <form method="post" action="/admin/settings" style="max-width:400px">
+  <h5 class="mb-3">Leaderboard / Season</h5>
+  <p class="text-muted small">
+    Leaderboard and all-time totals count hours from this date onward.
+    Leave blank to count <strong>all-time</strong>. Changing this never deletes any
+    hours — sessions before the date are still recorded and exportable, they just
+    stop counting toward the leaderboard.
+  </p>
+  <div class="mb-4 row align-items-center">
+    <label class="col-sm-5 col-form-label">Counts hours since</label>
+    <div class="col-sm-7">
+      <input type="date" name="leaderboard_since" class="form-control"
+             value="{{ leaderboard_since.isoformat() if leaderboard_since else '' }}">
+      <div class="form-text">Blank = all-time</div>
+    </div>
+  </div>
+
+  <h5 class="mb-3">Hours Multipliers</h5>
+  <p class="text-muted small">Controls what percentage of elapsed time counts toward hours for each session status. <em>Auto sign-out always uses the Contributor multiplier.</em></p>
   <div class="mb-3 row align-items-center">
     <label class="col-sm-5 col-form-label">✅ Contributor</label>
     <div class="col-sm-7">
@@ -67,7 +83,7 @@
       </div>
     </div>
   </div>
-  <button type="submit" class="btn btn-primary">Save Multipliers</button>
+  <button type="submit" class="btn btn-primary">Save Settings</button>
 </form>
 
 <div class="alert alert-info mt-4 small" style="max-width:500px">
