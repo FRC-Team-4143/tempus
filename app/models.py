@@ -3,7 +3,7 @@ from datetime import datetime, date
 from typing import Optional, List
 
 from sqlalchemy import (
-    Integer, String, Boolean, Float, DateTime, Date,
+    Integer, String, Boolean, Float, DateTime, Date, Text,
     ForeignKey, Enum as SAEnum, UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -105,6 +105,25 @@ class AttendanceSession(Base):
     slack_channel_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     student: Mapped["Student"] = relationship("Student", back_populates="sessions")
+
+
+class AuditLog(Base):
+    """Append-only record of admin mutations (edits, deletes, settings changes).
+
+    There is a single admin login today, so `actor` is "admin"; `ip` records where
+    the change came from. `detail` holds an optional JSON blob (e.g. before/after).
+    """
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)  # naive UTC
+    actor: Mapped[str] = mapped_column(String(50), nullable=False, default="admin")
+    ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)  # e.g. "session.edit"
+    entity_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    entity_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    summary: Mapped[str] = mapped_column(String(500), nullable=False)
+    detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON
 
 
 class MentorSession(Base):

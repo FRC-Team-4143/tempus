@@ -5,23 +5,27 @@ Auth: session cookie signed with itsdangerous.
 """
 import csv
 import hashlib
+import hmac
 import io
+import os
+import tempfile
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import get_db
 from app.models import (
-    AttendanceSession, FocusCategory, Mentor, MentorSession, SessionStatus, Student, Team, WeeklyRequirement,
+    AttendanceSession, AuditLog, FocusCategory, Mentor, MentorSession, SessionStatus, Student, Team, WeeklyRequirement,
 )
+from app.services import audit
 from app.utils import utc_to_local, today_local, local_to_utc
 
 router = APIRouter(prefix="/admin")
@@ -71,13 +75,18 @@ async def admin_login_get(request: Request, error: str = ""):
 async def admin_login_post(
     request: Request,
     password: str = Form(...),
+    db: AsyncSession = Depends(get_db),
 ):
-    if password != settings.admin_password:
+    if not hmac.compare_digest(password, settings.admin_password):
+        await audit.record(db, request, "admin.login_failed", "Failed admin login attempt", actor="anonymous")
+        await db.commit()
         return templates.TemplateResponse(
             "admin/login.html",
             {"request": request, "error": "Incorrect password."},
             status_code=401,
         )
+    await audit.record(db, request, "admin.login", "Admin signed in")
+    await db.commit()
     response = RedirectResponse("/admin", status_code=303)
     response.set_cookie(
         _COOKIE,
@@ -849,4 +858,37 @@ async def admin_settings_post(
             "distraction_multiplier": settings.distraction_multiplier,
             "saved": True,
         },
+@router.get("/audit", response_class=HTMLResponse)
+async def admin_audit(
+    request: Request, page: int = 1, db: AsyncSession = Depends(get_db)
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    page = max(page, 1)
+    per_page = 50
+    total = await db.scalar(select(func.count()).select_from(AuditLog)) or 0
+    result = await db.execute(
+        select(AuditLog)
+        .order_by(AuditLog.id.desc())
+        .limit(per_page)
+        .offset((page - 1) * per_page)
+    )
+    entries = result.scalars().all()
+    total_pages = max((total + per_page - 1) // per_page, 1)
+
+    return templates.TemplateResponse(
+        "admin/audit.html",
+        {
+            "request": request,
+            "entries": entries,
+            "page": page,
+            "total_pages": total_pages,
+            "total": total,
+        },
+    )
+
+
+# ── Backup / Restore ─────────────────────────────────────────────────────────
+
     )
