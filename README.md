@@ -1,11 +1,11 @@
 # FRC Time Tracker
 
-A web-based attendance tracking system for FIRST Robotics Competition teams **4143 (MARS/WARS)** and **4423 (MARS' Minions)**. Students sign in at a kiosk using QR codes, mentors check students out via Slack, and an admin UI provides full session management and reporting.
+A web-based attendance tracking system for FIRST Robotics Competition teams **4143 (MARS/WARS)** and **4423 (MARS' Minions)**. Students sign in and out at a kiosk using QR badges, mentors can edit session ratings via Slack, and an admin UI provides full session management and reporting.
 
 ## Features
 
-- **Kiosk sign-in** — QR code or name-based sign-in at a touchscreen kiosk with live SSE updates
-- **Slack integration** — mentors check students out via `/checkout` and rate session quality; students can query their hours with `/hours`
+- **Kiosk sign-in / self sign-out** — QR badge scan signs students in; a second scan signs them out (with a 60-second debounce to prevent accidental double-scans)
+- **Slack integration** — mentors edit session ratings via `/edit`, query the current roster with `/shop`, and students check their hours with `/hours`
 - **Automated sign-out** — nightly auto sign-out at a configurable time
 - **Weekly Slack DMs** — automatic hour-summary messages to students (and mentors if a student is falling behind)
 - **Hours multipliers** — session quality ratings (Contributor / Present / Distraction) apply configurable multipliers to counted hours
@@ -88,7 +88,7 @@ All settings are read from a `.env` file in the working directory (or from envir
 | `present_multiplier` | `PRESENT_MULTIPLIER` | `0.5` | Hours multiplier for "Present" rated sessions |
 | `distraction_multiplier` | `DISTRACTION_MULTIPLIER` | `0.0` | Hours multiplier for "Distraction" rated sessions |
 
-> **Note:** `contributor_multiplier` also applies to sessions signed out automatically by the nightly job.
+> **Note:** `contributor_multiplier` applies to both self sign-outs (QR badge rescan) and sessions closed by the nightly auto sign-out job.
 >
 > Multipliers can be updated at runtime from **Admin → Settings** without restarting the server. Changes are written back to `.env` and take effect immediately.
 
@@ -113,9 +113,10 @@ AUTO_SIGNOUT_TIME=21:30
    - `im:write`
    - `mpim:write`
    - `commands`
-3. Add slash commands:
-   - `/checkout` → `https://<your-host>/slack/command`
+3. Add slash commands (all point to the same URL):
    - `/hours` → `https://<your-host>/slack/command`
+   - `/edit` → `https://<your-host>/slack/command`
+   - `/shop` → `https://<your-host>/slack/command`
 4. Under **Interactivity & Shortcuts**, set the Request URL to `https://<your-host>/slack/interact`
 5. Install the app to your workspace and copy the **Bot User OAuth Token** and **Signing Secret** to `.env`
 
@@ -142,7 +143,9 @@ Navigate to `/admin` and log in with your configured `ADMIN_PASSWORD`. Sessions 
 
 The kiosk page (`/kiosk`) is designed for a dedicated touchscreen display. It shows currently signed-in students grouped by team with elapsed sign-in time and auto-refreshes via Server-Sent Events — no polling required.
 
-- **Sign-in:** scan a QR code linked to `POST /kiosk/signin` with the student's name as the payload
+- **Sign-in:** scan a QR badge — the scanner acts as a keyboard and submits the student's tracker UID to `POST /kiosk/signin`
+- **Self sign-out:** scanning the same badge again signs the student out (minimum 60 seconds must have elapsed to prevent accidental double-scans)
+- **Default sign-out status:** self sign-outs are recorded as **Contributor** (full hours); a mentor can adjust this later with `/edit`
 - **Demo mode:** `/kiosk/demo` renders a realistic preview with fake data — useful for layout testing
 - **IP whitelist:** set `SIGNIN_IP_WHITELIST` to restrict which network addresses can submit sign-ins (the kiosk device's subnet, for example)
 
@@ -152,10 +155,16 @@ The kiosk page (`/kiosk`) is designed for a dedicated touchscreen display. It sh
 
 ### Student sign-in / sign-out
 
-1. Student scans their QR code at the kiosk → signed in
-2. At the end of the session, a mentor runs `/checkout <student name>` in Slack
-3. The mentor receives a private DM with three buttons: **Contributor**, **Present**, **Distraction**
-4. Clicking a button signs the student out, applies the corresponding hours multiplier, and updates the kiosk in real time
+1. Student scans their QR badge at the kiosk → signed in
+2. Student scans their badge again when leaving → signed out as **Contributor** (full hours)
+3. If the contribution level needs adjusting, a mentor runs `/edit <student name>` in Slack
+4. The mentor receives a DM listing the student's last 5 sessions; selecting one shows three rating buttons: **Contributor**, **Present**, **Distraction**
+5. Clicking a button updates the session's counted hours and confirms in the DM thread
+
+### Roster lookup
+
+- `/shop` — shows all currently signed-in students, grouped by team with elapsed time
+- `/shop 4143` or `/shop 4423` — filters to a single team
 
 ### Hours queries
 
@@ -200,3 +209,6 @@ app/
 │   └── slack_client.py# Slack AsyncWebClient wrapper and DM notification logic
 └── templates/         # Jinja2 HTML templates
 ```
+
+# TODO:
+- Readd mentor leaderboard page at /mentor
