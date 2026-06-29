@@ -48,7 +48,10 @@ class Student(Base):
         SAEnum(FocusCategory), nullable=True
     )
     slack_user_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     team: Mapped["Team"] = relationship("Team", back_populates="students")
     sessions: Mapped[List["AttendanceSession"]] = relationship(
@@ -67,6 +70,13 @@ class Mentor(Base):
         SAEnum(FocusCategory), nullable=True
     )
     slack_user_id: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    is_lead: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     team: Mapped[Optional["Team"]] = relationship("Team")
     sessions: Mapped[List["MentorSession"]] = relationship("MentorSession", back_populates="mentor")

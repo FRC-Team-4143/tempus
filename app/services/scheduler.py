@@ -88,7 +88,10 @@ async def job_weekly_dms() -> None:
         students_result = await db.execute(
             select(Student)
             .options(selectinload(Student.team))
-            .where(Student.active.is_(True), Student.slack_user_id.is_not(None))
+            .where(
+                Student.slack_user_id.is_not(None),
+                Student.is_active.is_(True),
+            )
         )
         students = students_result.scalars().all()
 

@@ -143,7 +143,7 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     all_active_result = await db.execute(
         select(Student)
         .options(selectinload(Student.team))
-        .where(Student.active.is_(True))
+        .where(Student.is_active.is_(True))
         .order_by(Student.name)
     )
     all_active = all_active_result.scalars().all()
@@ -192,15 +192,16 @@ async def admin_manual_signin(
 # ── Students ───────────────────────────────────────────────────────────────────
 
 @router.get("/students", response_class=HTMLResponse)
-async def admin_students_list(request: Request, db: AsyncSession = Depends(get_db)):
+async def admin_students_list(
+    request: Request, show_archived: int = 0, db: AsyncSession = Depends(get_db)
+):
     if redirect := _require_auth(request):
         return redirect
 
-    result = await db.execute(
-        select(Student)
-        .options(selectinload(Student.team))
-        .order_by(Student.name)
-    )
+    student_q = select(Student).options(selectinload(Student.team)).order_by(Student.name)
+    if not show_archived:
+        student_q = student_q.where(Student.is_active.is_(True))
+    result = await db.execute(student_q)
     students = result.scalars().all()
 
     teams_result = await db.execute(select(Team).order_by(Team.number))
@@ -208,7 +209,13 @@ async def admin_students_list(request: Request, db: AsyncSession = Depends(get_d
 
     return templates.TemplateResponse(
         "admin/students.html",
-        {"request": request, "students": students, "teams": teams, "categories": list(FocusCategory)},
+        {
+            "request": request,
+            "students": students,
+            "teams": teams,
+            "categories": list(FocusCategory),
+            "show_archived": bool(show_archived),
+        },
     )
 
 
@@ -219,7 +226,6 @@ async def admin_students_create(
     team_id: int = Form(...),
     category: Optional[str] = Form(None),
     slack_user_id: Optional[str] = Form(None),
-    active: bool = Form(True),
     db: AsyncSession = Depends(get_db),
 ):
     if redirect := _require_auth(request):
@@ -247,9 +253,12 @@ async def admin_students_create(
         team_id=team_id,
         category=FocusCategory(category),
         slack_user_id=slack_user_id.strip() if slack_user_id else None,
-        active=active,
     )
     db.add(student)
+    await audit.record(
+        db, request, "student.create", f"Created student {student.name}",
+        entity_type="student",
+    )
     await db.commit()
     return RedirectResponse("/admin/students", status_code=303)
 
@@ -285,7 +294,6 @@ async def admin_students_edit_post(
     team_id: int = Form(...),
     category: Optional[str] = Form(None),
     slack_user_id: Optional[str] = Form(None),
-    active: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     if redirect := _require_auth(request):
@@ -311,11 +319,27 @@ async def admin_students_edit_post(
     result = await db.execute(select(Student).where(Student.id == student_id))
     student = result.scalars().first()
     if student:
+        before = {
+            "name": student.name,
+            "team_id": student.team_id,
+            "category": student.category.value if student.category else None,
+            "slack_user_id": student.slack_user_id,
+        }
         student.name = name.strip()
         student.team_id = team_id
         student.category = FocusCategory(category)
         student.slack_user_id = slack_user_id.strip() if slack_user_id else None
-        student.active = active == "on"
+        after = {
+            "name": student.name,
+            "team_id": student.team_id,
+            "category": student.category.value if student.category else None,
+            "slack_user_id": student.slack_user_id,
+        }
+        await audit.record(
+            db, request, "student.edit", f"Edited student {student.name}",
+            entity_type="student", entity_id=student.id,
+            detail={"before": before, "after": after},
+        )
         await db.commit()
     return RedirectResponse("/admin/students", status_code=303)
 
@@ -357,7 +381,10 @@ async def admin_students_notify_all(
 
     from app.services.slack_client import notify_student_hours
     result = await db.execute(
-        select(Student).where(Student.active.is_(True), Student.slack_user_id.is_not(None))
+        select(Student).where(
+            Student.slack_user_id.is_not(None),
+            Student.is_active.is_(True),
+        )
     )
     students = result.scalars().all()
     for s in students:
@@ -405,6 +432,10 @@ async def admin_mentors_create(
         team_id=team_id or None,
         category=FocusCategory(category) if category else None,
     ))
+    await audit.record(
+        db, request, "mentor.create", f"Created mentor {name.strip()}",
+        entity_type="mentor",
+    )
     await db.commit()
     return RedirectResponse("/admin/mentors", status_code=303)
 

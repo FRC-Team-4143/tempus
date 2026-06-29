@@ -27,11 +27,107 @@ async def init_db() -> None:
     """Create all tables and seed initial data."""
     from app.models import Team  # noqa: F401 – imported for side-effect (table creation)
 
+    # Apply a staged database restore (if any) before the engine touches the file.
+    from app.services.backup import apply_pending_restore
+    apply_pending_restore()
+
     async with engine.begin() as conn:
         from app.database import Base
         await conn.run_sync(Base.metadata.create_all)
+        # Safe migration: add checkout_requested_at if it doesn't exist yet
+        await conn.run_sync(_add_checkout_requested_at_column)
+        # Safe migration: allow NULL team_id (all-teams requirements)
+        await conn.run_sync(_make_weekly_req_team_nullable)
+        # Safe migration: add archive columns to students and mentors
+        await conn.run_sync(_add_archive_columns)
+        # Safe migration: add is_lead flag to mentors
+        await conn.run_sync(_add_is_lead_column)
 
     await _seed_teams()
+
+
+def _add_is_lead_column(conn) -> None:
+    """Add is_lead to the mentors table if not already present (default 0)."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+    columns = [c["name"] for c in inspector.get_columns("mentors")]
+    if "is_lead" not in columns:
+        conn.execute(text(
+            "ALTER TABLE mentors ADD COLUMN is_lead BOOLEAN NOT NULL DEFAULT 0"
+        ))
+
+
+def _add_checkout_requested_at_column(conn) -> None:
+    """Add checkout_requested_at to the sessions table if not already present."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+    columns = [c["name"] for c in inspector.get_columns("sessions")]
+    if "checkout_requested_at" not in columns:
+        conn.execute(text("ALTER TABLE sessions ADD COLUMN checkout_requested_at DATETIME"))
+
+
+def _add_archive_columns(conn) -> None:
+    """Add is_active / archived_at to students and mentors if not already present.
+
+    Existing rows default to active (is_active = 1). If the legacy `active` column
+    exists on a table, copy its values into is_active then drop the redundant column
+    (SQLite 3.35+ supports DROP COLUMN; runtime is 3.45+).
+    """
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+    for table in ("students", "mentors"):
+        columns = [c["name"] for c in inspector.get_columns(table)]
+        if "is_active" not in columns:
+            conn.execute(text(
+                f"ALTER TABLE {table} ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"
+            ))
+            # Re-read columns after the ALTER so the legacy check below sees is_active.
+            columns = [c["name"] for c in inspect(conn).get_columns(table)]
+        if "archived_at" not in columns:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN archived_at DATETIME"))
+        # Drop the old `active` column that existed before is_active was introduced.
+        # Preserve any false values first so archived members stay archived.
+        if "active" in columns:
+            conn.execute(text(
+                f"UPDATE {table} SET is_active = active WHERE active != is_active"
+            ))
+            conn.execute(text(f"ALTER TABLE {table} DROP COLUMN active"))
+
+
+def _make_weekly_req_team_nullable(conn) -> None:
+    """Rebuild weekly_requirements so team_id allows NULL (= applies to all teams).
+
+    SQLite can't drop a NOT NULL constraint in place, so recreate the table and
+    copy the rows. No-op once team_id is already nullable.
+    """
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+    cols = {c["name"]: c for c in inspector.get_columns("weekly_requirements")}
+    if "team_id" not in cols or cols["team_id"]["nullable"]:
+        return
+
+    conn.execute(text("ALTER TABLE weekly_requirements RENAME TO weekly_requirements_old"))
+    conn.execute(text(
+        """
+        CREATE TABLE weekly_requirements (
+            id INTEGER NOT NULL,
+            team_id INTEGER,
+            category VARCHAR(8),
+            week_start DATE NOT NULL,
+            required_hours FLOAT NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE (team_id, category, week_start),
+            FOREIGN KEY(team_id) REFERENCES teams (id)
+        )
+        """
+    ))
+    conn.execute(text(
+        """
+        INSERT INTO weekly_requirements (id, team_id, category, week_start, required_hours)
+        SELECT id, team_id, category, week_start, required_hours FROM weekly_requirements_old
+        """
+    ))
+    conn.execute(text("DROP TABLE weekly_requirements_old"))
 
 
 async def _seed_teams() -> None:

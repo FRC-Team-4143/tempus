@@ -22,7 +22,6 @@ class StudentCreate(BaseModel):
     team_id: int
     category: Optional[FocusCategory] = None
     slack_user_id: Optional[str] = None
-    active: bool = True
 
 
 class StudentUpdate(BaseModel):
@@ -30,7 +29,6 @@ class StudentUpdate(BaseModel):
     team_id: Optional[int] = None
     category: Optional[FocusCategory] = None
     slack_user_id: Optional[str] = None
-    active: Optional[bool] = None
 
 
 class StudentOut(BaseModel):
@@ -39,7 +37,6 @@ class StudentOut(BaseModel):
     team_id: int
     category: Optional[FocusCategory]
     slack_user_id: Optional[str]
-    active: bool
     team: TeamOut
 
     model_config = {"from_attributes": True}
