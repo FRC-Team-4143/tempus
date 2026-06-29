@@ -120,6 +120,16 @@ async def job_weekly_dms() -> None:
             await send_dm(student.slack_user_id, text)
 
 
+async def job_nightly_backup() -> None:
+    from app.services.backup import is_sqlite, nightly_backup
+    if not is_sqlite():
+        return
+    try:
+        nightly_backup()
+    except Exception:  # never let a backup failure crash the scheduler
+        log.exception("Nightly backup failed")
+
+
 def create_scheduler() -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=settings.timezone)
 
@@ -143,6 +153,15 @@ def create_scheduler() -> AsyncIOScheduler:
             timezone=settings.timezone,
         ),
         id="weekly_dms",
+        replace_existing=True,
+    )
+
+    # Nightly database backup
+    bh, bm = settings.backup_time.split(":")
+    scheduler.add_job(
+        job_nightly_backup,
+        CronTrigger(hour=int(bh), minute=int(bm), timezone=settings.timezone),
+        id="nightly_backup",
         replace_existing=True,
     )
 

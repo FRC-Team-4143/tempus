@@ -28,5 +28,10 @@ class Settings(BaseSettings):
     present_multiplier: float = 0.5
     distraction_multiplier: float = 0.0
 
+    # Database backups (SQLite only)
+    backup_dir: str = "backups"
+    backup_keep: int = 14  # number of nightly snapshots to retain
+    backup_time: str = "23:30"  # HH:MM 24h local time for the nightly snapshot
+
 
 settings = Settings()

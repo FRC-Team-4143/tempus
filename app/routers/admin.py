@@ -962,6 +962,82 @@ async def admin_audit(
     )
 
 
+@router.get("/backup", response_class=HTMLResponse)
+async def admin_backup_get(request: Request):
+    if redirect := _require_auth(request):
+        return redirect
+
+    from app.services import backup
+    return templates.TemplateResponse(
+        "admin/backup.html",
+        {
+            "request": request,
+            "is_sqlite": backup.is_sqlite(),
+            "backups": backup.list_backups(),
+            "result": request.query_params.get("result"),
+            "message": request.query_params.get("message"),
+        },
+    )
+
+
+@router.get("/backup/download")
+async def admin_backup_download(request: Request):
+    if redirect := _require_auth(request):
+        return redirect
+
+    from app.services import backup
+    if not backup.is_sqlite():
+        return RedirectResponse(
+            "/admin/backup?result=error&message=Not+a+SQLite+database", status_code=303
+        )
+
+    tmp = os.path.join(tempfile.gettempdir(), f"tracker-snapshot-{os.getpid()}.db")
+    backup.create_snapshot(tmp)
+    with open(tmp, "rb") as f:
+        data = f.read()
+    os.remove(tmp)
+
+    filename = f"tracker-backup-{datetime.now():%Y%m%d-%H%M}.db"
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/backup/restore")
+async def admin_backup_restore(
+    request: Request,
+    file: UploadFile = File(...),
+    confirm: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    from app.services import backup
+    if confirm.strip().upper() != "RESTORE":
+        return RedirectResponse(
+            "/admin/backup?result=error&message=Type+RESTORE+to+confirm", status_code=303
+        )
+
+    contents = await file.read()
+    ok, message = backup.stage_restore(contents)
+    if ok:
+        await audit.record(
+            db, request, "backup.restore_staged",
+            f"Staged restore from uploaded file {file.filename}", entity_type="backup",
+        )
+        await db.commit()
+    result = "success" if ok else "error"
+    return RedirectResponse(
+        f"/admin/backup?result={result}&message={message.replace(' ', '+')}",
+        status_code=303,
+    )
+
+
+# ── Report ─────────────────────────────────────────────────────────────────────
+
 # ── Backup / Restore ─────────────────────────────────────────────────────────
 @router.get("/report", response_class=HTMLResponse)
 async def admin_report(
