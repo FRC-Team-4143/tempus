@@ -1,0 +1,116 @@
+{% extends "admin/base.html" %}
+{% set active_page = "report" %}
+{% block title %}Weekly Report — FRC Attendance Admin{% endblock %}
+
+{% block head %}
+<style>
+  .report-table th, .report-table td { white-space: nowrap; }
+  .report-table .col-student { min-width: 160px; position: sticky; left: 0; background: #1a1a1a; z-index: 1; }
+  .week-met { background-color: rgba(25, 135, 84, 0.25) !important; }
+  .week-miss { background-color: rgba(220, 53, 69, 0.18) !important; }
+  .week-zero { color: #888; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Weekly Requirement Report</h2>
+  {% set qs = "date_from=" ~ filters.date_from ~ "&date_to=" ~ filters.date_to %}
+  {% if filters.team_id %}{% set qs = qs ~ "&team_id=" ~ filters.team_id %}{% endif %}
+  {% if filters.category %}{% set qs = qs ~ "&category=" ~ filters.category %}{% endif %}
+  <a href="/admin/report/export?{{ qs }}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-download me-1"></i>Export CSV
+  </a>
+</div>
+
+<!-- Filters -->
+<form method="get" class="row g-2 mb-4 align-items-end">
+  <div class="col-auto">
+    <label class="form-label small mb-1">From</label>
+    <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.date_from }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">To</label>
+    <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.date_to }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">Team</label>
+    <select name="team_id" class="form-select form-select-sm">
+      <option value="">All Teams</option>
+      {% for t in teams %}
+      <option value="{{ t.id }}" {% if filters.team_id == t.id %}selected{% endif %}>Team {{ t.number }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">Category</label>
+    <select name="category" class="form-select form-select-sm">
+      <option value="">All Categories</option>
+      {% for c in categories %}
+      <option value="{{ c.value }}" {% if filters.category == c.value %}selected{% endif %}>{{ c.value | capitalize }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1 d-block">&nbsp;</label>
+    <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+    <a href="/admin/report" class="btn btn-sm btn-outline-secondary ms-1">Clear</a>
+  </div>
+  <div class="col-12">
+    <small class="text-muted">Date range snaps to Mondays. Max 26 weeks.</small>
+  </div>
+</form>
+
+<!-- Legend -->
+<div class="d-flex gap-3 mb-3 small">
+  <span class="badge" style="background:rgba(25,135,84,0.35);color:#75d9a5;">&#9632; Met requirement</span>
+  <span class="badge" style="background:rgba(220,53,69,0.25);color:#f08090;">&#9632; Below requirement</span>
+  <small class="text-muted">Hover a cell to see hours / required.</small>
+</div>
+
+{% if not rows %}
+<div class="alert alert-secondary">No students match the selected filters.</div>
+{% else %}
+<div class="card shadow-sm">
+  <div class="card-header fw-semibold">
+    {{ rows|length }} student{{ 's' if rows|length != 1 else '' }} &middot; {{ week_starts|length }} week{{ 's' if week_starts|length != 1 else '' }}
+  </div>
+  <div class="card-body p-0" style="overflow-x: auto;">
+    <table class="table table-sm mb-0 report-table">
+      <thead class="table-dark">
+        <tr>
+          <th class="col-student">Student</th>
+          {% for ws in week_starts %}
+          <th class="text-center">{{ ws.strftime('%b %d') }}</th>
+          {% endfor %}
+          <th class="text-end">Total</th>
+          <th class="text-center">Weeks Met</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="col-student">
+            {{ row.student.name }}
+            <br><small class="text-muted">Team {{ row.student.team.number if row.student.team else '—' }}{% if row.student.category %} · {{ row.student.category.value | capitalize }}{% endif %}</small>
+          </td>
+          {% for w in row.weeks %}
+          <td class="text-center {% if w.met %}week-met{% else %}week-miss{% endif %}{% if w.hours == 0 %} week-zero{% endif %}"
+              title="{{ '%.1f'|format(w.hours) }} / {{ '%.1f'|format(w.required) }} hrs">
+            {{ '%.1f'|format(w.hours) }}
+          </td>
+          {% endfor %}
+          <td class="text-end fw-semibold">{{ '%.1f'|format(row.total_hours) }}</td>
+          <td class="text-center">
+            <span class="{% if row.weeks_met == row.weeks_total %}text-success{% elif row.weeks_met == 0 %}text-danger{% else %}text-warning{% endif %}">
+              {{ row.weeks_met }}/{{ row.weeks_total }}
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -963,5 +963,113 @@ async def admin_audit(
 
 
 # ── Backup / Restore ─────────────────────────────────────────────────────────
+@router.get("/report", response_class=HTMLResponse)
+async def admin_report(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    team_id: Optional[str] = None,
+    category: Optional[str] = None,
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    from app.services.reports import week_starts_in_range, weekly_attendance_report
+
+    today = today_local()
+    default_from = today - timedelta(days=today.weekday()) - timedelta(weeks=3)
+    default_to = today - timedelta(days=today.weekday())
+
+    d_from = date_from or default_from
+    d_to = date_to or default_to
+
+    team_id_int = int(team_id) if team_id else None
+
+    cat_enum = None
+    if category:
+        try:
+            cat_enum = FocusCategory(category)
+        except ValueError:
+            pass
+
+    week_starts = week_starts_in_range(d_from, d_to)
+    rows = await weekly_attendance_report(db, week_starts, team_id=team_id_int, category=cat_enum)
+
+    teams_result = await db.execute(select(Team).order_by(Team.number))
+    teams = teams_result.scalars().all()
+
+    return templates.TemplateResponse(
+        "admin/report.html",
+        {
+            "request": request,
+            "rows": rows,
+            "week_starts": week_starts,
+            "teams": teams,
+            "categories": list(FocusCategory),
+            "filters": {
+                "date_from": d_from,
+                "date_to": d_to,
+                "team_id": team_id_int,
+                "category": category or "",
+            },
+        },
+    )
+
+
+@router.get("/report/export")
+async def admin_report_export(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    team_id: Optional[str] = None,
+    category: Optional[str] = None,
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    from app.services.reports import week_starts_in_range, weekly_attendance_report
+
+    today = today_local()
+    default_from = today - timedelta(days=today.weekday()) - timedelta(weeks=3)
+    default_to = today - timedelta(days=today.weekday())
+
+    d_from = date_from or default_from
+    d_to = date_to or default_to
+
+    team_id_int = int(team_id) if team_id else None
+
+    cat_enum = None
+    if category:
+        try:
+            cat_enum = FocusCategory(category)
+        except ValueError:
+            pass
+
+    week_starts = week_starts_in_range(d_from, d_to)
+    rows = await weekly_attendance_report(db, week_starts, team_id=team_id_int, category=cat_enum)
+
+    def _generate():
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        header = ["Student", "Team", "Category"] + [ws.strftime("%Y-%m-%d") for ws in week_starts] + ["Total Hours", "Weeks Met"]
+        writer.writerow(header)
+        yield buf.getvalue()
+        for row in rows:
+            buf.seek(0)
+            buf.truncate()
+            s = row["student"]
+            data = [s.name, s.team.number if s.team else "", s.category.value if s.category else ""]
+            data += [f"{w['hours']:.2f}" for w in row["weeks"]]
+            data += [f"{row['total_hours']:.2f}", f"{row['weeks_met']}/{row['weeks_total']}"]
+            writer.writerow(data)
+            yield buf.getvalue()
+
+    filename = f"weekly_report_{d_from}_{d_to}.csv"
+    return StreamingResponse(
+        _generate(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
 
     )
