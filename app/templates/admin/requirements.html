@@ -9,18 +9,39 @@
     <i class="bi bi-plus-lg"></i> Add / Update
   </button>
 </div>
-<p class="text-muted small">If no requirement is set for the current week, the most recent prior entry is used.</p>
+<p class="text-muted small">
+  Each entry applies to the week shown <strong>and all following weeks</strong> until a newer entry for the same team/category overrides it.
+  To change the requirement from a given week onward, just add a new entry — older entries are kept as history.
+  The most specific match wins: a team-specific entry overrides All Teams, and a category-specific entry overrides one with no category (default 11 hrs).
+</p>
 
 <div class="card shadow-sm">
   <div class="card-body p-0">
     <table class="table table-hover mb-0">
-      <thead class="table-light"><tr><th>Team</th><th>Category</th><th>Week Starting (Mon)</th><th>Required Hours</th><th></th></tr></thead>
+      <thead class="table-light">
+        <tr>
+          <th>Team</th>
+          <th>Category</th>
+          <th>Effective From</th>
+          <th>Covers</th>
+          <th>Required Hours</th>
+          <th></th>
+        </tr>
+      </thead>
       <tbody>
         {% for r in requirements %}
+        {% set until = covers_until[r.id] %}
         <tr>
-          <td>{{ r.team.number }}</td>
+          <td>{{ r.team.number if r.team else 'All Teams' }}</td>
           <td>{{ r.category.value | capitalize if r.category else '—' }}</td>
           <td>{{ r.week_start.strftime('%b %d, %Y') }}</td>
+          <td class="text-muted small">
+            {% if until %}
+              {{ r.week_start.strftime('%b %d') }} – {{ until.strftime('%b %d') }}
+            {% else %}
+              {{ r.week_start.strftime('%b %d') }} <em>→ ongoing</em>
+            {% endif %}
+          </td>
           <td><strong>{{ r.required_hours }}</strong> hrs</td>
           <td>
             <form method="post" action="/admin/requirements/{{ r.id }}/delete" class="d-inline"
@@ -44,7 +65,8 @@
         <div class="modal-body">
           <div class="mb-3">
             <label class="form-label">Team</label>
-            <select name="team_id" class="form-select" required>
+            <select name="team_id" class="form-select">
+              <option value="">— All Teams —</option>
               {% for t in teams %}<option value="{{ t.id }}">{{ t.number }} — {{ t.name }}</option>{% endfor %}
             </select>
           </div>
@@ -58,7 +80,7 @@
             </select>
           </div>
           <div class="mb-3">
-            <label class="form-label">Week Starting (any day — will snap to Monday)</label>
+            <label class="form-label">Effective From <small class="text-muted">(any day — snaps to Monday, applies to this week and all following weeks)</small></label>
             <input type="date" name="week_start" class="form-control" required>
           </div>
           <div class="mb-3">

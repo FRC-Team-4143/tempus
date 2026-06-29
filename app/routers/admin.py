@@ -469,16 +469,36 @@ async def admin_requirements_list(request: Request, db: AsyncSession = Depends(g
     teams_result = await db.execute(select(Team).order_by(Team.number))
     teams = teams_result.scalars().all()
 
+    # Compute per-row "covers until" by grouping entries in each (team_id, category) scope
+    from collections import defaultdict
+    scope_entries: dict = defaultdict(list)
+    for r in sorted(requirements, key=lambda x: x.week_start):
+        scope_entries[(r.team_id, r.category)].append(r)
+
+    covers_until: dict = {}
+    for entries in scope_entries.values():
+        for i, r in enumerate(entries):
+            if i + 1 < len(entries):
+                covers_until[r.id] = entries[i + 1].week_start - timedelta(days=1)
+            else:
+                covers_until[r.id] = None  # ongoing
+
     return templates.TemplateResponse(
         "admin/requirements.html",
-        {"request": request, "requirements": requirements, "teams": teams, "categories": list(FocusCategory)},
+        {
+            "request": request,
+            "requirements": requirements,
+            "teams": teams,
+            "categories": list(FocusCategory),
+            "covers_until": covers_until,
+        },
     )
 
 
 @router.post("/requirements")
 async def admin_requirements_create(
     request: Request,
-    team_id: int = Form(...),
+    team_id: Optional[str] = Form(None),
     category: Optional[str] = Form(None),
     week_start: date = Form(...),
     required_hours: float = Form(...),
@@ -490,12 +510,21 @@ async def admin_requirements_create(
     # Normalise to Monday
     week_monday = week_start - timedelta(days=week_start.weekday())
     parsed_category = FocusCategory(category) if category else None
+    parsed_team_id = int(team_id) if team_id else None  # empty = all teams
 
     # Upsert: update if exists
+    team_clause = (
+        WeeklyRequirement.team_id.is_(None) if parsed_team_id is None
+        else WeeklyRequirement.team_id == parsed_team_id
+    )
+    cat_clause = (
+        WeeklyRequirement.category.is_(None) if parsed_category is None
+        else WeeklyRequirement.category == parsed_category
+    )
     existing_result = await db.execute(
         select(WeeklyRequirement).where(
-            WeeklyRequirement.team_id == team_id,
-            WeeklyRequirement.category == parsed_category,
+            team_clause,
+            cat_clause,
             WeeklyRequirement.week_start == week_monday,
         )
     )
@@ -505,9 +534,18 @@ async def admin_requirements_create(
     else:
         db.add(
             WeeklyRequirement(
-                team_id=team_id, category=parsed_category, week_start=week_monday, required_hours=required_hours
+                team_id=parsed_team_id, category=parsed_category, week_start=week_monday, required_hours=required_hours
             )
         )
+    await audit.record(
+        db, request, "requirement.set",
+        f"Set requirement {required_hours}h for team={parsed_team_id or 'all'} "
+        f"category={parsed_category.value if parsed_category else 'all'} week {week_monday}",
+        entity_type="requirement",
+        detail={"team_id": parsed_team_id,
+                "category": parsed_category.value if parsed_category else None,
+                "week_start": str(week_monday), "required_hours": required_hours},
+    )
     await db.commit()
     return RedirectResponse("/admin/requirements", status_code=303)
 
@@ -519,6 +557,10 @@ async def admin_requirements_delete(
     if redirect := _require_auth(request):
         return redirect
 
+    await audit.record(
+        db, request, "requirement.delete", f"Deleted requirement #{req_id}",
+        entity_type="requirement", entity_id=req_id,
+    )
     await db.execute(delete(WeeklyRequirement).where(WeeklyRequirement.id == req_id))
     await db.commit()
     return RedirectResponse("/admin/requirements", status_code=303)

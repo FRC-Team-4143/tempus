@@ -87,14 +87,15 @@ class WeeklyRequirement(Base):
     __table_args__ = (UniqueConstraint("team_id", "category", "week_start"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    team_id: Mapped[int] = mapped_column(Integer, ForeignKey("teams.id"), nullable=False)
+    # NULL team_id means the requirement applies to all teams
+    team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
     category: Mapped[Optional[FocusCategory]] = mapped_column(
         SAEnum(FocusCategory), nullable=True
     )
     week_start: Mapped[date] = mapped_column(Date, nullable=False)  # always a Monday
     required_hours: Mapped[float] = mapped_column(Float, nullable=False, default=11.0)
 
-    team: Mapped["Team"] = relationship("Team", back_populates="weekly_requirements")
+    team: Mapped[Optional["Team"]] = relationship("Team", back_populates="weekly_requirements")
 
 
 class AttendanceSession(Base):

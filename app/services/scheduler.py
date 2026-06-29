@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.models import AttendanceSession, Mentor, SessionStatus, Student, FocusCategory, WeeklyRequirement
+from app.models import AttendanceSession, Mentor, SessionStatus, Student, FocusCategory
 from app.services.attendance import sign_out_all_open, mentor_sign_out_all_open
 from app.services.slack_client import send_dm, send_group_dm
 from app.utils import today_local, local_to_utc
@@ -29,25 +29,12 @@ def _current_week_start() -> date:
 
 async def _get_requirement(team_id: int, week_start: date, category=None) -> float:
     """
-    Return required_hours for a team+category's week.
-    Looks up by (team_id, category, week_start), falling back to the most recent
-    prior entry for that combo, then to 11h default.
+    Return required_hours for a team+category's week, most-specific scope first
+    (team+category, team, all-teams+category, all-teams), then the 11h default.
     """
-    from typing import Optional
+    from app.services.requirements import resolve_requirement
     async with AsyncSessionLocal() as db:
-        q = (
-            select(WeeklyRequirement)
-            .where(
-                WeeklyRequirement.team_id == team_id,
-                WeeklyRequirement.category == category,
-                WeeklyRequirement.week_start <= week_start,
-            )
-            .order_by(WeeklyRequirement.week_start.desc())
-            .limit(1)
-        )
-        result = await db.execute(q)
-        req = result.scalars().first()
-        return req.required_hours if req else 11.0
+        return await resolve_requirement(db, team_id, category, week_start)
 
 
 async def _weekly_hours_for_student(db, student_id: int, week_start: date) -> float:
