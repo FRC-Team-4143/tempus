@@ -20,7 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import get_db
-from app.models import AttendanceSession, Mentor, SessionStatus, Student, Team
+from app.models import AttendanceSession, Mentor, MentorSession, SessionStatus, Student, Team
 from app.services import audit
 from app.services.attendance import update_session_status, get_signed_in_students
 from app.services.broadcaster import broadcaster
@@ -233,88 +233,143 @@ async def slack_command(
 
     # ── /hours — inline response, visible only to caller ──
     if command == "/hours":
-        s_result = await db.execute(
-            select(Student).where(Student.slack_user_id == user_id)
-        )
-        student = s_result.scalars().first()
-        if not student:
-            return Response(
-                content="❌ Your Slack account isn't linked to a student record. Please ask a mentor.",
-                media_type="text/plain",
-            )
-
         week_start = today_local() - timedelta(days=today_local().weekday())
         week_end = week_start + timedelta(days=7)
         week_start_utc = local_to_utc(datetime.combine(week_start, datetime.min.time()))
         week_end_utc = local_to_utc(datetime.combine(week_end, datetime.min.time()))
-
-        season_result = await db.execute(
-            select(sqlfunc.coalesce(sqlfunc.sum(AttendanceSession.hours_counted), 0.0))
-            .where(
-                AttendanceSession.student_id == student.id,
-                AttendanceSession.sign_out_time.is_not(None),
-            )
-        )
-        season_total = float(season_result.scalar() or 0.0)
-
-        # Leaderboard rank across program teams — same all-time basis as season_total above.
-        rank_rows = (await db.execute(
-            select(
-                Student.id.label("sid"),
-                Student.team_id,
-                Team.number.label("team_number"),
-                sqlfunc.coalesce(sqlfunc.sum(AttendanceSession.hours_counted), 0.0).label("total"),
-            )
-            .join(Team, Team.id == Student.team_id)
-            .join(
-                AttendanceSession,
-                and_(
-                    AttendanceSession.student_id == Student.id,
-                    AttendanceSession.sign_out_time.is_not(None),
-                ),
-                isouter=True,
-            )
-            .where(Team.number.in_([4143, 4423]))
-            .group_by(Student.id)
-        )).all()
-        overall_count = len(rank_rows)
-        overall_rank = 1 + sum(1 for r in rank_rows if r.total > season_total)
-        team_rows = [r for r in rank_rows if r.team_id == student.team_id]
-        team_count = len(team_rows)
-        team_rank = 1 + sum(1 for r in team_rows if r.total > season_total)
-        team_number = next((r.team_number for r in rank_rows if r.sid == student.id), None)
-
-        week_result = await db.execute(
-            select(sqlfunc.coalesce(sqlfunc.sum(AttendanceSession.hours_counted), 0.0))
-            .where(
-                AttendanceSession.student_id == student.id,
-                AttendanceSession.sign_out_time.is_not(None),
-                AttendanceSession.sign_in_time >= week_start_utc,
-                AttendanceSession.sign_in_time < week_end_utc,
-            )
-        )
-        week_hours = float(week_result.scalar() or 0.0)
-
-        required = await resolve_requirement(db, student.team_id, student.category, week_start)
-
-        on_track = week_hours >= required
-        status_icon = "✅" if on_track else "⚠️"
         week_str = week_start.strftime("%b %d")
 
-        reply = (
-            f"{status_icon} *Your Hours — Week of {week_str}*\n"
-            f"This week: *{week_hours:.1f} / {required:.1f} hrs*\n"
-            f"Season total: *{season_total:.1f} hrs*\n"
-            f"Rank: *#{overall_rank} of {overall_count}* overall · "
-            f"*#{team_rank} of {team_count}* on Team {team_number}"
+        s_result = await db.execute(
+            select(Student).where(Student.slack_user_id == user_id)
         )
-        if on_track:
-            reply += "\nYou're on track — great work! 💪"
-        else:
-            remaining = required - week_hours
-            reply += f"\n_{remaining:.1f} hrs still needed — you may need to make up hours in the upcoming week._"
+        student = s_result.scalars().first()
 
-        return Response(content=reply, media_type="text/plain")
+        if student:
+            season_result = await db.execute(
+                select(sqlfunc.coalesce(sqlfunc.sum(AttendanceSession.hours_counted), 0.0))
+                .where(
+                    AttendanceSession.student_id == student.id,
+                    AttendanceSession.sign_out_time.is_not(None),
+                )
+            )
+            season_total = float(season_result.scalar() or 0.0)
+
+            # Leaderboard rank across program teams — same all-time basis as season_total above.
+            rank_rows = (await db.execute(
+                select(
+                    Student.id.label("sid"),
+                    Student.team_id,
+                    Team.number.label("team_number"),
+                    sqlfunc.coalesce(sqlfunc.sum(AttendanceSession.hours_counted), 0.0).label("total"),
+                )
+                .join(Team, Team.id == Student.team_id)
+                .join(
+                    AttendanceSession,
+                    and_(
+                        AttendanceSession.student_id == Student.id,
+                        AttendanceSession.sign_out_time.is_not(None),
+                    ),
+                    isouter=True,
+                )
+                .where(Team.number.in_([4143, 4423]))
+                .group_by(Student.id)
+            )).all()
+            overall_count = len(rank_rows)
+            overall_rank = 1 + sum(1 for r in rank_rows if r.total > season_total)
+            team_rows = [r for r in rank_rows if r.team_id == student.team_id]
+            team_count = len(team_rows)
+            team_rank = 1 + sum(1 for r in team_rows if r.total > season_total)
+            team_number = next((r.team_number for r in rank_rows if r.sid == student.id), None)
+
+            week_result = await db.execute(
+                select(sqlfunc.coalesce(sqlfunc.sum(AttendanceSession.hours_counted), 0.0))
+                .where(
+                    AttendanceSession.student_id == student.id,
+                    AttendanceSession.sign_out_time.is_not(None),
+                    AttendanceSession.sign_in_time >= week_start_utc,
+                    AttendanceSession.sign_in_time < week_end_utc,
+                )
+            )
+            week_hours = float(week_result.scalar() or 0.0)
+
+            required = await resolve_requirement(db, student.team_id, student.category, week_start)
+
+            on_track = week_hours >= required
+            status_icon = "✅" if on_track else "⚠️"
+
+            reply = (
+                f"{status_icon} *Your Hours — Week of {week_str}*\n"
+                f"This week: *{week_hours:.1f} / {required:.1f} hrs*\n"
+                f"Season total: *{season_total:.1f} hrs*\n"
+                f"Rank: *#{overall_rank} of {overall_count}* overall · "
+                f"*#{team_rank} of {team_count}* on Team {team_number}"
+            )
+            if on_track:
+                reply += "\nYou're on track — great work! 💪"
+            else:
+                remaining = required - week_hours
+                reply += f"\n_{remaining:.1f} hrs still needed — you may need to make up hours in the upcoming week._"
+
+            return Response(content=reply, media_type="text/plain")
+
+        m_result = await db.execute(
+            select(Mentor).where(Mentor.slack_user_id == user_id)
+        )
+        mentor = m_result.scalars().first()
+
+        if mentor:
+            season_result = await db.execute(
+                select(sqlfunc.coalesce(sqlfunc.sum(MentorSession.hours_counted), 0.0))
+                .where(
+                    MentorSession.mentor_id == mentor.id,
+                    MentorSession.sign_out_time.is_not(None),
+                )
+            )
+            season_total = float(season_result.scalar() or 0.0)
+
+            # Leaderboard rank across all mentors — same all-time basis as season_total above.
+            rank_rows = (await db.execute(
+                select(
+                    Mentor.id.label("mid"),
+                    sqlfunc.coalesce(sqlfunc.sum(MentorSession.hours_counted), 0.0).label("total"),
+                )
+                .join(
+                    MentorSession,
+                    and_(
+                        MentorSession.mentor_id == Mentor.id,
+                        MentorSession.sign_out_time.is_not(None),
+                    ),
+                    isouter=True,
+                )
+                .group_by(Mentor.id)
+            )).all()
+            overall_count = len(rank_rows)
+            overall_rank = 1 + sum(1 for r in rank_rows if r.total > season_total)
+
+            week_result = await db.execute(
+                select(sqlfunc.coalesce(sqlfunc.sum(MentorSession.hours_counted), 0.0))
+                .where(
+                    MentorSession.mentor_id == mentor.id,
+                    MentorSession.sign_out_time.is_not(None),
+                    MentorSession.sign_in_time >= week_start_utc,
+                    MentorSession.sign_in_time < week_end_utc,
+                )
+            )
+            week_hours = float(week_result.scalar() or 0.0)
+
+            reply = (
+                f"🛠️ *Your Mentor Hours — Week of {week_str}*\n"
+                f"This week: *{week_hours:.1f} hrs*\n"
+                f"Season total: *{season_total:.1f} hrs*\n"
+                f"Rank: *#{overall_rank} of {overall_count}* overall"
+            )
+
+            return Response(content=reply, media_type="text/plain")
+
+        return Response(
+            content="❌ Your Slack account isn't linked to a student or mentor record. Please ask a mentor.",
+            media_type="text/plain",
+        )
 
     # ── /shop — inline response, visible only to caller ──
     if command == "/shop":
