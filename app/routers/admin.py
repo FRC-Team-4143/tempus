@@ -426,42 +426,6 @@ async def admin_students_purge(
     return RedirectResponse("/admin/students?show_archived=1", status_code=303)
 
 
-@router.post("/students/{student_id}/notify")
-async def admin_students_notify(
-    student_id: int,
-    request: Request,
-    background_tasks: BackgroundTasks,
-):
-    if redirect := _require_auth(request):
-        return redirect
-
-    from app.services.slack_client import notify_student_hours
-    background_tasks.add_task(notify_student_hours, student_id)
-    return RedirectResponse("/admin/students?notified=1", status_code=303)
-
-
-@router.post("/students/notify-all")
-async def admin_students_notify_all(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-):
-    if redirect := _require_auth(request):
-        return redirect
-
-    from app.services.slack_client import notify_student_hours
-    result = await db.execute(
-        select(Student).where(
-            Student.slack_user_id.is_not(None),
-            Student.is_active.is_(True),
-        )
-    )
-    students = result.scalars().all()
-    for s in students:
-        background_tasks.add_task(notify_student_hours, s.id)
-    return RedirectResponse(f"/admin/students?notified={len(students)}", status_code=303)
-
-
 @router.post("/students/send-qr-all")
 async def admin_students_send_qr_all(
     request: Request,
