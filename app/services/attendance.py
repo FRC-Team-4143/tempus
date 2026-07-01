@@ -134,12 +134,19 @@ async def update_session_status(
 
 
 async def sign_out_all_open(
-    db: AsyncSession, status: SessionStatus = SessionStatus.auto
+    db: AsyncSession,
+    status: SessionStatus = SessionStatus.auto,
+    effective_at: Optional[datetime] = None,
 ) -> list[AttendanceSession]:
     """
     Sign out every open session (used by the auto sign-out scheduler).
     Returns the list of sessions that were closed, with each session's student
     (and team) eager-loaded so callers know who forgot to sign out.
+
+    If ``effective_at`` (naive UTC) is given, forgotten sessions are recorded as
+    ending at that time instead of now — so a job that fires late doesn't inflate
+    hours. Sessions that signed in after ``effective_at`` fall back to now, so a
+    late arrival still gets credit for time actually present.
     """
     result = await db.execute(
         select(AttendanceSession)
@@ -150,8 +157,9 @@ async def sign_out_all_open(
 
     for s in open_sessions:
         now = datetime.utcnow()
-        elapsed_hours = (now - s.sign_in_time).total_seconds() / 3600.0
-        s.sign_out_time = now
+        sign_out = effective_at if (effective_at is not None and effective_at > s.sign_in_time) else now
+        elapsed_hours = (sign_out - s.sign_in_time).total_seconds() / 3600.0
+        s.sign_out_time = sign_out
         s.status = status
         s.hours_counted = round(elapsed_hours * _status_multiplier(status), 4)
 
@@ -212,16 +220,22 @@ async def mentor_sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optiona
     return True, f"Welcome, {mentor.name}!", mentor
 
 
-async def mentor_sign_out_all_open(db: AsyncSession) -> int:
-    """Auto sign-out all open mentor sessions. Returns count closed."""
+async def mentor_sign_out_all_open(
+    db: AsyncSession, effective_at: Optional[datetime] = None
+) -> int:
+    """Auto sign-out all open mentor sessions. Returns count closed.
+
+    ``effective_at`` behaves as in :func:`sign_out_all_open`.
+    """
     result = await db.execute(
         select(MentorSession).where(MentorSession.sign_out_time.is_(None))
     )
     open_sessions = result.scalars().all()
     for s in open_sessions:
         now = datetime.utcnow()
-        s.sign_out_time = now
-        s.hours_counted = round((now - s.sign_in_time).total_seconds() / 3600.0, 4)
+        sign_out = effective_at if (effective_at is not None and effective_at > s.sign_in_time) else now
+        s.sign_out_time = sign_out
+        s.hours_counted = round((sign_out - s.sign_in_time).total_seconds() / 3600.0, 4)
     await db.commit()
     return len(open_sessions)
 

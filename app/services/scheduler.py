@@ -53,9 +53,13 @@ async def _weekly_hours_for_student(db, student_id: int, week_start: date) -> fl
 
 async def job_auto_signout() -> None:
     log.info("Running auto sign-out job")
+    from app.services.app_settings import get_auto_signout_effective_time
+    from app.utils import effective_signout_utc
     async with AsyncSessionLocal() as db:
-        closed = await sign_out_all_open(db, status=SessionStatus.auto)
-        mentor_count = await mentor_sign_out_all_open(db)
+        hhmm = await get_auto_signout_effective_time(db)
+        effective_at = effective_signout_utc(hhmm) if hhmm else None
+        closed = await sign_out_all_open(db, status=SessionStatus.auto, effective_at=effective_at)
+        mentor_count = await mentor_sign_out_all_open(db, effective_at=effective_at)
     count = len(closed)
     if count:
         from app.services.broadcaster import broadcaster

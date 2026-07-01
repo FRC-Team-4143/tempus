@@ -15,6 +15,7 @@ from app.models import AppSetting
 from app.utils import local_to_utc
 
 LEADERBOARD_SINCE_KEY = "leaderboard_since"
+AUTO_SIGNOUT_EFFECTIVE_KEY = "auto_signout_effective_time"
 
 
 async def get_setting(db: AsyncSession, key: str) -> Optional[str]:
@@ -53,3 +54,17 @@ async def leaderboard_since_utc(db: AsyncSession) -> Optional[datetime]:
     if d is None:
         return None
     return local_to_utc(datetime.combine(d, datetime.min.time()))
+
+
+async def get_auto_signout_effective_time(db: AsyncSession) -> Optional[str]:
+    """The HH:MM local time forgotten sessions are recorded as ending, or None.
+
+    None/blank means 'use the actual time the auto sign-out job runs'.
+    """
+    raw = await get_setting(db, AUTO_SIGNOUT_EFFECTIVE_KEY)
+    return raw or None
+
+
+async def set_auto_signout_effective_time(db: AsyncSession, value: Optional[str]) -> None:
+    """Upsert the effective sign-out time. None/blank clears the override."""
+    await set_setting(db, AUTO_SIGNOUT_EFFECTIVE_KEY, value or None)

@@ -13,6 +13,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     scheduler = create_scheduler()
     scheduler.start()
+    app.state.scheduler = scheduler
     yield
     scheduler.shutdown()
 
