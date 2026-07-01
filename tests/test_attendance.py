@@ -162,8 +162,9 @@ async def test_sign_out_all_open_closes_everything(db, make_student):
         ))
     await db.commit()
 
-    count = await sign_out_all_open(db)
+    closed = await sign_out_all_open(db)
 
-    assert count == 2
+    assert len(closed) == 2
+    assert {c.student.name for c in closed} == {"A", "B"}
     assert await get_open_session(db, s1.id) is None
     assert await get_open_session(db, s2.id) is None

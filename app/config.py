@@ -15,6 +15,11 @@ class Settings(BaseSettings):
 
     auto_signout_time: str = "22:00"  # HH:MM 24h local time
 
+    # "Wall of Shame" meme: when the nightly auto sign-out closes forgotten
+    # sessions, post a lighthearted meme naming the kids who forgot to sign out.
+    roast_enabled: bool = False  # global kill switch (opt-in)
+    slack_announce_channel: str = ""  # Slack channel ID to post the meme into
+
     weekly_dm_day: int = 6   # 0=Mon ... 6=Sun
     weekly_dm_time: str = "21:00"  # HH:MM 24h local time
 

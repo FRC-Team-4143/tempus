@@ -54,8 +54,9 @@ async def _weekly_hours_for_student(db, student_id: int, week_start: date) -> fl
 async def job_auto_signout() -> None:
     log.info("Running auto sign-out job")
     async with AsyncSessionLocal() as db:
-        count = await sign_out_all_open(db, status=SessionStatus.auto)
+        closed = await sign_out_all_open(db, status=SessionStatus.auto)
         mentor_count = await mentor_sign_out_all_open(db)
+    count = len(closed)
     if count:
         from app.services.broadcaster import broadcaster
         await broadcaster.broadcast("update")
@@ -63,6 +64,39 @@ async def job_auto_signout() -> None:
         from app.services.broadcaster import broadcaster
         await broadcaster.broadcast("mentor_update")
     log.info("Auto sign-out: closed %d student session(s), %d mentor session(s)", count, mentor_count)
+
+    await _post_wall_of_shame(closed)
+
+
+async def _post_wall_of_shame(closed: list) -> None:
+    """Post one lighthearted meme per student who forgot to sign out.
+
+    Best-effort: any per-student failure is logged and skipped so it can never
+    interfere with the (critical) auto sign-out itself.
+    """
+    if not (settings.roast_enabled and settings.slack_announce_channel and closed):
+        return
+
+    from app.services.roast import fetch_meme
+    from app.services.slack_client import send_channel_image
+
+    for session in closed:
+        if not session.student:
+            continue
+        first_name = session.student.name.split()[0]
+        slack_id = session.student.slack_user_id
+        mention = f"<@{slack_id}>" if slack_id else first_name
+        try:
+            img = await fetch_meme([first_name])
+            await send_channel_image(
+                settings.slack_announce_channel,
+                img,
+                f"{first_name.lower()}_wall_of_shame.png",
+                comment=f"🚨 {mention} forgot to sign out today 😅",
+            )
+            log.info("Posted Wall of Shame meme for %s", first_name)
+        except Exception as e:
+            log.error("Wall of Shame meme post failed for %s: %s", first_name, e)
 
 
 async def job_weekly_dms() -> None:

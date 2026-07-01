@@ -7,10 +7,13 @@ import csv
 import hashlib
 import hmac
 import io
+import logging
 import os
 import tempfile
 from datetime import date, datetime, timedelta
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -1028,6 +1031,51 @@ async def admin_sessions_delete(
     )
     await db.execute(delete(AttendanceSession).where(AttendanceSession.id == session_id))
     await db.commit()
+    return RedirectResponse("/admin/sessions", status_code=303)
+
+
+@router.post("/sessions/{session_id}/force-signout")
+async def admin_sessions_force_signout(
+    session_id: int,
+    request: Request,
+    send_meme: bool = Form(False),
+    db: AsyncSession = Depends(get_db),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(
+        select(AttendanceSession)
+        .options(selectinload(AttendanceSession.student))
+        .where(AttendanceSession.id == session_id)
+    )
+    att = result.scalar_one_or_none()
+    if not att or att.sign_out_time is not None:
+        return RedirectResponse("/admin/sessions", status_code=303)
+
+    from app.services.attendance import sign_out
+    await sign_out(db, session_id, SessionStatus.auto)
+
+    from app.services.broadcaster import broadcaster
+    await broadcaster.broadcast("update")
+
+    if send_meme and settings.slack_announce_channel and att.student:
+        first_name = att.student.name.split()[0]
+        slack_id = att.student.slack_user_id
+        mention = f"<@{slack_id}>" if slack_id else first_name
+        try:
+            from app.services.roast import fetch_meme
+            from app.services.slack_client import send_channel_image
+            img = await fetch_meme([first_name])
+            await send_channel_image(
+                settings.slack_announce_channel,
+                img,
+                f"{first_name.lower()}_wall_of_shame.png",
+                comment=f"🚨 {mention} forgot to sign out 😅",
+            )
+        except Exception as e:
+            log.error("Force sign-out meme failed for %s: %s", first_name, e)
+
     return RedirectResponse("/admin/sessions", status_code=303)
 
 

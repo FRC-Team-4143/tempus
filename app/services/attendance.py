@@ -133,13 +133,18 @@ async def update_session_status(
     return session
 
 
-async def sign_out_all_open(db: AsyncSession, status: SessionStatus = SessionStatus.auto) -> int:
+async def sign_out_all_open(
+    db: AsyncSession, status: SessionStatus = SessionStatus.auto
+) -> list[AttendanceSession]:
     """
     Sign out every open session (used by the auto sign-out scheduler).
-    Returns the number of sessions closed.
+    Returns the list of sessions that were closed, with each session's student
+    (and team) eager-loaded so callers know who forgot to sign out.
     """
     result = await db.execute(
-        select(AttendanceSession).where(AttendanceSession.sign_out_time.is_(None))
+        select(AttendanceSession)
+        .options(selectinload(AttendanceSession.student).selectinload(Student.team))
+        .where(AttendanceSession.sign_out_time.is_(None))
     )
     open_sessions = result.scalars().all()
 
@@ -151,7 +156,7 @@ async def sign_out_all_open(db: AsyncSession, status: SessionStatus = SessionSta
         s.hours_counted = round(elapsed_hours * _status_multiplier(status), 4)
 
     await db.commit()
-    return len(open_sessions)
+    return list(open_sessions)
 
 
 async def get_signed_in_students(db: AsyncSession) -> list[AttendanceSession]:
