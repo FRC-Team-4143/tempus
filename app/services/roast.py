@@ -44,8 +44,8 @@ TEMPLATES: list[dict] = [
     {"id": "db",            "lines": ["walking out", "{names}", "signing out"]},
     {"id": "exit",          "lines": ["signing out", "walking out", "{names}"]},
     {"id": "right",         "lines": ["{names}", "Mercury Bot", "I just completed a full session at robotics", "You signed out when you left, right?", "You signed out when you left, right?"]},
-    {"id": "say",          "lines": ["Say the line {names}!", "I forgot to sign out.."]},
-    {"id": "mordor",          "lines": ["{names} does not simply", "sign out when they leave"]},
+    {"id": "say",           "lines": ["Say the line {names}!", "I forgot to sign out.."]},
+    {"id": "mordor",        "lines": ["{names} does not simply", "sign out when they leave"]},
 ]
 
 
