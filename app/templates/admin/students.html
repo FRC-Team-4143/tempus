@@ -6,12 +6,6 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2>Students</h2>
   <div class="d-flex gap-2">
-    <form method="post" action="/admin/students/notify-all"
-          onsubmit="return confirm('Send an hours update DM to all students with a Slack UID?')">
-      <button class="btn btn-outline-primary btn-sm">
-        <i class="bi bi-bell me-1"></i> Notify All
-      </button>
-    </form>
     <form method="post" action="/admin/students/send-qr-all"
           onsubmit="return confirm('DM QR badges to all students with a Slack UID?')">
       <button class="btn btn-outline-secondary btn-sm">
@@ -49,15 +43,6 @@
 </div>
 {% endif %}
 
-{% if request.query_params.get('notified') %}
-<div class="alert alert-success alert-dismissible fade show py-2" role="alert">
-  <i class="bi bi-check-circle me-1"></i>
-  {% set n = request.query_params.get('notified') %}
-  {% if n == '1' %}Notification sent.{% else %}Sending notifications to {{ n }} student(s).{% endif %}
-  <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
-</div>
-{% endif %}
-
 {% if error %}
 <div class="alert alert-danger alert-dismissible fade show py-2" role="alert">
   <i class="bi bi-exclamation-triangle me-1"></i> {{ error }}
@@ -84,13 +69,6 @@
           <td><span class="text-muted">{{ s.student_code or '—' }}</span></td>
           <td class="text-end">
             {% if s.is_active %}
-              {% if s.slack_user_id %}
-              <form method="post" action="/admin/students/{{ s.id }}/notify" class="d-inline">
-                <button class="btn btn-sm btn-outline-primary" title="Send hours update DM">
-                  <i class="bi bi-bell"></i>
-                </button>
-              </form>
-              {% endif %}
               <a href="/admin/students/{{ s.id }}/edit" class="btn btn-sm btn-outline-secondary">Edit</a>
               <form method="post" action="/admin/students/{{ s.id }}/delete" class="d-inline"
                     onsubmit="return confirm('Archive {{ s.name }}? Their history is kept and their badge stops working.')">

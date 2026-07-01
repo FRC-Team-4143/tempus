@@ -217,6 +217,28 @@ def _build_shop_text(student_sessions, team_filter: Optional[int]) -> str:
     return "\n".join(lines)
 
 
+def _neighbor_gap_text(rows: list, my_sid: int, my_total: float) -> str:
+    """
+    Describe the hours gap to the students immediately above and below
+    my_sid in the standings (rows must have .sid and .total). Ties are
+    broken by sid for a stable neighbor pick; a 0.0 gap is reported as
+    "tied" rather than "0.0 hrs".
+    """
+    ordered = sorted(rows, key=lambda r: (-r.total, r.sid))
+    idx = next(i for i, r in enumerate(ordered) if r.sid == my_sid)
+
+    parts = []
+    if idx > 0:
+        gap = ordered[idx - 1].total - my_total
+        parts.append("tied with the spot above" if gap == 0
+                      else f"{gap:.1f} hrs behind the spot above")
+    if idx < len(ordered) - 1:
+        gap = my_total - ordered[idx + 1].total
+        parts.append("tied with the spot below" if gap == 0
+                      else f"{gap:.1f} hrs ahead of the spot below")
+    return " · ".join(parts)
+
+
 # ── Slash command router ───────────────────────────────────────────────────────
 
 @router.post("/command")
@@ -280,6 +302,8 @@ async def slack_command(
             team_count = len(team_rows)
             team_rank = 1 + sum(1 for r in team_rows if r.total > season_total)
             team_number = next((r.team_number for r in rank_rows if r.sid == student.id), None)
+            overall_gap = _neighbor_gap_text(rank_rows, student.id, season_total)
+            team_gap = _neighbor_gap_text(team_rows, student.id, season_total)
 
             week_result = await db.execute(
                 select(sqlfunc.coalesce(sqlfunc.sum(AttendanceSession.hours_counted), 0.0))
@@ -304,6 +328,10 @@ async def slack_command(
                 f"Rank: *#{overall_rank} of {overall_count}* overall · "
                 f"*#{team_rank} of {team_count}* on Team {team_number}"
             )
+            if overall_gap:
+                reply += f"\n_Overall: {overall_gap}_"
+            if team_gap:
+                reply += f"\n_Team: {team_gap}_"
             if on_track:
                 reply += "\nYou're on track — great work! 💪"
             else:
