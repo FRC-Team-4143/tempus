@@ -4,7 +4,7 @@ APScheduler jobs:
   2. Weekly Slack DM to each student with their hours vs. requirement
 """
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -16,7 +16,7 @@ from app.database import AsyncSessionLocal
 from app.models import AttendanceSession, Mentor, SessionStatus, Student, FocusCategory
 from app.services.attendance import sign_out_all_open, mentor_sign_out_all_open
 from app.services.slack_client import send_dm, send_group_dm
-from app.utils import today_local, local_to_utc
+from app.utils import today_local, current_week_bounds
 
 log = logging.getLogger(__name__)
 
@@ -38,9 +38,7 @@ async def _get_requirement(team_id: int, week_start: date, category=None) -> flo
 
 
 async def _weekly_hours_for_student(db, student_id: int, week_start: date) -> float:
-    week_end = week_start + timedelta(days=7)
-    week_start_utc = local_to_utc(datetime.combine(week_start, datetime.min.time()))
-    week_end_utc = local_to_utc(datetime.combine(week_end, datetime.min.time()))
+    week_start_utc, week_end_utc = current_week_bounds()
     result = await db.execute(
         select(func.coalesce(func.sum(AttendanceSession.hours_counted), 0.0))
         .where(

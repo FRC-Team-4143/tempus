@@ -4,7 +4,7 @@ Kiosk routes — sign-in page, badge POST, SSE stream, and leaderboard stats.
 import ipaddress
 import json
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -22,7 +22,7 @@ from app.services.attendance import (
     mentor_sign_in, get_signed_in_mentors, mentor_sign_out_all_open,
 )
 from app.services.broadcaster import broadcaster
-from app.utils import utc_to_local, today_local, local_to_utc
+from app.utils import utc_to_local, today_local, format_elapsed, current_week_bounds
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -54,15 +54,12 @@ def _format_sessions(sessions) -> dict:
         team_number = s.student.team.number
         if team_number not in by_team:
             by_team[team_number] = []
-        elapsed = datetime.utcnow() - s.sign_in_time
-        hours, remainder = divmod(int(elapsed.total_seconds()), 3600)
-        minutes = remainder // 60
         by_team[team_number].append(
             {
                 "session_id": s.id,
                 "name": s.student.name,
                 "sign_in_time": utc_to_local(s.sign_in_time).strftime("%I:%M %p"),
-                "elapsed": f"{hours}h {minutes:02d}m",
+                "elapsed": format_elapsed(s.sign_in_time),
             }
         )
     return by_team
@@ -216,8 +213,7 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
     alltime = [{"name": r.name, "value": f"{r.total:.1f}h"} for r in alltime_result]
 
     # ── 2. This week top hours (Mon–Sun, CST) ─────────────────────────────────
-    week_start = today_local() - timedelta(days=today_local().weekday())
-    week_start_utc = local_to_utc(datetime.combine(week_start, datetime.min.time()))
+    week_start_utc, _ = current_week_bounds()
     week_result = await db.execute(
         select(Student.name, func.sum(AttendanceSession.hours_counted).label("total"))
         .join(Student, AttendanceSession.student_id == Student.id)
@@ -347,13 +343,10 @@ def _format_mentor_sessions(sessions) -> list[dict]:
     """Return list of currently signed-in mentors with elapsed time."""
     result = []
     for s in sessions:
-        elapsed = datetime.utcnow() - s.sign_in_time
-        hours, remainder = divmod(int(elapsed.total_seconds()), 3600)
-        minutes = remainder // 60
         result.append({
             "name": s.mentor.name,
             "team": s.mentor.team.number if s.mentor.team else None,
-            "elapsed": f"{hours}h {minutes:02d}m" if hours else f"{minutes}m",
+            "elapsed": format_elapsed(s.sign_in_time),
         })
     return result
 
@@ -377,8 +370,7 @@ async def mentor_data(db: AsyncSession = Depends(get_db)):
 @router.get("/mentor/stats")
 async def mentor_stats(db: AsyncSession = Depends(get_db)):
     """Return mentor leaderboard: all-time, this week, longest session, longest streak."""
-    week_start = today_local() - timedelta(days=today_local().weekday())
-    week_start_utc = local_to_utc(datetime.combine(week_start, datetime.min.time()))
+    week_start_utc, _ = current_week_bounds()
 
     # ── 1. All-time top hours ─────────────────────────────────────────────────
     alltime_rows = await db.execute(

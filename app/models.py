@@ -125,9 +125,6 @@ class AttendanceSession(Base):
     hours_counted: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     # Time the /checkout command was run; used as the sign-out time when the button is clicked
     checkout_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    # Slack message ts for the checkout request; used to update the message after action
-    slack_message_ts: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    slack_channel_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     student: Mapped["Student"] = relationship("Student", back_populates="sessions")
 

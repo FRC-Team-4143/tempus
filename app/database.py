@@ -42,6 +42,8 @@ async def init_db() -> None:
         await conn.run_sync(_add_archive_columns)
         # Safe migration: add is_lead flag to mentors
         await conn.run_sync(_add_is_lead_column)
+        # Safe migration: drop abandoned Slack message tracking columns
+        await conn.run_sync(_drop_slack_session_columns)
 
     await _seed_teams()
 
@@ -128,6 +130,15 @@ def _make_weekly_req_team_nullable(conn) -> None:
         """
     ))
     conn.execute(text("DROP TABLE weekly_requirements_old"))
+
+
+def _drop_slack_session_columns(conn) -> None:
+    """Drop slack_message_ts and slack_channel_id from sessions (abandoned feature)."""
+    from sqlalchemy import inspect, text
+    columns = [c["name"] for c in inspect(conn).get_columns("sessions")]
+    for col in ("slack_message_ts", "slack_channel_id"):
+        if col in columns:
+            conn.execute(text(f"ALTER TABLE sessions DROP COLUMN {col}"))
 
 
 async def _seed_teams() -> None:

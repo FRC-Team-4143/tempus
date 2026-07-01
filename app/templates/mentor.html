@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Mentor Board — FRC Attendance{% endblock %}
+{% block title %}Mentor Board — Tempus{% endblock %}
 
 {% block head %}
 <style>
@@ -103,7 +103,10 @@
 
 {% block body %}
 <header class="kiosk-header">
-  <h1><i class="bi bi-person-badge"></i> Mentor Sign-In</h1>
+  <div style="display:flex;align-items:baseline;gap:14px">
+    <h1><i>Tempus</i></h1>
+    <span style="font-size:0.75rem;color:#888;letter-spacing:0.05em"><i>tempus fugit</i> — time flies</span>
+  </div>
   <div id="clock"></div>
 </header>
 
@@ -113,7 +116,7 @@
     <div class="col-6">
       <div class="mentor-panel">
         <div class="mentor-panel-header">
-          <span><i class="bi bi-person-check me-2"></i>Signed In Now</span>
+          <span>Mentors</span>
           <span class="badge bg-secondary" id="count-signed-in">{{ signed_in|length }}</span>
         </div>
         <div id="list-signed-in" class="scroll-list">
@@ -137,7 +140,7 @@
     <div class="col-6">
       <div class="mentor-panel" id="stats-panel">
         <div class="mentor-panel-header">
-          <span><i class="bi bi-trophy me-1"></i>Mentor Leaderboard</span>
+          <span><i class="bi bi-trophy me-1"></i>Leaderboard</span>
         </div>
         <div id="stats-content" class="scroll-list">
           <div class="empty-state">Loading…</div>

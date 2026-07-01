@@ -26,7 +26,7 @@ from app.services.attendance import update_session_status, get_signed_in_student
 from app.services.broadcaster import broadcaster
 from app.services.requirements import resolve_requirement
 from app.services.slack_client import send_dm
-from app.utils import utc_to_local, today_local, local_to_utc
+from app.utils import utc_to_local, today_local, format_elapsed, current_week_bounds
 
 router = APIRouter(prefix="/slack")
 
@@ -75,14 +75,8 @@ def _edit_session_list_blocks(student: Student, sessions: list) -> list[dict]:
     buttons = []
     for s in sessions:
         date_str = utc_to_local(s.sign_in_time).strftime("%b %d")
-        if s.sign_out_time:
-            elapsed_secs = (s.sign_out_time - s.sign_in_time).total_seconds()
-        else:
-            elapsed_secs = (datetime.utcnow() - s.sign_in_time).total_seconds()
-        hours, rem = divmod(int(elapsed_secs), 3600)
-        mins = rem // 60
         status_label = _STATUS_LABELS.get(s.status, "—") if s.status else "—"
-        label = f"{date_str} · {hours}h {mins:02d}m · {status_label}"
+        label = f"{date_str} · {format_elapsed(s.sign_in_time, s.sign_out_time)} · {status_label}"
         buttons.append({
             "type": "button",
             "text": {"type": "plain_text", "text": label},
@@ -109,12 +103,6 @@ def _edit_session_list_blocks(student: Student, sessions: list) -> list[dict]:
 def _edit_status_blocks(session: AttendanceSession, student: Student) -> list[dict]:
     """Step 2 — show the chosen session details and offer 3 status buttons."""
     date_str = utc_to_local(session.sign_in_time).strftime("%b %d")
-    if session.sign_out_time:
-        elapsed_secs = (session.sign_out_time - session.sign_in_time).total_seconds()
-    else:
-        elapsed_secs = (datetime.utcnow() - session.sign_in_time).total_seconds()
-    hours, rem = divmod(int(elapsed_secs), 3600)
-    mins = rem // 60
     current = _STATUS_LABELS.get(session.status, "—") if session.status else "—"
 
     return [
@@ -124,7 +112,7 @@ def _edit_status_blocks(session: AttendanceSession, student: Student) -> list[di
                 "type": "mrkdwn",
                 "text": (
                     f"*Edit Session — {student.name}*\n"
-                    f"{date_str} · {hours}h {mins:02d}m · Current: *{current}*\n"
+                    f"{date_str} · {format_elapsed(session.sign_in_time, session.sign_out_time)} · Current: *{current}*\n"
                     f"Choose a new contribution level:"
                 ),
             },
@@ -186,12 +174,6 @@ async def _notify_student_of_status_change(
 
 # ── /shop helper ──────────────────────────────────────────────────────────────
 
-def _elapsed_str(sign_in_time: datetime) -> str:
-    elapsed = datetime.utcnow() - sign_in_time
-    hours, rem = divmod(int(elapsed.total_seconds()), 3600)
-    mins = rem // 60
-    return f"{hours}h {mins:02d}m"
-
 
 def _build_shop_text(student_sessions, team_filter: Optional[int]) -> str:
     """Build the /shop roster message. team_filter is None, 4143, or 4423."""
@@ -205,7 +187,7 @@ def _build_shop_text(student_sessions, team_filter: Optional[int]) -> str:
         lines.append(f"*Team {team_num} — {len(team_students)} signed in*")
         if team_students:
             for s in team_students:
-                lines.append(f"• {s.student.name} · {_elapsed_str(s.sign_in_time)}")
+                lines.append(f"• {s.student.name} · {format_elapsed(s.sign_in_time)}")
         else:
             lines.append("  _Nobody signed in_")
         lines.append("")
@@ -256,9 +238,7 @@ async def slack_command(
     # ── /hours — inline response, visible only to caller ──
     if command == "/hours":
         week_start = today_local() - timedelta(days=today_local().weekday())
-        week_end = week_start + timedelta(days=7)
-        week_start_utc = local_to_utc(datetime.combine(week_start, datetime.min.time()))
-        week_end_utc = local_to_utc(datetime.combine(week_end, datetime.min.time()))
+        week_start_utc, week_end_utc = current_week_bounds()
         week_str = week_start.strftime("%b %d")
 
         s_result = await db.execute(

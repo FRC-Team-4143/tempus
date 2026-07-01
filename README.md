@@ -1,4 +1,4 @@
-# FRC Time Tracker
+# Tempus
 
 A web-based attendance tracking system for FIRST Robotics Competition teams **4143 (MARS/WARS)** and **4423 (MARS' Minions)**. Students sign in and out at a kiosk using QR badges, mentors can edit session ratings via Slack, and an admin UI provides full session management and reporting.
 

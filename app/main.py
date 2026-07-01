@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
 
 
-app = FastAPI(title="FRC Attendance Tracker", lifespan=lifespan)
+app = FastAPI(title="Tempus", lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

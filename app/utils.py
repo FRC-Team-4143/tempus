@@ -1,10 +1,11 @@
 """
-Timezone helpers.
+Timezone helpers and shared date/time utilities.
 
 All datetimes in the database are stored as naive UTC.
 These helpers convert to/from the configured local timezone (default: America/Chicago).
 """
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import settings
@@ -37,3 +38,20 @@ def local_to_utc(dt: datetime) -> datetime:
 def today_local() -> date:
     """Today's date in the local timezone."""
     return datetime.now(_tz()).date()
+
+
+def format_elapsed(start: datetime, end: Optional[datetime] = None) -> str:
+    """Format elapsed time between two naive UTC datetimes as 'Xh YYm'. end defaults to now."""
+    end = end or datetime.utcnow()
+    hours, rem = divmod(int((end - start).total_seconds()), 3600)
+    return f"{hours}h {rem // 60:02d}m"
+
+
+def current_week_bounds() -> tuple[datetime, datetime]:
+    """Return (week_start_utc, week_end_utc) for the current Mon–Sun week."""
+    week_start = today_local() - timedelta(days=today_local().weekday())
+    week_end = week_start + timedelta(days=7)
+    return (
+        local_to_utc(datetime.combine(week_start, datetime.min.time())),
+        local_to_utc(datetime.combine(week_end, datetime.min.time())),
+    )

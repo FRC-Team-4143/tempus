@@ -54,19 +54,6 @@ async def send_group_dm(user_ids: list[str], text: str, blocks=None) -> Optional
         return None
 
 
-async def update_message(channel_id: str, ts: str, text: str, blocks=None) -> None:
-    client = get_slack_client()
-    try:
-        await client.chat_update(
-            channel=channel_id,
-            ts=ts,
-            text=text,
-            blocks=blocks,
-        )
-    except Exception:
-        pass
-
-
 async def send_qr_dm(slack_user_id: str, code: str, name: str) -> bool:
     """Generate a QR code PNG for `code` and send it as a file DM to the user."""
     import io as _io

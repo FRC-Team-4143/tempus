@@ -2,7 +2,6 @@
 SSE broadcaster — notifies all connected kiosk clients when the sign-in list changes.
 """
 import asyncio
-from typing import AsyncGenerator
 
 
 class EventBroadcaster:
@@ -26,15 +25,6 @@ class EventBroadcaster:
                 dead.append(q)
         for q in dead:
             self._queues.remove(q)
-
-    async def stream(self, q: asyncio.Queue) -> AsyncGenerator[str, None]:
-        try:
-            while True:
-                event = await asyncio.wait_for(q.get(), timeout=30)
-                yield f"event: {event}\ndata: \n\n"
-        except asyncio.TimeoutError:
-            # Send a keep-alive comment so the connection stays alive
-            yield ": keep-alive\n\n"
 
 
 broadcaster = EventBroadcaster()
