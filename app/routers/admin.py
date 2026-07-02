@@ -149,6 +149,7 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
         )
         .join(AttendanceSession, join_clause, isouter=True)
         .join(Team, Team.id == Student.team_id)
+        .where(Student.is_active.is_(True))
         .group_by(Student.id)
         .order_by(func.coalesce(func.sum(AttendanceSession.hours_counted), 0.0).desc())
     )

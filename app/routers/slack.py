@@ -274,6 +274,7 @@ async def slack_command(
                     isouter=True,
                 )
                 .where(Team.number.in_([4143, 4423]))
+                .where(Student.is_active.is_(True))
                 .group_by(Student.id)
             )).all()
             overall_count = len(rank_rows)
@@ -349,6 +350,7 @@ async def slack_command(
                     ),
                     isouter=True,
                 )
+                .where(Mentor.is_active.is_(True))
                 .group_by(Mentor.id)
             )).all()
             overall_count = len(rank_rows)
