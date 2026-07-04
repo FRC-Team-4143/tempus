@@ -414,14 +414,7 @@ async def admin_students_purge(
     result = await db.execute(select(Student).where(Student.id == student_id))
     student = result.scalars().first()
     if student:
-        session_count = await db.scalar(
-            select(func.count()).select_from(AttendanceSession)
-            .where(AttendanceSession.student_id == student_id)
-        )
-        if session_count:
-            return RedirectResponse(
-                "/admin/students?show_archived=1&error=has_sessions", status_code=303
-            )
+        await db.execute(delete(AttendanceSession).where(AttendanceSession.student_id == student_id))
         await audit.record(
             db, request, "student.purge", f"Permanently deleted student {student.name}",
             entity_type="student", entity_id=student.id,
