@@ -13,16 +13,16 @@
 {% endif %}
 
 <p class="text-muted">
-  Runtime settings are read from <code>.env</code> at startup.
-  To change non-multiplier settings, edit <code>.env</code> and restart the service.
+  The settings below take effect immediately. The read-only settings above are
+  read from <code>.env</code> at startup — to change those, edit <code>.env</code>
+  and restart the service.
 </p>
 
 <div class="card shadow-sm mb-4" style="max-width:500px">
   <div class="card-body">
     <table class="table table-borderless mb-0">
       <tbody>
-        <tr><th class="w-50">Auto Sign-Out Time</th><td>{{ auto_signout_time }}</td></tr>
-        <tr><th>Weekly DM Day</th>
+        <tr><th class="w-50">Weekly DM Day</th>
           <td>{{ ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][weekly_dm_day] }}</td>
         </tr>
         <tr><th>Weekly DM Time</th><td>{{ weekly_dm_time }}</td></tr>
@@ -34,6 +34,29 @@
 </div>
 
 <form method="post" action="/admin/settings" style="max-width:400px">
+  <h5 class="mb-3">Auto Sign-Out</h5>
+  <p class="text-muted small">
+    The auto sign-out job closes any sessions left open (people who forgot to
+    sign out). <em>When it runs</em> and <em>what time it records</em> are
+    separate settings.
+  </p>
+  <div class="mb-3 row align-items-center">
+    <label class="col-sm-5 col-form-label">Job runs at</label>
+    <div class="col-sm-7">
+      <input type="time" name="auto_signout_time" class="form-control"
+             value="{{ auto_signout_time }}" required>
+      <div class="form-text">When the auto sign-out job fires.</div>
+    </div>
+  </div>
+  <div class="mb-4 row align-items-center">
+    <label class="col-sm-5 col-form-label">Record sign-out as</label>
+    <div class="col-sm-7">
+      <input type="time" name="auto_signout_effective" class="form-control"
+             value="{{ auto_signout_effective or '' }}">
+      <div class="form-text">Time forgotten sessions are recorded as ending. Blank = use the time the job runs.</div>
+    </div>
+  </div>
+
   <h5 class="mb-3">Leaderboard / Season</h5>
   <p class="text-muted small">
     Leaderboard and all-time totals count hours from this date onward.
@@ -89,6 +112,6 @@
 <div class="alert alert-info mt-4 small" style="max-width:500px">
   <i class="bi bi-info-circle me-1"></i>
   To update other settings restart the server after editing <code>.env</code>:
-  <pre class="mb-0 mt-1">sudo systemctl restart frc-tracker</pre>
+  <pre class="mb-0 mt-1">sudo systemctl restart tempus</pre>
 </div>
 {% endblock %}

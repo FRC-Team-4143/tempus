@@ -7,10 +7,14 @@ import csv
 import hashlib
 import hmac
 import io
+import logging
 import os
+import re
 import tempfile
 from datetime import date, datetime, timedelta
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -145,6 +149,7 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
         )
         .join(AttendanceSession, join_clause, isouter=True)
         .join(Team, Team.id == Student.team_id)
+        .where(Student.is_active.is_(True))
         .group_by(Student.id)
         .order_by(func.coalesce(func.sum(AttendanceSession.hours_counted), 0.0).desc())
     )
@@ -409,14 +414,14 @@ async def admin_students_purge(
     result = await db.execute(select(Student).where(Student.id == student_id))
     student = result.scalars().first()
     if student:
+        # Check if student has any sessions
         session_count = await db.scalar(
             select(func.count()).select_from(AttendanceSession)
             .where(AttendanceSession.student_id == student_id)
         )
-        if session_count:
-            return RedirectResponse(
-                "/admin/students?show_archived=1&error=has_sessions", status_code=303
-            )
+        if session_count and session_count > 0:
+            return RedirectResponse("/admin/students?show_archived=1&has_sessions=1", status_code=303)
+
         await audit.record(
             db, request, "student.purge", f"Permanently deleted student {student.name}",
             entity_type="student", entity_id=student.id,
@@ -1031,6 +1036,51 @@ async def admin_sessions_delete(
     return RedirectResponse("/admin/sessions", status_code=303)
 
 
+@router.post("/sessions/{session_id}/force-signout")
+async def admin_sessions_force_signout(
+    session_id: int,
+    request: Request,
+    send_meme: bool = Form(False),
+    db: AsyncSession = Depends(get_db),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(
+        select(AttendanceSession)
+        .options(selectinload(AttendanceSession.student))
+        .where(AttendanceSession.id == session_id)
+    )
+    att = result.scalar_one_or_none()
+    if not att or att.sign_out_time is not None:
+        return RedirectResponse("/admin/sessions", status_code=303)
+
+    from app.services.attendance import sign_out
+    await sign_out(db, session_id, SessionStatus.auto)
+
+    from app.services.broadcaster import broadcaster
+    await broadcaster.broadcast("update")
+
+    if send_meme and settings.slack_announce_channel and att.student:
+        first_name = att.student.name.split()[0]
+        slack_id = att.student.slack_user_id
+        mention = f"<@{slack_id}>" if slack_id else first_name
+        try:
+            from app.services.roast import fetch_meme
+            from app.services.slack_client import send_channel_image
+            img = await fetch_meme([first_name])
+            await send_channel_image(
+                settings.slack_announce_channel,
+                img,
+                f"{first_name.lower()}_wall_of_shame.png",
+                comment=f"🚨 {mention} forgot to sign out 😅",
+            )
+        except Exception as e:
+            log.error("Force sign-out meme failed for %s: %s", first_name, e)
+
+    return RedirectResponse("/admin/sessions", status_code=303)
+
+
 @router.get("/mentor-sessions/{session_id}/edit")
 async def admin_mentor_sessions_edit_form(
     session_id: int, request: Request, db: AsyncSession = Depends(get_db)
@@ -1142,14 +1192,16 @@ async def admin_settings_get(request: Request, db: AsyncSession = Depends(get_db
     if redirect := _require_auth(request):
         return redirect
 
-    from app.services.app_settings import get_leaderboard_since
+    from app.services.app_settings import get_leaderboard_since, get_auto_signout_effective_time
     leaderboard_since = await get_leaderboard_since(db)
+    auto_signout_effective = await get_auto_signout_effective_time(db)
 
     return templates.TemplateResponse(
         "admin/settings.html",
         {
             "request": request,
             "auto_signout_time": settings.auto_signout_time,
+            "auto_signout_effective": auto_signout_effective,
             "weekly_dm_day": settings.weekly_dm_day,
             "weekly_dm_time": settings.weekly_dm_time,
             "signin_ip_whitelist": settings.signin_ip_whitelist,
@@ -1162,17 +1214,8 @@ async def admin_settings_get(request: Request, db: AsyncSession = Depends(get_db
     )
 
 
-def _update_env_multipliers(
-    contributor: float,
-    present: float,
-    distraction: float,
-) -> None:
-    """Write multiplier values into .env and update the live settings object."""
-    updates = {
-        "CONTRIBUTOR_MULTIPLIER": str(contributor),
-        "PRESENT_MULTIPLIER": str(present),
-        "DISTRACTION_MULTIPLIER": str(distraction),
-    }
+def _write_env(updates: dict[str, str]) -> None:
+    """Upsert KEY=value pairs into .env, preserving other lines."""
     env_path = ".env"
     try:
         with open(env_path, "r") as f:
@@ -1196,10 +1239,26 @@ def _update_env_multipliers(
     with open(env_path, "w") as f:
         f.writelines(new_lines)
 
+
+def _update_env_multipliers(
+    contributor: float,
+    present: float,
+    distraction: float,
+) -> None:
+    """Write multiplier values into .env and update the live settings object."""
+    _write_env({
+        "CONTRIBUTOR_MULTIPLIER": str(contributor),
+        "PRESENT_MULTIPLIER": str(present),
+        "DISTRACTION_MULTIPLIER": str(distraction),
+    })
+
     # Update the live singleton so changes take effect immediately
     settings.contributor_multiplier = contributor
     settings.present_multiplier = present
     settings.distraction_multiplier = distraction
+
+
+_HHMM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 @router.post("/settings", response_class=HTMLResponse)
@@ -1208,6 +1267,8 @@ async def admin_settings_post(
     contributor_multiplier: float = Form(...),
     present_multiplier: float = Form(...),
     distraction_multiplier: float = Form(...),
+    auto_signout_time: str = Form(...),
+    auto_signout_effective: str = Form(""),
     leaderboard_since: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1220,7 +1281,32 @@ async def admin_settings_post(
         distraction_multiplier,
     )
 
-    from app.services.app_settings import set_leaderboard_since, get_leaderboard_since
+    # Auto sign-out trigger time — validate, persist to .env, reschedule live job.
+    trigger = auto_signout_time.strip()
+    if _HHMM_RE.match(trigger) and trigger != settings.auto_signout_time:
+        _write_env({"AUTO_SIGNOUT_TIME": trigger})
+        settings.auto_signout_time = trigger
+        from apscheduler.triggers.cron import CronTrigger
+        h, m = trigger.split(":")
+        scheduler = getattr(request.app.state, "scheduler", None)
+        if scheduler is not None:
+            scheduler.reschedule_job(
+                "auto_signout",
+                trigger=CronTrigger(hour=int(h), minute=int(m), timezone=settings.timezone),
+            )
+
+    # Effective sign-out time — HH:MM override, or blank to clear.
+    from app.services.app_settings import (
+        set_leaderboard_since, get_leaderboard_since,
+        set_auto_signout_effective_time, get_auto_signout_effective_time,
+    )
+    effective = auto_signout_effective.strip()
+    if effective and _HHMM_RE.match(effective):
+        await set_auto_signout_effective_time(db, effective)
+    elif not effective:
+        await set_auto_signout_effective_time(db, None)
+    current_effective = await get_auto_signout_effective_time(db)
+
     parsed: Optional[date] = None
     if leaderboard_since.strip():
         try:
@@ -1234,11 +1320,15 @@ async def admin_settings_post(
         db, request, "settings.update",
         f"Updated multipliers (contributor={contributor_multiplier}, "
         f"present={present_multiplier}, distraction={distraction_multiplier}); "
+        f"auto_signout_time={settings.auto_signout_time}; "
+        f"auto_signout_effective={current_effective or 'trigger time'}; "
         f"leaderboard_since={current_since or 'all-time'}",
         entity_type="settings",
         detail={"contributor_multiplier": contributor_multiplier,
                 "present_multiplier": present_multiplier,
                 "distraction_multiplier": distraction_multiplier,
+                "auto_signout_time": settings.auto_signout_time,
+                "auto_signout_effective": current_effective,
                 "leaderboard_since": str(current_since) if current_since else None},
     )
     await db.commit()
@@ -1248,6 +1338,7 @@ async def admin_settings_post(
         {
             "request": request,
             "auto_signout_time": settings.auto_signout_time,
+            "auto_signout_effective": current_effective,
             "weekly_dm_day": settings.weekly_dm_day,
             "weekly_dm_time": settings.weekly_dm_time,
             "signin_ip_whitelist": settings.signin_ip_whitelist,

@@ -25,7 +25,7 @@ A web-based attendance tracking system for FIRST Robotics Competition teams **41
 
 ```bash
 git clone <repo-url>
-cd time-tracker
+cd tempus
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -54,17 +54,17 @@ The app will be available at `http://localhost:8000`. On first start, the databa
 A systemd unit file is included:
 
 ```bash
-sudo cp frc-tracker.service /etc/systemd/system/
+sudo cp tempus.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable frc-tracker
-sudo systemctl start frc-tracker
+sudo systemctl enable tempus
+sudo systemctl start tempus
 ```
 
 The service expects:
 - User: `pi`
-- Working directory: `/home/pi/time-tracker`
-- Environment file: `/home/pi/time-tracker/.env`
-- Virtualenv at `/home/pi/time-tracker/venv/`
+- Working directory: `/home/pi/tempus`
+- Environment file: `/home/pi/tempus/.env`
+- Virtualenv at `/home/pi/tempus/venv/`
 
 ---
 

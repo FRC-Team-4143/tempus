@@ -40,6 +40,28 @@ def today_local() -> date:
     return datetime.now(_tz()).date()
 
 
+def effective_signout_utc(hhmm: str) -> Optional[datetime]:
+    """Given an 'HH:MM' local time, return the most recent such moment as naive UTC.
+
+    Used by the auto sign-out job to record forgotten sessions as ending at a
+    fixed clock time rather than whenever the job happens to fire. Builds today's
+    local date at HH:MM; if that is in the future (e.g. the job fired after
+    midnight), rolls back one day so the result is always <= now. Returns None on
+    malformed input so callers can fall back to the actual run time.
+    """
+    try:
+        h, m = (int(x) for x in hhmm.split(":"))
+    except (ValueError, AttributeError):
+        return None
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        return None
+    now_local = datetime.now(_tz()).replace(tzinfo=None)
+    effective_local = now_local.replace(hour=h, minute=m, second=0, microsecond=0)
+    if effective_local > now_local:
+        effective_local -= timedelta(days=1)
+    return local_to_utc(effective_local)
+
+
 def format_elapsed(start: datetime, end: Optional[datetime] = None) -> str:
     """Format elapsed time between two naive UTC datetimes as 'Xh YYm'. end defaults to now."""
     end = end or datetime.utcnow()

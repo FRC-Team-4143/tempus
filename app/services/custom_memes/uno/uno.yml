@@ -1,0 +1,18 @@
+# Text layout for uno-draw-25-cards.jpg (memegen-style overlay rectangles).
+# Coordinates are fractions of the image size. The Nth caption line from the
+# template fills the Nth overlay; text auto-fits and is centered in its rectangle.
+overlays:
+  - anchor_x: 0.112
+    anchor_y: 0.326
+    scale_x:  0.340
+    scale_y:  0.170
+    align: center
+    color: white
+    stroke_fill: black
+  - anchor_x: 0.528
+    anchor_y: 0.038
+    scale_x:  0.451
+    scale_y:  0.106
+    align: center
+    color: black
+    stroke_fill: white

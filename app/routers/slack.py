@@ -274,6 +274,7 @@ async def slack_command(
                     isouter=True,
                 )
                 .where(Team.number.in_([4143, 4423]))
+                .where(Student.is_active.is_(True))
                 .group_by(Student.id)
             )).all()
             overall_count = len(rank_rows)
@@ -349,6 +350,7 @@ async def slack_command(
                     ),
                     isouter=True,
                 )
+                .where(Mentor.is_active.is_(True))
                 .group_by(Mentor.id)
             )).all()
             overall_count = len(rank_rows)
@@ -503,16 +505,23 @@ async def slack_interact(
             .where(AttendanceSession.id == session_id)
         )
         session = result.scalars().first()
-        webhook = AsyncWebhookClient(response_url)
-        if not session:
-            await webhook.send(text="⚠️ Session not found.", replace_original=True)
-            return Response(status_code=200)
 
-        await webhook.send(
-            text=f"Edit session for {session.student.name}",
-            blocks=_edit_status_blocks(session, session.student),
-            replace_original=True,
-        )
+        # Acknowledge immediately — outbound Slack webhook calls go in the background
+        # so a slow network path to Slack can't cause a 500 visible to the user.
+        if not session:
+            background_tasks.add_task(
+                AsyncWebhookClient(response_url).send,
+                text="⚠️ Session not found.",
+                replace_original=True,
+            )
+        else:
+            blocks = _edit_status_blocks(session, session.student)
+            background_tasks.add_task(
+                AsyncWebhookClient(response_url).send,
+                text=f"Edit session for {session.student.name}",
+                blocks=blocks,
+                replace_original=True,
+            )
         return Response(status_code=200)
 
     # ── Step 2: mentor chose a new status ──
@@ -530,11 +539,10 @@ async def slack_interact(
         else SessionStatus.distraction
     )
 
-    webhook = AsyncWebhookClient(response_url)
-
     session = await update_session_status(db, session_id, status)
     if not session:
-        await webhook.send(
+        background_tasks.add_task(
+            AsyncWebhookClient(response_url).send,
             text="⚠️ Session not found or not yet signed out.",
             replace_original=True,
         )
@@ -572,7 +580,8 @@ async def slack_interact(
             hours,
         )
 
-    await webhook.send(
+    background_tasks.add_task(
+        AsyncWebhookClient(response_url).send,
         text=f"Updated session for {student.name}",
         blocks=[{
             "type": "section",

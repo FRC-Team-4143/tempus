@@ -201,6 +201,7 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
         select(Student.name, func.sum(AttendanceSession.hours_counted).label("total"))
         .join(Student, AttendanceSession.student_id == Student.id)
         .where(AttendanceSession.hours_counted.isnot(None))
+        .where(Student.is_active.is_(True))
     )
     if since_utc is not None:
         alltime_q = alltime_q.where(AttendanceSession.sign_in_time >= since_utc)
@@ -218,6 +219,7 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
         select(Student.name, func.sum(AttendanceSession.hours_counted).label("total"))
         .join(Student, AttendanceSession.student_id == Student.id)
         .where(AttendanceSession.hours_counted.isnot(None))
+        .where(Student.is_active.is_(True))
         .where(
             AttendanceSession.sign_in_time >= week_start_utc
         )
@@ -232,6 +234,7 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
         select(Student.name, func.max(AttendanceSession.hours_counted).label("max_h"))
         .join(Student, AttendanceSession.student_id == Student.id)
         .where(AttendanceSession.hours_counted.isnot(None))
+        .where(Student.is_active.is_(True))
     )
     if since_utc is not None:
         longest_q = longest_q.where(AttendanceSession.sign_in_time >= since_utc)
@@ -254,6 +257,7 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
         .join(Student, AttendanceSession.student_id == Student.id)
         .where(AttendanceSession.hours_counted.isnot(None))
         .where(AttendanceSession.sign_out_time.isnot(None))
+        .where(Student.is_active.is_(True))
     )
     if since_utc is not None:
         streak_q = streak_q.where(AttendanceSession.sign_in_time >= since_utc)
@@ -289,6 +293,7 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
         .join(Student, Student.team_id == Team.id)
         .join(AttendanceSession, AttendanceSession.student_id == Student.id)
         .where(AttendanceSession.hours_counted.isnot(None))
+        .where(Student.is_active.is_(True))
         .where(Team.number.in_([4143, 4423]))
     )
     if since_utc is not None:
