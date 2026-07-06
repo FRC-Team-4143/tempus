@@ -38,5 +38,8 @@ class Settings(BaseSettings):
     backup_keep: int = 14  # number of nightly snapshots to retain
     backup_time: str = "23:30"  # HH:MM 24h local time for the nightly snapshot
 
+    # Global toggle for all automated updates (Slack messages, memes, scheduled jobs)
+    updates_enabled: bool = True
+
 
 settings = Settings()

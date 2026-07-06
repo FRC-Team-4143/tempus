@@ -18,11 +18,14 @@ def get_slack_client() -> AsyncWebClient:
     return _client
 
 
-async def send_dm(slack_user_id: str, text: str, blocks=None) -> Optional[str]:
+async def send_dm(slack_user_id: str, text: str, blocks=None, automated: bool = False) -> Optional[str]:
     """
     Open a DM with a user and post a message.
     Returns the message ts or None on failure.
+    If automated=True, skips sending when updates_enabled is false.
     """
+    if automated and not settings.updates_enabled:
+        return None
     client = get_slack_client()
     try:
         conv = await client.conversations_open(users=slack_user_id)
@@ -37,11 +40,14 @@ async def send_dm(slack_user_id: str, text: str, blocks=None) -> Optional[str]:
         return None
 
 
-async def send_group_dm(user_ids: list[str], text: str, blocks=None) -> Optional[str]:
+async def send_group_dm(user_ids: list[str], text: str, blocks=None, automated: bool = False) -> Optional[str]:
     """
     Open a group DM with multiple users and post a message.
     Returns the message ts or None on failure.
+    If automated=True, skips sending when updates_enabled is false.
     """
+    if automated and not settings.updates_enabled:
+        return None
     client = get_slack_client()
     try:
         conv = await client.conversations_open(users=",".join(user_ids))

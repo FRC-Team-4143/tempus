@@ -49,22 +49,15 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 The app will be available at `http://localhost:8000`. On first start, the database is created automatically and seeded with the two teams.
 
-### Run (production — systemd on Raspberry Pi)
+### Run (production — Docker on DigitalOcean)
 
-A systemd unit file is included:
+The app runs as a Docker container alongside Munus behind an nginx reverse proxy.
+See the [apps-infra](https://github.com/FRC-Team-4143/apps-infra) repo for the full
+deployment setup and first-time server instructions.
 
-```bash
-sudo cp tempus.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable tempus
-sudo systemctl start tempus
-```
+Accessible at **http://time.marswars.org**.
 
-The service expects:
-- User: `pi`
-- Working directory: `/home/pi/tempus`
-- Environment file: `/home/pi/tempus/.env`
-- Virtualenv at `/home/pi/tempus/venv/`
+Pushing to `main` automatically deploys via GitHub Actions (tests must pass first).
 
 ---
 
@@ -209,3 +202,9 @@ app/
 │   └── slack_client.py# Slack AsyncWebClient wrapper and DM notification logic
 └── templates/         # Jinja2 HTML templates
 ```
+
+# TODO:
+- Treat the kiosk as the landing page. Add quick links to admin and mentor kiosk leaderboard pages
+- Add a way to get to the kiosk demo page from the admin dashboard.
+- Make most of the data in .env editable in the settings page like the slack channels used and time configs. I care less about api settings and keys
+- Add CI jobs to redeploy the app rom github actions

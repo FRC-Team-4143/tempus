@@ -104,6 +104,9 @@ async def _post_wall_of_shame(closed: list) -> None:
 
 
 async def job_weekly_dms() -> None:
+    if not settings.updates_enabled:
+        log.info("Weekly DM job skipped (updates_enabled=false)")
+        return
     log.info("Running weekly DM job")
     week_start = _current_week_start()
 
@@ -151,9 +154,9 @@ async def job_weekly_dms() -> None:
             text += f"\n_{remaining:.1f} hrs still needed — you may need to make up hours in the upcoming week._"
 
         if not on_track and mentor_ids:
-            await send_group_dm([student.slack_user_id] + mentor_ids, text)
+            await send_group_dm([student.slack_user_id] + mentor_ids, text, automated=True)
         else:
-            await send_dm(student.slack_user_id, text)
+            await send_dm(student.slack_user_id, text, automated=True)
 
 
 async def job_nightly_backup() -> None:
