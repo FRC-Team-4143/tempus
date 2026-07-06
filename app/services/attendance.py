@@ -240,6 +240,32 @@ async def mentor_sign_out_all_open(
     return len(open_sessions)
 
 
+async def mentor_sign_out(
+    db: AsyncSession, session_id: int
+) -> Optional[MentorSession]:
+    """Sign out a single open mentor session and compute hours_counted.
+
+    Mentor hours are counted in full (no status multiplier). Returns the
+    updated session, or None if not found or already signed out.
+    """
+    result = await db.execute(
+        select(MentorSession).where(
+            MentorSession.id == session_id,
+            MentorSession.sign_out_time.is_(None),
+        )
+    )
+    session = result.scalars().first()
+    if not session:
+        return None
+
+    now = datetime.utcnow()
+    session.sign_out_time = now
+    session.hours_counted = round((now - session.sign_in_time).total_seconds() / 3600.0, 4)
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
 async def get_signed_in_mentors(db: AsyncSession) -> list[MentorSession]:
     result = await db.execute(
         select(MentorSession)

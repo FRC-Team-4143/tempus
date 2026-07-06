@@ -80,6 +80,10 @@
           <td>{{ s.sign_out_time | localdt('%I:%M %p') if s.sign_out_time else '<span class="badge bg-warning text-dark">Open</span>' | safe }}</td>
           <td>{{ '%.2f'|format(s.hours_counted) if s.hours_counted is not none else '—' }}</td>
           <td>
+            {% if not s.sign_out_time %}
+            <button type="button" class="btn btn-sm btn-warning me-1"
+                    data-bs-toggle="modal" data-bs-target="#mentor-signout-modal-{{ s.id }}">Sign Out</button>
+            {% endif %}
             <a href="/admin/mentor-sessions/{{ s.id }}/edit" class="btn btn-sm btn-outline-secondary me-1">Edit</a>
             <form method="post" action="/admin/mentor-sessions/{{ s.id }}/delete" class="d-inline"
                   onsubmit="return confirm('Delete this session record?')">
@@ -133,6 +137,32 @@
     {% endif %}
   </ul>
 </nav>
+
+{% if is_mentor %}
+  {% for s in sessions %}
+    {% if not s.sign_out_time %}
+    <div class="modal fade" id="mentor-signout-modal-{{ s.id }}" tabindex="-1">
+      <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Sign Out {{ s.mentor.name }}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form method="post" action="/admin/mentor-sessions/{{ s.id }}/force-signout">
+            <div class="modal-body">
+              Close {{ s.mentor.name }}'s open session now? Hours are counted up to the current time.
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-warning btn-sm">Sign Out</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  {% endfor %}
+{% endif %}
 
 {% if not is_mentor %}
   {% for s in sessions %}

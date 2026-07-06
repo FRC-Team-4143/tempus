@@ -30,6 +30,19 @@
     font-weight: 600;
     color: #ffffff;
   }
+  .kiosk-nav {
+    display: flex;
+    gap: 18px;
+  }
+  .kiosk-nav a {
+    color: #888;
+    text-decoration: none;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    transition: color 0.15s;
+  }
+  .kiosk-nav a:hover { color: #cc2200; }
   .mentor-panel {
     background: #111111;
     border: 1px solid #2a1a1a;
@@ -107,7 +120,13 @@
     <h1><i>Tempus</i></h1>
     <span style="font-size:0.75rem;color:#888;letter-spacing:0.05em"><i>tempus fugit</i> — time flies</span>
   </div>
-  <div id="clock"></div>
+  <div style="display:flex;align-items:center;gap:24px">
+    <nav class="kiosk-nav">
+      <a href="/kiosk">Kiosk</a>
+      <a href="/admin">Admin</a>
+    </nav>
+    <div id="clock"></div>
+  </div>
 </header>
 
 <div class="container-fluid px-3 pt-3">

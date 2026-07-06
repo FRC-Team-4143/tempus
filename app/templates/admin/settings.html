@@ -6,34 +6,27 @@
 <h2 class="mb-4">Settings</h2>
 
 {% if saved %}
-<div class="alert alert-success alert-dismissible fade show py-2" style="max-width:500px" role="alert">
+<div class="alert alert-success alert-dismissible fade show py-2" style="max-width:520px" role="alert">
   <i class="bi bi-check-circle me-1"></i> Settings saved. Changes take effect immediately.
+  <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-danger alert-dismissible fade show py-2" style="max-width:520px" role="alert">
+  <i class="bi bi-exclamation-triangle me-1"></i> {{ error }}
   <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
 </div>
 {% endif %}
 
 <p class="text-muted">
-  The settings below take effect immediately. The read-only settings above are
-  read from <code>.env</code> at startup — to change those, edit <code>.env</code>
-  and restart the service.
+  All settings below are written to <code>.env</code> and take effect immediately —
+  no restart required. API keys and secrets are intentionally not editable here;
+  change those in <code>.env</code> directly.
 </p>
 
-<div class="card shadow-sm mb-4" style="max-width:500px">
-  <div class="card-body">
-    <table class="table table-borderless mb-0">
-      <tbody>
-        <tr><th class="w-50">Weekly DM Day</th>
-          <td>{{ ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][weekly_dm_day] }}</td>
-        </tr>
-        <tr><th>Weekly DM Time</th><td>{{ weekly_dm_time }}</td></tr>
-        <tr><th>Sign-In IP Whitelist</th><td>{{ signin_ip_whitelist or '(disabled)' }}</td></tr>
-        <tr><th>Timezone</th><td>{{ timezone }}</td></tr>
-      </tbody>
-    </table>
-  </div>
-</div>
+<form method="post" action="/admin/settings" style="max-width:520px">
+  {% set days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"] %}
 
-<form method="post" action="/admin/settings" style="max-width:400px">
   <h5 class="mb-3">Auto Sign-Out</h5>
   <p class="text-muted small">
     The auto sign-out job closes any sessions left open (people who forgot to
@@ -55,6 +48,96 @@
              value="{{ auto_signout_effective or '' }}">
       <div class="form-text">Time forgotten sessions are recorded as ending. Blank = use the time the job runs.</div>
     </div>
+  </div>
+
+  <h5 class="mb-3">Schedules &amp; Time</h5>
+  <div class="mb-3 row align-items-center">
+    <label class="col-sm-5 col-form-label">Weekly DM day</label>
+    <div class="col-sm-7">
+      <select name="weekly_dm_day" class="form-select">
+        {% for i in range(7) %}
+        <option value="{{ i }}" {% if weekly_dm_day == i %}selected{% endif %}>{{ days[i] }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text">Day the weekly hours-summary DMs are sent.</div>
+    </div>
+  </div>
+  <div class="mb-3 row align-items-center">
+    <label class="col-sm-5 col-form-label">Weekly DM time</label>
+    <div class="col-sm-7">
+      <input type="time" name="weekly_dm_time" class="form-control"
+             value="{{ weekly_dm_time }}" required>
+    </div>
+  </div>
+  <div class="mb-3 row align-items-center">
+    <label class="col-sm-5 col-form-label">Nightly backup time</label>
+    <div class="col-sm-7">
+      <input type="time" name="backup_time" class="form-control"
+             value="{{ backup_time }}" required>
+    </div>
+  </div>
+  <div class="mb-3 row align-items-center">
+    <label class="col-sm-5 col-form-label">Backups to keep</label>
+    <div class="col-sm-7">
+      <input type="number" name="backup_keep" class="form-control"
+             min="1" step="1" value="{{ backup_keep }}" required>
+      <div class="form-text">Number of nightly snapshots to retain.</div>
+    </div>
+  </div>
+  <div class="mb-4 row align-items-center">
+    <label class="col-sm-5 col-form-label">Timezone</label>
+    <div class="col-sm-7">
+      <input type="text" name="timezone" class="form-control" list="tz-list"
+             value="{{ timezone }}" required>
+      <datalist id="tz-list">
+        <option value="America/New_York">
+        <option value="America/Chicago">
+        <option value="America/Denver">
+        <option value="America/Los_Angeles">
+        <option value="America/Phoenix">
+        <option value="America/Anchorage">
+        <option value="Pacific/Honolulu">
+        <option value="UTC">
+      </datalist>
+      <div class="form-text">IANA timezone name used for scheduling and display.</div>
+    </div>
+  </div>
+
+  <h5 class="mb-3">Access</h5>
+  <div class="mb-4 row align-items-center">
+    <label class="col-sm-5 col-form-label">Sign-in IP whitelist</label>
+    <div class="col-sm-7">
+      <input type="text" name="signin_ip_whitelist" class="form-control"
+             value="{{ signin_ip_whitelist }}" placeholder="e.g. 192.168.1.0/24,127.0.0.1">
+      <div class="form-text">Comma-separated CIDR ranges allowed to submit sign-ins. Blank = allow all.</div>
+    </div>
+  </div>
+
+  <h5 class="mb-3">Wall of Shame 😅</h5>
+  <p class="text-muted small">
+    When the nightly auto sign-out closes forgotten sessions, optionally post a
+    lighthearted meme naming who forgot to sign out.
+  </p>
+  <div class="mb-3 form-check">
+    <input type="checkbox" class="form-check-input" name="roast_enabled" id="roast_enabled"
+           value="true" {% if roast_enabled %}checked{% endif %}>
+    <label class="form-check-label" for="roast_enabled">Enable Wall of Shame memes</label>
+  </div>
+  <div class="mb-4 row align-items-center">
+    <label class="col-sm-5 col-form-label">Announce channel</label>
+    <div class="col-sm-7">
+      <input type="text" name="slack_announce_channel" class="form-control"
+             value="{{ slack_announce_channel }}" placeholder="e.g. C0123ABCD">
+      <div class="form-text">Slack channel ID to post memes into. The bot must be in the channel.</div>
+    </div>
+  </div>
+
+  <h5 class="mb-3">Automation</h5>
+  <div class="mb-4 form-check">
+    <input type="checkbox" class="form-check-input" name="updates_enabled" id="updates_enabled"
+           value="true" {% if updates_enabled %}checked{% endif %}>
+    <label class="form-check-label" for="updates_enabled">Enable automated updates</label>
+    <div class="form-text">Master switch for automated Slack messages, memes, and scheduled DMs.</div>
   </div>
 
   <h5 class="mb-3">Leaderboard / Season</h5>
@@ -108,10 +191,4 @@
   </div>
   <button type="submit" class="btn btn-primary">Save Settings</button>
 </form>
-
-<div class="alert alert-info mt-4 small" style="max-width:500px">
-  <i class="bi bi-info-circle me-1"></i>
-  To update other settings restart the server after editing <code>.env</code>:
-  <pre class="mb-0 mt-1">sudo systemctl restart tempus</pre>
-</div>
 {% endblock %}

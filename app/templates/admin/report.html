@@ -9,6 +9,11 @@
   .week-met { background-color: rgba(25, 135, 84, 0.25) !important; }
   .week-miss { background-color: rgba(220, 53, 69, 0.18) !important; }
   .week-zero { color: #888; }
+  /* Click-to-sort column headers with a direction indicator. */
+  .report-table th.sortable { cursor: pointer; user-select: none; }
+  .report-table th.sortable::after { content: "\2195"; opacity: .55; margin-left: .4em; font-size: 1.2em; }
+  .report-table th.sort-asc::after { content: "\25B2"; opacity: 1; font-size: .9em; color: #e05540; }
+  .report-table th.sort-desc::after { content: "\25BC"; opacity: 1; font-size: .9em; color: #e05540; }
 </style>
 {% endblock %}
 
@@ -79,29 +84,30 @@
     <table class="table table-sm mb-0 report-table">
       <thead class="table-dark">
         <tr>
-          <th class="col-student">Student</th>
+          <th class="col-student sortable" data-type="text">Student</th>
           {% for ws in week_starts %}
-          <th class="text-center">{{ ws.strftime('%b %d') }}</th>
+          <th class="text-center sortable" data-type="num">{{ ws.strftime('%b %d') }}</th>
           {% endfor %}
-          <th class="text-end">Total</th>
-          <th class="text-center">Weeks Met</th>
+          <th class="text-end sortable" data-type="num">Total</th>
+          <th class="text-center sortable" data-type="num">Weeks Met</th>
         </tr>
       </thead>
       <tbody>
         {% for row in rows %}
         <tr>
-          <td class="col-student">
+          <td class="col-student" data-sort="{{ row.student.name }}">
             {{ row.student.name }}
             <br><small class="text-muted">Team {{ row.student.team.number if row.student.team else '—' }}{% if row.student.category %} · {{ row.student.category.value | capitalize }}{% endif %}</small>
           </td>
           {% for w in row.weeks %}
           <td class="text-center {% if w.met %}week-met{% else %}week-miss{% endif %}{% if w.hours == 0 %} week-zero{% endif %}"
+              data-sort="{{ w.hours }}"
               title="{{ '%.1f'|format(w.hours) }} / {{ '%.1f'|format(w.required) }} hrs">
             {{ '%.1f'|format(w.hours) }}
           </td>
           {% endfor %}
-          <td class="text-end fw-semibold">{{ '%.1f'|format(row.total_hours) }}</td>
-          <td class="text-center">
+          <td class="text-end fw-semibold" data-sort="{{ row.total_hours }}">{{ '%.1f'|format(row.total_hours) }}</td>
+          <td class="text-center" data-sort="{{ row.weeks_met }}">
             <span class="{% if row.weeks_met == row.weeks_total %}text-success{% elif row.weeks_met == 0 %}text-danger{% else %}text-warning{% endif %}">
               {{ row.weeks_met }}/{{ row.weeks_total }}
             </span>
@@ -112,5 +118,34 @@
     </table>
   </div>
 </div>
+
+<script>
+  // Click a column header to sort the table by that column; click again to reverse.
+  document.querySelectorAll('.report-table th.sortable').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var table = th.closest('table');
+      var tbody = table.querySelector('tbody');
+      var idx = Array.prototype.indexOf.call(th.parentNode.children, th);
+      var numeric = th.dataset.type === 'num';
+      var asc = !th.classList.contains('sort-asc');
+
+      table.querySelectorAll('th.sortable').forEach(function (h) {
+        h.classList.remove('sort-asc', 'sort-desc');
+      });
+      th.classList.add(asc ? 'sort-asc' : 'sort-desc');
+
+      var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+      rows.sort(function (a, b) {
+        var av = a.children[idx].dataset.sort || '';
+        var bv = b.children[idx].dataset.sort || '';
+        var cmp = numeric
+          ? (parseFloat(av) || 0) - (parseFloat(bv) || 0)
+          : av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
+        return asc ? cmp : -cmp;
+      });
+      rows.forEach(function (r) { tbody.appendChild(r); });
+    });
+  });
+</script>
 {% endif %}
 {% endblock %}

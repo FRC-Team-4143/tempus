@@ -1081,6 +1081,26 @@ async def admin_sessions_force_signout(
     return RedirectResponse("/admin/sessions", status_code=303)
 
 
+@router.post("/mentor-sessions/{session_id}/force-signout")
+async def admin_mentor_sessions_force_signout(
+    session_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    from app.services.attendance import mentor_sign_out
+    session = await mentor_sign_out(db, session_id)
+    if session is None:
+        return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+
+    from app.services.broadcaster import broadcaster
+    await broadcaster.broadcast("mentor_update")
+
+    return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+
+
 @router.get("/mentor-sessions/{session_id}/edit")
 async def admin_mentor_sessions_edit_form(
     session_id: int, request: Request, db: AsyncSession = Depends(get_db)
@@ -1187,6 +1207,25 @@ async def admin_mentor_sessions_delete(
 
 # ── Settings ───────────────────────────────────────────────────────────────────
 
+def _settings_context() -> dict:
+    """Common settings values for the settings template, from the live singleton."""
+    return {
+        "auto_signout_time": settings.auto_signout_time,
+        "weekly_dm_day": settings.weekly_dm_day,
+        "weekly_dm_time": settings.weekly_dm_time,
+        "signin_ip_whitelist": settings.signin_ip_whitelist,
+        "timezone": settings.timezone,
+        "backup_time": settings.backup_time,
+        "backup_keep": settings.backup_keep,
+        "updates_enabled": settings.updates_enabled,
+        "roast_enabled": settings.roast_enabled,
+        "slack_announce_channel": settings.slack_announce_channel,
+        "contributor_multiplier": settings.contributor_multiplier,
+        "present_multiplier": settings.present_multiplier,
+        "distraction_multiplier": settings.distraction_multiplier,
+    }
+
+
 @router.get("/settings", response_class=HTMLResponse)
 async def admin_settings_get(request: Request, db: AsyncSession = Depends(get_db)):
     if redirect := _require_auth(request):
@@ -1200,25 +1239,20 @@ async def admin_settings_get(request: Request, db: AsyncSession = Depends(get_db
         "admin/settings.html",
         {
             "request": request,
-            "auto_signout_time": settings.auto_signout_time,
+            **_settings_context(),
             "auto_signout_effective": auto_signout_effective,
-            "weekly_dm_day": settings.weekly_dm_day,
-            "weekly_dm_time": settings.weekly_dm_time,
-            "signin_ip_whitelist": settings.signin_ip_whitelist,
-            "timezone": settings.timezone,
-            "contributor_multiplier": settings.contributor_multiplier,
-            "present_multiplier": settings.present_multiplier,
-            "distraction_multiplier": settings.distraction_multiplier,
             "leaderboard_since": leaderboard_since,
         },
     )
 
 
+ENV_PATH = ".env"
+
+
 def _write_env(updates: dict[str, str]) -> None:
     """Upsert KEY=value pairs into .env, preserving other lines."""
-    env_path = ".env"
     try:
-        with open(env_path, "r") as f:
+        with open(ENV_PATH, "r") as f:
             lines = f.readlines()
     except FileNotFoundError:
         lines = []
@@ -1236,7 +1270,7 @@ def _write_env(updates: dict[str, str]) -> None:
         if key not in written:
             new_lines.append(f"{key}={val}\n")
 
-    with open(env_path, "w") as f:
+    with open(ENV_PATH, "w") as f:
         f.writelines(new_lines)
 
 
@@ -1269,6 +1303,15 @@ async def admin_settings_post(
     distraction_multiplier: float = Form(...),
     auto_signout_time: str = Form(...),
     auto_signout_effective: str = Form(""),
+    weekly_dm_day: int = Form(...),
+    weekly_dm_time: str = Form(...),
+    backup_time: str = Form(...),
+    backup_keep: int = Form(...),
+    timezone: str = Form(...),
+    signin_ip_whitelist: str = Form(""),
+    slack_announce_channel: str = Form(""),
+    updates_enabled: bool = Form(False),
+    roast_enabled: bool = Form(False),
     leaderboard_since: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1281,19 +1324,78 @@ async def admin_settings_post(
         distraction_multiplier,
     )
 
-    # Auto sign-out trigger time — validate, persist to .env, reschedule live job.
+    # ── General settings ─ validate each field; apply only the valid ones and
+    # collect messages for the rest. Changed values are written to .env once,
+    # mirrored onto the live singleton, and the scheduler is re-applied.
+    errors: list[str] = []
+    env_updates: dict[str, str] = {}
+
     trigger = auto_signout_time.strip()
-    if _HHMM_RE.match(trigger) and trigger != settings.auto_signout_time:
-        _write_env({"AUTO_SIGNOUT_TIME": trigger})
+    if not _HHMM_RE.match(trigger):
+        errors.append("Auto sign-out time must be in HH:MM format.")
+    elif trigger != settings.auto_signout_time:
+        env_updates["AUTO_SIGNOUT_TIME"] = trigger
         settings.auto_signout_time = trigger
-        from apscheduler.triggers.cron import CronTrigger
-        h, m = trigger.split(":")
-        scheduler = getattr(request.app.state, "scheduler", None)
-        if scheduler is not None:
-            scheduler.reschedule_job(
-                "auto_signout",
-                trigger=CronTrigger(hour=int(h), minute=int(m), timezone=settings.timezone),
-            )
+
+    if not 0 <= weekly_dm_day <= 6:
+        errors.append("Weekly DM day must be between 0 (Mon) and 6 (Sun).")
+    elif weekly_dm_day != settings.weekly_dm_day:
+        env_updates["WEEKLY_DM_DAY"] = str(weekly_dm_day)
+        settings.weekly_dm_day = weekly_dm_day
+
+    wt = weekly_dm_time.strip()
+    if not _HHMM_RE.match(wt):
+        errors.append("Weekly DM time must be in HH:MM format.")
+    elif wt != settings.weekly_dm_time:
+        env_updates["WEEKLY_DM_TIME"] = wt
+        settings.weekly_dm_time = wt
+
+    bt = backup_time.strip()
+    if not _HHMM_RE.match(bt):
+        errors.append("Backup time must be in HH:MM format.")
+    elif bt != settings.backup_time:
+        env_updates["BACKUP_TIME"] = bt
+        settings.backup_time = bt
+
+    if backup_keep < 1:
+        errors.append("Backups to keep must be at least 1.")
+    elif backup_keep != settings.backup_keep:
+        env_updates["BACKUP_KEEP"] = str(backup_keep)
+        settings.backup_keep = backup_keep
+
+    tz = timezone.strip()
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    try:
+        ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError):
+        errors.append(f"Unknown timezone: {tz!r}.")
+    else:
+        if tz != settings.timezone:
+            env_updates["TIMEZONE"] = tz
+            settings.timezone = tz
+
+    wl = signin_ip_whitelist.strip()
+    if wl != settings.signin_ip_whitelist:
+        env_updates["SIGNIN_IP_WHITELIST"] = wl
+        settings.signin_ip_whitelist = wl
+
+    ch = slack_announce_channel.strip()
+    if ch != settings.slack_announce_channel:
+        env_updates["SLACK_ANNOUNCE_CHANNEL"] = ch
+        settings.slack_announce_channel = ch
+
+    if updates_enabled != settings.updates_enabled:
+        env_updates["UPDATES_ENABLED"] = "true" if updates_enabled else "false"
+        settings.updates_enabled = updates_enabled
+
+    if roast_enabled != settings.roast_enabled:
+        env_updates["ROAST_ENABLED"] = "true" if roast_enabled else "false"
+        settings.roast_enabled = roast_enabled
+
+    if env_updates:
+        _write_env(env_updates)
+        from app.services.scheduler import reschedule_all
+        reschedule_all(getattr(request.app.state, "scheduler", None))
 
     # Effective sign-out time — HH:MM override, or blank to clear.
     from app.services.app_settings import (
@@ -1322,6 +1424,10 @@ async def admin_settings_post(
         f"present={present_multiplier}, distraction={distraction_multiplier}); "
         f"auto_signout_time={settings.auto_signout_time}; "
         f"auto_signout_effective={current_effective or 'trigger time'}; "
+        f"weekly_dm={settings.weekly_dm_day}@{settings.weekly_dm_time}; "
+        f"backup={settings.backup_time} keep={settings.backup_keep}; "
+        f"timezone={settings.timezone}; updates_enabled={settings.updates_enabled}; "
+        f"roast_enabled={settings.roast_enabled}; "
         f"leaderboard_since={current_since or 'all-time'}",
         entity_type="settings",
         detail={"contributor_multiplier": contributor_multiplier,
@@ -1329,6 +1435,15 @@ async def admin_settings_post(
                 "distraction_multiplier": distraction_multiplier,
                 "auto_signout_time": settings.auto_signout_time,
                 "auto_signout_effective": current_effective,
+                "weekly_dm_day": settings.weekly_dm_day,
+                "weekly_dm_time": settings.weekly_dm_time,
+                "backup_time": settings.backup_time,
+                "backup_keep": settings.backup_keep,
+                "timezone": settings.timezone,
+                "signin_ip_whitelist": settings.signin_ip_whitelist,
+                "slack_announce_channel": settings.slack_announce_channel,
+                "updates_enabled": settings.updates_enabled,
+                "roast_enabled": settings.roast_enabled,
                 "leaderboard_since": str(current_since) if current_since else None},
     )
     await db.commit()
@@ -1337,17 +1452,11 @@ async def admin_settings_post(
         "admin/settings.html",
         {
             "request": request,
-            "auto_signout_time": settings.auto_signout_time,
+            **_settings_context(),
             "auto_signout_effective": current_effective,
-            "weekly_dm_day": settings.weekly_dm_day,
-            "weekly_dm_time": settings.weekly_dm_time,
-            "signin_ip_whitelist": settings.signin_ip_whitelist,
-            "timezone": settings.timezone,
-            "contributor_multiplier": settings.contributor_multiplier,
-            "present_multiplier": settings.present_multiplier,
-            "distraction_multiplier": settings.distraction_multiplier,
             "leaderboard_since": current_since,
-            "saved": True,
+            "saved": not errors,
+            "error": " ".join(errors) if errors else None,
         },
     )
 

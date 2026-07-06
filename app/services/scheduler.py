@@ -169,14 +169,19 @@ async def job_nightly_backup() -> None:
         log.exception("Nightly backup failed")
 
 
-def create_scheduler() -> AsyncIOScheduler:
-    scheduler = AsyncIOScheduler(timezone=settings.timezone)
+def register_jobs(scheduler: AsyncIOScheduler) -> None:
+    """(Re)register all scheduled jobs from the current settings.
+
+    Uses ``replace_existing=True`` so it is safe to call on a running
+    scheduler to apply live changes to job times / timezone.
+    """
+    tz = settings.timezone
 
     # Auto sign-out job
     h, m = settings.auto_signout_time.split(":")
     scheduler.add_job(
         job_auto_signout,
-        CronTrigger(hour=int(h), minute=int(m), timezone=settings.timezone),
+        CronTrigger(hour=int(h), minute=int(m), timezone=tz),
         id="auto_signout",
         replace_existing=True,
     )
@@ -189,7 +194,7 @@ def create_scheduler() -> AsyncIOScheduler:
             day_of_week=settings.weekly_dm_day,
             hour=int(dh),
             minute=int(dm_),
-            timezone=settings.timezone,
+            timezone=tz,
         ),
         id="weekly_dms",
         replace_existing=True,
@@ -199,9 +204,24 @@ def create_scheduler() -> AsyncIOScheduler:
     bh, bm = settings.backup_time.split(":")
     scheduler.add_job(
         job_nightly_backup,
-        CronTrigger(hour=int(bh), minute=int(bm), timezone=settings.timezone),
+        CronTrigger(hour=int(bh), minute=int(bm), timezone=tz),
         id="nightly_backup",
         replace_existing=True,
     )
 
+
+def reschedule_all(scheduler) -> None:
+    """Re-apply every job trigger from current settings on a live scheduler.
+
+    Called after settings changes so new job times / timezone take effect
+    without a restart. No-op if ``scheduler`` is None.
+    """
+    if scheduler is None:
+        return
+    register_jobs(scheduler)
+
+
+def create_scheduler() -> AsyncIOScheduler:
+    scheduler = AsyncIOScheduler(timezone=settings.timezone)
+    register_jobs(scheduler)
     return scheduler

@@ -80,10 +80,16 @@ All settings are read from a `.env` file in the working directory (or from envir
 | `contributor_multiplier` | `CONTRIBUTOR_MULTIPLIER` | `1.0` | Hours multiplier for "Contributor" rated sessions |
 | `present_multiplier` | `PRESENT_MULTIPLIER` | `0.5` | Hours multiplier for "Present" rated sessions |
 | `distraction_multiplier` | `DISTRACTION_MULTIPLIER` | `0.0` | Hours multiplier for "Distraction" rated sessions |
+| `backup_time` | `BACKUP_TIME` | `23:30` | Nightly SQLite backup time in 24-hour `HH:MM` format |
+| `backup_keep` | `BACKUP_KEEP` | `14` | Number of nightly snapshots to retain |
+| `backup_dir` | `BACKUP_DIR` | `backups` | Directory for SQLite snapshot files |
+| `updates_enabled` | `UPDATES_ENABLED` | `true` | Master switch for automated Slack messages, memes, and scheduled DMs |
+| `roast_enabled` | `ROAST_ENABLED` | `false` | Enable "Wall of Shame" memes posted when the nightly job closes forgotten sessions |
+| `slack_announce_channel` | `SLACK_ANNOUNCE_CHANNEL` | *(none)* | Slack channel ID the Wall of Shame memes are posted to |
 
 > **Note:** `contributor_multiplier` applies to both self sign-outs (QR badge rescan) and sessions closed by the nightly auto sign-out job.
 >
-> Multipliers can be updated at runtime from **Admin → Settings** without restarting the server. Changes are written back to `.env` and take effect immediately.
+> Most non-secret settings — the multipliers, scheduling times, timezone, backup settings, IP whitelist, and the Wall of Shame options — can be updated at runtime from **Admin → Settings** without restarting the server. Changes are written back to `.env` and take effect immediately. API keys/secrets (`SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `ADMIN_PASSWORD`, `SESSION_SECRET`) are intentionally **not** editable from the UI.
 
 ### Minimal `.env` example
 
@@ -128,7 +134,7 @@ Navigate to `/admin` and log in with your configured `ADMIN_PASSWORD`. Sessions 
 | **Mentors** | Manage mentors with their Slack UIDs and optional team/category for hours-notification matching |
 | **Requirements** | Set per-team, per-category, per-week required hours |
 | **Sessions** | Filterable and paginated session log; edit individual sessions (recalculates counted hours); CSV export |
-| **Settings** | Live-edit the three session-status hour multipliers |
+| **Settings** | Live-edit non-secret configuration — hour multipliers, auto sign-out / weekly DM / backup times, timezone, IP whitelist, Wall of Shame meme options, and the leaderboard season cutoff. Changes write back to `.env` and apply immediately |
 
 ---
 
@@ -202,9 +208,3 @@ app/
 │   └── slack_client.py# Slack AsyncWebClient wrapper and DM notification logic
 └── templates/         # Jinja2 HTML templates
 ```
-
-# TODO:
-- Treat the kiosk as the landing page. Add quick links to admin and mentor kiosk leaderboard pages
-- Add a way to get to the kiosk demo page from the admin dashboard.
-- Make most of the data in .env editable in the settings page like the slack channels used and time configs. I care less about api settings and keys
-- Add CI jobs to redeploy the app rom github actions
