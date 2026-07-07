@@ -106,7 +106,9 @@ AUTO_SIGNOUT_TIME=21:30
 
 ## Slack Setup
 
-1. Create a Slack app at https://api.slack.com/apps
+1. Create a Slack app at https://api.slack.com/apps — **in production this is actually
+   the same app shared with Munus and Legion** (see the note below), but the steps to
+   create one from scratch are the same either way.
 2. Under **OAuth & Permissions**, add these bot scopes:
    - `chat:write`
    - `im:write`
@@ -117,7 +119,20 @@ AUTO_SIGNOUT_TIME=21:30
    - `/edit` → `https://<your-host>/slack/command`
    - `/shop` → `https://<your-host>/slack/command`
 4. Under **Interactivity & Shortcuts**, set the Request URL to `https://<your-host>/slack/interact`
+   — see the note below if this app is shared with the sibling apps.
 5. Install the app to your workspace and copy the **Bot User OAuth Token** and **Signing Secret** to `.env`
+
+> **Sharing one Slack app across Tempus/Munus/Legion:** sending messages and slash
+> commands work fine shared (any number of services can use the same bot token, and
+> each slash command has its own independently configurable Request URL) — but Slack
+> allows only **one** Interactivity Request URL per app, and each of these three
+> services wants its own button clicks. Rather than each getting a separate app, the
+> shared app's Interactivity Request URL points at Legion's `/slack/dispatch` (a
+> stateless relay with no business logic — see `legion/README.md` "Single sign-on"),
+> which forwards each payload to whichever app's own `/slack/interact` actually owns
+> it based on `action_id`/`callback_id`. Don't point this app's Interactivity URL at
+> Tempus's own `/slack/interact` directly if it's the shared app — that would starve
+> Munus's and Legion's interactive buttons of real traffic.
 
 Mentors must have their Slack user ID recorded in the admin UI under **Mentors**. Students need their Slack UID set under **Students** to receive DMs.
 
