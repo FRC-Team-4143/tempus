@@ -13,8 +13,9 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.models import AttendanceSession, Mentor, SessionStatus, Student, FocusCategory
+from app.models import AttendanceSession, Mentor, SessionStatus, Student
 from app.services.attendance import sign_out_all_open, mentor_sign_out_all_open
+from app.services.leads import lead_mentors_for_student
 from app.services.slack_client import send_dm, send_group_dm
 from app.utils import today_local, current_week_bounds
 
@@ -27,14 +28,14 @@ def _current_week_start() -> date:
     return today - timedelta(days=today.weekday())
 
 
-async def _get_requirement(team_id: int, week_start: date, category=None) -> float:
+async def _get_requirement(team_id: int, week_start: date, subteam_slug=None) -> float:
     """
-    Return required_hours for a team+category's week, most-specific scope first
-    (team+category, team, all-teams+category, all-teams), then the 11h default.
+    Return required_hours for a team+subteam's week, most-specific scope first
+    (team+subteam, team, all-teams+subteam, all-teams), then the 11h default.
     """
     from app.services.requirements import resolve_requirement
     async with AsyncSessionLocal() as db:
-        return await resolve_requirement(db, team_id, category, week_start)
+        return await resolve_requirement(db, team_id, subteam_slug, week_start)
 
 
 async def _weekly_hours_for_student(db, student_id: int, week_start: date) -> float:
@@ -125,18 +126,11 @@ async def job_weekly_dms() -> None:
         async with AsyncSessionLocal() as db:
             hours = await _weekly_hours_for_student(db, student.id, week_start)
 
-            required = await _get_requirement(student.team_id, week_start, student.category)
+            required = await _get_requirement(student.team_id, week_start, student.subteam_slug)
             on_track = hours >= required
 
-            # Find all mentors matching student's team + category
-            mentor_result = await db.execute(
-                select(Mentor).where(
-                    Mentor.team_id == student.team_id,
-                    Mentor.category == student.category,
-                    Mentor.slack_user_id.is_not(None),
-                )
-            )
-            matched_mentors = mentor_result.scalars().all()
+            # Lead mentors for this student = holders of `tempus-lead-<team>-<subteam>`.
+            matched_mentors = await lead_mentors_for_student(db, student)
             mentor_ids = [m.slack_user_id for m in matched_mentors]
 
         status_icon = "✅" if on_track else "⚠️"
@@ -167,6 +161,21 @@ async def job_nightly_backup() -> None:
         nightly_backup()
     except Exception:  # never let a backup failure crash the scheduler
         log.exception("Nightly backup failed")
+
+
+async def job_legion_sync() -> None:
+    """Pull the roster from Legion. No-op (with a log line) when Legion isn't configured,
+    so the job is harmless before the SSO/API env vars are set."""
+    if not settings.legion_base_url or not settings.legion_api_key:
+        log.info("Legion sync skipped (LEGION_BASE_URL/LEGION_API_KEY not set)")
+        return
+    from app.services.legion_sync import sync_roster
+    try:
+        async with AsyncSessionLocal() as db:
+            summary = await sync_roster(db)
+        log.info("Scheduled Legion sync: %s", summary)
+    except Exception:  # never let a sync failure crash the scheduler
+        log.exception("Scheduled Legion sync failed")
 
 
 def register_jobs(scheduler: AsyncIOScheduler) -> None:
@@ -206,6 +215,14 @@ def register_jobs(scheduler: AsyncIOScheduler) -> None:
         job_nightly_backup,
         CronTrigger(hour=int(bh), minute=int(bm), timezone=tz),
         id="nightly_backup",
+        replace_existing=True,
+    )
+
+    # Legion roster sync — hourly (cheap incremental pull via updated_since).
+    scheduler.add_job(
+        job_legion_sync,
+        CronTrigger(minute=0, timezone=tz),
+        id="legion_sync",
         replace_existing=True,
     )
 

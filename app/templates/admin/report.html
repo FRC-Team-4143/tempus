@@ -48,11 +48,11 @@
     </select>
   </div>
   <div class="col-auto">
-    <label class="form-label small mb-1">Category</label>
+    <label class="form-label small mb-1">Subteam</label>
     <select name="category" class="form-select form-select-sm">
-      <option value="">All Categories</option>
-      {% for c in categories %}
-      <option value="{{ c.value }}" {% if filters.category == c.value %}selected{% endif %}>{{ c.value | capitalize }}</option>
+      <option value="">All Subteams</option>
+      {% for s in subteams %}
+      <option value="{{ s.slug }}" {% if filters.category == s.slug %}selected{% endif %}>{{ s.label }}</option>
       {% endfor %}
     </select>
   </div>
@@ -97,7 +97,7 @@
         <tr>
           <td class="col-student" data-sort="{{ row.student.name }}">
             {{ row.student.name }}
-            <br><small class="text-muted">Team {{ row.student.team.number if row.student.team else '—' }}{% if row.student.category %} · {{ row.student.category.value | capitalize }}{% endif %}</small>
+            <br><small class="text-muted">Team {{ row.student.team.number if row.student.team else '—' }}{% if row.student.subteam_slug %} · {{ row.student.subteam_slug | capitalize }}{% endif %}</small>
           </td>
           {% for w in row.weeks %}
           <td class="text-center {% if w.met %}week-met{% else %}week-miss{% endif %}{% if w.hours == 0 %} week-zero{% endif %}"

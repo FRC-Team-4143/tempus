@@ -136,6 +136,7 @@ async def notify_student_hours(
     from sqlalchemy import and_, func, select
     from app.database import AsyncSessionLocal
     from app.models import AttendanceSession, Mentor, Student, Team
+    from app.services.leads import lead_mentors_for_student
 
     week_start = today_local() - timedelta(days=today_local().weekday())
     week_end = week_start + timedelta(days=7)
@@ -209,21 +210,15 @@ async def notify_student_hours(
         )
         week_hours = float(week_result.scalar() or 0.0)
 
-        # Weekly requirement — most-specific scope first (team+category, … , all-teams)
+        # Weekly requirement — most-specific scope first (team+subteam, … , all-teams)
         from app.services.requirements import resolve_requirement
-        required = await resolve_requirement(db, student.team_id, student.category, week_start)
+        required = await resolve_requirement(db, student.team_id, student.subteam_slug, week_start)
 
-        # Find all lead mentors matching the student's team + category
-        mentor_q = select(Mentor).where(
-            Mentor.team_id == student.team_id,
-            Mentor.category == student.category,
-            Mentor.slack_user_id.is_not(None),
-            Mentor.is_lead.is_(True),
-        )
-        mentor_result = await db.execute(mentor_q)
-        matched_mentors = mentor_result.scalars().all()
+        # Lead mentors for this student = those holding the student's
+        # `tempus-lead-<team>-<subteam>` Legion group (synced into Mentor.group_slugs).
+        matched_mentors = await lead_mentors_for_student(db, student)
 
-        # Fall back to the single supplied mentor_slack_id if no matched mentors found
+        # Fall back to the single supplied mentor_slack_id if no leads matched.
         if matched_mentors:
             mentor_ids = [m.slack_user_id for m in matched_mentors]
         elif mentor_slack_id:

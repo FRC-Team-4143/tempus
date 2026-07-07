@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from sqlalchemy import or_
 
-from app.models import AttendanceSession, FocusCategory, Student, WeeklyRequirement
+from app.models import AttendanceSession, Student, WeeklyRequirement
 from app.services.requirements import DEFAULT_REQUIRED_HOURS, requirement_lookup_order
 from app.utils import local_to_utc, utc_to_local
 
@@ -32,7 +32,7 @@ async def weekly_attendance_report(
     db: AsyncSession,
     week_starts: list[date],
     team_id: Optional[int] = None,
-    category: Optional[FocusCategory] = None,
+    subteam_slug: Optional[str] = None,
 ) -> list[dict]:
     """
     Returns one dict per student, sorted by team number then name:
@@ -60,8 +60,8 @@ async def weekly_attendance_report(
     )
     if team_id is not None:
         student_q = student_q.where(Student.team_id == team_id)
-    if category is not None:
-        student_q = student_q.where(Student.category == category)
+    if subteam_slug is not None:
+        student_q = student_q.where(Student.subteam_slug == subteam_slug)
     students = (await db.execute(student_q)).scalars().all()
 
     if not students:
@@ -97,15 +97,15 @@ async def weekly_attendance_report(
     )
     all_reqs = (await db.execute(req_q)).scalars().all()
 
-    # Group by (team_id, category), descending week so fallback lookup is an O(n) scan
-    req_by_team_cat: dict[tuple, list] = defaultdict(list)
+    # Group by (team_id, subteam_slug), descending week so fallback lookup is an O(n) scan
+    req_by_team_sub: dict[tuple, list] = defaultdict(list)
     for r in sorted(all_reqs, key=lambda x: x.week_start, reverse=True):
-        req_by_team_cat[(r.team_id, r.category)].append(r)
+        req_by_team_sub[(r.team_id, r.subteam_slug)].append(r)
 
-    def _resolve_req(tid: int, cat: Optional[FocusCategory], week: date) -> float:
-        # Most-specific scope first (team+cat, team, all-teams+cat, all-teams)
-        for k_tid, k_cat in requirement_lookup_order(tid, cat):
-            for r in req_by_team_cat.get((k_tid, k_cat), []):
+    def _resolve_req(tid: int, slug: Optional[str], week: date) -> float:
+        # Most-specific scope first (team+subteam, team, all-teams+subteam, all-teams)
+        for k_tid, k_slug in requirement_lookup_order(tid, slug):
+            for r in req_by_team_sub.get((k_tid, k_slug), []):
                 if r.week_start <= week:
                     return r.required_hours
         return DEFAULT_REQUIRED_HOURS
@@ -117,7 +117,7 @@ async def weekly_attendance_report(
         weeks_met = 0
         for ws in week_starts:
             hours = round(hours_map.get((student.id, ws), 0.0), 2)
-            required = _resolve_req(student.team_id, student.category, ws)
+            required = _resolve_req(student.team_id, student.subteam_slug, ws)
             met = hours >= required
             week_rows.append({"week_start": ws, "hours": hours, "required": required, "met": met})
             total_hours += hours

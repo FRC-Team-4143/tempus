@@ -2,7 +2,7 @@ from datetime import datetime, date
 from typing import Optional
 from pydantic import BaseModel
 
-from app.models import SessionStatus, FocusCategory
+from app.models import SessionStatus
 
 
 # ── Teams ──────────────────────────────────────────────────────────────────────
@@ -17,25 +17,11 @@ class TeamOut(BaseModel):
 
 # ── Students ───────────────────────────────────────────────────────────────────
 
-class StudentCreate(BaseModel):
-    name: str
-    team_id: int
-    category: Optional[FocusCategory] = None
-    slack_user_id: Optional[str] = None
-
-
-class StudentUpdate(BaseModel):
-    name: Optional[str] = None
-    team_id: Optional[int] = None
-    category: Optional[FocusCategory] = None
-    slack_user_id: Optional[str] = None
-
-
 class StudentOut(BaseModel):
     id: int
     name: str
     team_id: int
-    category: Optional[FocusCategory]
+    subteam_slug: Optional[str]
     slack_user_id: Optional[str]
     team: TeamOut
 
@@ -59,17 +45,10 @@ class MentorOut(BaseModel):
 
 # ── Weekly Requirements ────────────────────────────────────────────────────────
 
-class WeeklyRequirementCreate(BaseModel):
-    team_id: int
-    category: Optional[FocusCategory] = None
-    week_start: date
-    required_hours: float
-
-
 class WeeklyRequirementOut(BaseModel):
     id: int
     team_id: int
-    category: Optional[FocusCategory]
+    subteam_slug: Optional[str]
     week_start: date
     required_hours: float
     team: TeamOut
@@ -94,7 +73,7 @@ class SessionOut(BaseModel):
 # ── Kiosk ──────────────────────────────────────────────────────────────────────
 
 class SignInRequest(BaseModel):
-    name: str  # Tracker UID (student_code) encoded in the QR badge
+    name: str  # Legion member_code (or legacy student_code) encoded in the QR badge
 
 
 class SignInResponse(BaseModel):

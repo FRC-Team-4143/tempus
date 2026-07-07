@@ -9,7 +9,7 @@ source venv/bin/activate
 uvicorn app.main:app --reload
 ```
 
-Requires a `.env` file (see `.env.example`). Key vars: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `ADMIN_PASSWORD`.
+Requires a `.env` file (see `.env.example`). Key vars: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, and the Legion integration — `SSO_SECRET` (must equal Legion's), `LEGION_BASE_URL`, `LEGION_API_KEY`. There is **no** admin password; `/admin` is gated by Legion SSO + the `tempus-admin` group.
 
 ## Testing
 
@@ -30,19 +30,43 @@ app/
   utils.py         # Timezone helpers + shared date/time utilities (see below)
   routers/
     kiosk.py       # Student-facing display pages + SSE stream
-    admin.py       # Password-protected management UI
+    admin.py       # Legion-SSO-gated management UI (tempus-admin group)
     slack.py       # Slack slash commands (/hours, /shop, /edit) + interactions
   services/
     attendance.py  # Sign-in/out logic, hours calculation
+    sso.py         # Verifies Legion's mw_sso cookie (verify-only; Tempus never mints it)
+    legion_sync.py # Pulls the roster from Legion's read-only API into the local mirror
+    leads.py       # Lead mentors from tempus-lead-<team>-<subteam> groups
     slack_client.py # Slack API helpers (DMs, file uploads)
     broadcaster.py # SSE event broadcaster for live kiosk updates
-    scheduler.py   # APScheduler jobs: auto sign-out, weekly DMs, nightly backup
-    requirements.py # Weekly hour requirement resolution (team + category)
+    scheduler.py   # APScheduler jobs: auto sign-out, weekly DMs, nightly backup, hourly Legion sync
+    requirements.py # Weekly hour requirement resolution (team + subteam)
     audit.py       # Append-only mutation log
     reports.py     # Weekly report generation
     backup.py      # SQLite snapshot backup
-    app_settings.py # Persisted runtime settings (leaderboard cutoff, etc.)
+    app_settings.py # Persisted runtime settings (leaderboard cutoff, legion sync watermark, etc.)
 ```
+
+### Legion integration (source of truth for the roster)
+Legion owns members, teams, subteams, and user groups; Tempus is a **read-only consumer** —
+data flows Legion → Tempus only, never back.
+- **Auth (`services/sso.py`, `routers/admin.py`):** `/admin` verifies Legion's `mw_sso` cookie
+  locally with the shared `SSO_SECRET` (no callback) and requires the `tempus-admin` group via
+  `_require_groups`. No local password. On a missing/invalid cookie, redirect to
+  `{LEGION_BASE_URL}/sso/authorize?app=tempus`. The audit actor is the SSO username.
+- **Roster mirror (`services/legion_sync.py`):** the local `Student`/`Mentor`/`Team`/`Subteam`
+  tables are a synced mirror keyed on Legion's stable `member_code`. Sync pulls
+  `/api/members?updated_since=…` (+ teams/subteams) hourly and on the **Sync now** button;
+  legacy rows are back-linked by `slack_user_id` then name. `AttendanceSession`/`MentorSession`
+  FKs stay local. **Never add roster CRUD or write-back to Legion.**
+- **Subteams, not a `FocusCategory` enum:** `subteam_slug` (a string, synced from Legion's
+  `subteam.slug`) replaced the old enum on Student/Mentor/WeeklyRequirement; a local `Subteam`
+  mirror table holds labels for dropdowns.
+- **Leads are Legion groups, not a flag:** `Mentor.is_lead` is gone. A mentor leads a student
+  when they hold `tempus-lead-<team_number>-<subteam_slug>` (synced into `Mentor.group_slugs`);
+  `services/leads.lead_mentors_for_student` is the single source used by both the on-demand and
+  scheduled escalation DMs. QR badges / kiosk sign-in key on `member_code` (legacy
+  `student_code`/`mentor_code` still accepted).
 
 ## Key Conventions
 

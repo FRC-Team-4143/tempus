@@ -16,6 +16,7 @@ from app.utils import local_to_utc
 
 LEADERBOARD_SINCE_KEY = "leaderboard_since"
 AUTO_SIGNOUT_EFFECTIVE_KEY = "auto_signout_effective_time"
+LEGION_LAST_SYNCED_KEY = "legion_last_synced_at"
 
 
 async def get_setting(db: AsyncSession, key: str) -> Optional[str]:

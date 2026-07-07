@@ -4,8 +4,6 @@ Admin routes — password-protected web UI.
 Auth: session cookie signed with itsdangerous.
 """
 import csv
-import hashlib
-import hmac
 import io
 import logging
 import os
@@ -13,13 +11,13 @@ import re
 import tempfile
 from datetime import date, datetime, timedelta
 from typing import Optional
+from urllib.parse import quote
 
 log = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -27,9 +25,10 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import get_db
 from app.models import (
-    AttendanceSession, AuditLog, FocusCategory, Mentor, MentorSession, SessionStatus, Student, Team, WeeklyRequirement,
+    AttendanceSession, AuditLog, Mentor, MentorSession, SessionStatus, Student, Subteam, Team, WeeklyRequirement,
 )
 from app.services import audit
+from app.services.sso import logout_url, make_authorize_url, sso_identity
 from app.utils import utc_to_local, today_local, local_to_utc
 
 router = APIRouter(prefix="/admin")
@@ -38,75 +37,51 @@ templates.env.filters["localdt"] = (
     lambda dt, fmt="%m/%d %I:%M %p": utc_to_local(dt).strftime(fmt) if dt else ""
 )
 
-_signer = URLSafeTimedSerializer(settings.session_secret, salt="admin-session")
-_COOKIE = "admin_session"
-_MAX_AGE = 60 * 60 * 12  # 12 hours
-
-
 # ── Auth helpers ───────────────────────────────────────────────────────────────
+#
+# /admin is gated by Legion SSO: the shared `mw_sso` cookie must carry the `tempus-admin`
+# group. There is no local password — Legion mints the cookie, Tempus only verifies it
+# (services/sso.py). The first admin is granted `tempus-admin` in Legion's /admin/groups.
 
-def _is_authenticated(request: Request) -> bool:
-    token = request.cookies.get(_COOKIE)
-    if not token:
-        return False
-    try:
-        _signer.loads(token, max_age=_MAX_AGE)
-        return True
-    except (BadSignature, SignatureExpired):
-        return False
+_ADMIN_GROUP = "tempus-admin"
 
 
-def _require_auth(request: Request) -> None | RedirectResponse:
-    if not _is_authenticated(request):
-        return RedirectResponse("/admin/login", status_code=303)
-    return None
-
-
-def _make_session_cookie() -> str:
-    return _signer.dumps("authenticated")
-
-
-# ── Login / logout ─────────────────────────────────────────────────────────────
-
-@router.get("/login", response_class=HTMLResponse)
-async def admin_login_get(request: Request, error: str = ""):
+def _require_groups(request: Request, groups: set[str]):
+    """Gate a route on the SSO identity holding at least one of `groups`. Returns a
+    redirect (no/invalid cookie → sign in at Legion) or a 403 (signed in but not
+    authorized) to short-circuit the route with, or None to let it proceed."""
+    identity = sso_identity(request)
+    if identity is None:
+        return RedirectResponse(make_authorize_url(request), status_code=303)
+    if groups & set(identity.get("groups") or []):
+        return None
     return templates.TemplateResponse(
-        "admin/login.html", {"request": request, "error": error}
+        "admin/forbidden.html",
+        {"request": request, "name": identity.get("name", "")},
+        status_code=403,
     )
 
 
-@router.post("/login")
-async def admin_login_post(
-    request: Request,
-    password: str = Form(...),
-    db: AsyncSession = Depends(get_db),
-):
-    if not hmac.compare_digest(password, settings.admin_password):
-        await audit.record(db, request, "admin.login_failed", "Failed admin login attempt", actor="anonymous")
-        await db.commit()
-        return templates.TemplateResponse(
-            "admin/login.html",
-            {"request": request, "error": "Incorrect password."},
-            status_code=401,
-        )
-    await audit.record(db, request, "admin.login", "Admin signed in")
-    await db.commit()
-    response = RedirectResponse("/admin", status_code=303)
-    response.set_cookie(
-        _COOKIE,
-        _make_session_cookie(),
-        httponly=True,
-        samesite="lax",
-        max_age=_MAX_AGE,
-    )
-    return response
+def _require_auth(request: Request):
+    """Full admin access: the `tempus-admin` group via Legion SSO."""
+    return _require_groups(request, {_ADMIN_GROUP})
 
+
+async def _active_subteams(db: AsyncSession):
+    """Active subteams (Legion mirror) for dropdowns, ordered for display."""
+    return (await db.execute(
+        select(Subteam).where(Subteam.is_active.is_(True))
+        .order_by(Subteam.sort_order, Subteam.label)
+    )).scalars().all()
+
+
+# ── Logout ─────────────────────────────────────────────────────────────────────
 
 @router.get("/logout")
-async def admin_logout():
-    response = RedirectResponse("/admin/login", status_code=303)
-    response.delete_cookie(_COOKIE)
-    return response
+async def admin_logout(request: Request):
+    # Single logout: bounce to Legion's /sso/logout, which clears the shared `mw_sso`
+    # cookie for every sibling app.
+    return RedirectResponse(logout_url(request), status_code=303)
 
 
 # ── Dashboard ──────────────────────────────────────────────────────────────────
@@ -209,226 +184,57 @@ async def admin_manual_signin(
 
 # ── Students ───────────────────────────────────────────────────────────────────
 
-@router.get("/students", response_class=HTMLResponse)
-async def admin_students_list(
-    request: Request, show_archived: int = 0, db: AsyncSession = Depends(get_db)
-):
+# ── Roster (read-only mirror of Legion) ─────────────────────────────────────────
+#
+# The roster is owned by Legion and synced in (see services/legion_sync.py). Tempus no
+# longer creates/edits/archives members — manage them in Legion's /admin. These routes
+# are read-only plus a manual "Sync now" and the QR-badge send.
+
+@router.get("/roster", response_class=HTMLResponse)
+@router.get("/students", response_class=HTMLResponse)  # legacy path → roster
+async def admin_roster(request: Request, db: AsyncSession = Depends(get_db)):
     if redirect := _require_auth(request):
         return redirect
 
-    student_q = select(Student).options(selectinload(Student.team)).order_by(Student.name)
-    if not show_archived:
-        student_q = student_q.where(Student.is_active.is_(True))
-    result = await db.execute(student_q)
-    students = result.scalars().all()
+    students = (await db.execute(
+        select(Student).options(selectinload(Student.team)).order_by(Student.name)
+    )).scalars().all()
+    mentors = (await db.execute(
+        select(Mentor).options(selectinload(Mentor.team)).order_by(Mentor.name)
+    )).scalars().all()
 
-    teams_result = await db.execute(select(Team).order_by(Team.number))
-    teams = teams_result.scalars().all()
+    from app.services.app_settings import get_setting
+    last_synced = await get_setting(db, "legion_last_synced_at")
 
     return templates.TemplateResponse(
-        "admin/students.html",
+        "admin/roster.html",
         {
             "request": request,
             "students": students,
-            "teams": teams,
-            "categories": list(FocusCategory),
-            "show_archived": bool(show_archived),
+            "mentors": mentors,
+            "last_synced": last_synced,
+            "legion_base_url": settings.legion_base_url,
         },
     )
 
 
-@router.post("/students")
-async def admin_students_create(
-    request: Request,
-    name: str = Form(...),
-    team_id: int = Form(...),
-    category: Optional[str] = Form(None),
-    slack_user_id: Optional[str] = Form(None),
-    db: AsyncSession = Depends(get_db),
-):
+@router.post("/roster/sync")
+async def admin_roster_sync(request: Request, db: AsyncSession = Depends(get_db)):
+    """Manually trigger a roster pull from Legion."""
     if redirect := _require_auth(request):
         return redirect
 
-    if not category:
-        teams_result = await db.execute(select(Team).order_by(Team.number))
-        students_result = await db.execute(
-            select(Student).options(selectinload(Student.team)).order_by(Student.name)
-        )
-        return templates.TemplateResponse(
-            "admin/students.html",
-            {
-                "request": request,
-                "students": students_result.scalars().all(),
-                "teams": teams_result.scalars().all(),
-                "categories": list(FocusCategory),
-                "error": "Category is required.",
-            },
-        )
-
-    student = Student(
-        name=name.strip(),
-        student_code=hashlib.sha256(name.strip().lower().encode()).hexdigest()[:8],
-        team_id=team_id,
-        category=FocusCategory(category),
-        slack_user_id=slack_user_id.strip() if slack_user_id else None,
-    )
-    db.add(student)
-    await audit.record(
-        db, request, "student.create", f"Created student {student.name}",
-        entity_type="student",
-    )
+    from app.services.legion_sync import sync_roster
+    try:
+        summary = await sync_roster(db)
+    except Exception as e:  # network / config errors surface as a flash, not a 500
+        log.error("Manual Legion sync failed: %s", e)
+        await audit.record(db, request, "roster.sync_failed", f"Legion sync failed: {e}")
+        await db.commit()
+        return RedirectResponse(f"/admin/roster?sync_error={quote(str(e))}", status_code=303)
+    await audit.record(db, request, "roster.sync", f"Synced roster from Legion ({summary})")
     await db.commit()
-    return RedirectResponse("/admin/students", status_code=303)
-
-
-@router.get("/students/{student_id}/edit", response_class=HTMLResponse)
-async def admin_students_edit_get(
-    student_id: int, request: Request, db: AsyncSession = Depends(get_db)
-):
-    if redirect := _require_auth(request):
-        return redirect
-
-    result = await db.execute(
-        select(Student).options(selectinload(Student.team)).where(Student.id == student_id)
-    )
-    student = result.scalars().first()
-    if not student:
-        return RedirectResponse("/admin/students", status_code=303)
-
-    teams_result = await db.execute(select(Team).order_by(Team.number))
-    teams = teams_result.scalars().all()
-
-    return templates.TemplateResponse(
-        "admin/student_edit.html",
-        {"request": request, "student": student, "teams": teams, "categories": list(FocusCategory)},
-    )
-
-
-@router.post("/students/{student_id}/edit")
-async def admin_students_edit_post(
-    student_id: int,
-    request: Request,
-    name: str = Form(...),
-    team_id: int = Form(...),
-    category: Optional[str] = Form(None),
-    slack_user_id: Optional[str] = Form(None),
-    db: AsyncSession = Depends(get_db),
-):
-    if redirect := _require_auth(request):
-        return redirect
-
-    if not category:
-        s_result = await db.execute(
-            select(Student).options(selectinload(Student.team)).where(Student.id == student_id)
-        )
-        student = s_result.scalars().first()
-        teams_result = await db.execute(select(Team).order_by(Team.number))
-        return templates.TemplateResponse(
-            "admin/student_edit.html",
-            {
-                "request": request,
-                "student": student,
-                "teams": teams_result.scalars().all(),
-                "categories": list(FocusCategory),
-                "error": "Category is required.",
-            },
-        )
-
-    result = await db.execute(select(Student).where(Student.id == student_id))
-    student = result.scalars().first()
-    if student:
-        before = {
-            "name": student.name,
-            "team_id": student.team_id,
-            "category": student.category.value if student.category else None,
-            "slack_user_id": student.slack_user_id,
-        }
-        student.name = name.strip()
-        student.team_id = team_id
-        student.category = FocusCategory(category)
-        student.slack_user_id = slack_user_id.strip() if slack_user_id else None
-        after = {
-            "name": student.name,
-            "team_id": student.team_id,
-            "category": student.category.value if student.category else None,
-            "slack_user_id": student.slack_user_id,
-        }
-        await audit.record(
-            db, request, "student.edit", f"Edited student {student.name}",
-            entity_type="student", entity_id=student.id,
-            detail={"before": before, "after": after},
-        )
-        await db.commit()
-    return RedirectResponse("/admin/students", status_code=303)
-
-
-@router.post("/students/{student_id}/delete")
-async def admin_students_delete(
-    student_id: int, request: Request, db: AsyncSession = Depends(get_db)
-):
-    """Archive a student (soft delete) — preserves their session history."""
-    if redirect := _require_auth(request):
-        return redirect
-
-    result = await db.execute(select(Student).where(Student.id == student_id))
-    student = result.scalars().first()
-    if student and student.is_active:
-        student.is_active = False
-        student.archived_at = datetime.utcnow()
-        await audit.record(
-            db, request, "student.archive", f"Archived student {student.name}",
-            entity_type="student", entity_id=student.id,
-        )
-        await db.commit()
-    return RedirectResponse("/admin/students?show_archived=1", status_code=303)
-
-
-@router.post("/students/{student_id}/restore")
-async def admin_students_restore(
-    student_id: int, request: Request, db: AsyncSession = Depends(get_db)
-):
-    if redirect := _require_auth(request):
-        return redirect
-
-    result = await db.execute(select(Student).where(Student.id == student_id))
-    student = result.scalars().first()
-    if student and not student.is_active:
-        student.is_active = True
-        student.archived_at = None
-        await audit.record(
-            db, request, "student.restore", f"Restored student {student.name}",
-            entity_type="student", entity_id=student.id,
-        )
-        await db.commit()
-    return RedirectResponse("/admin/students?show_archived=1", status_code=303)
-
-
-@router.post("/students/{student_id}/purge")
-async def admin_students_purge(
-    student_id: int, request: Request, db: AsyncSession = Depends(get_db)
-):
-    """Permanently delete a student — only allowed when they have no sessions."""
-    if redirect := _require_auth(request):
-        return redirect
-
-    result = await db.execute(select(Student).where(Student.id == student_id))
-    student = result.scalars().first()
-    if student:
-        # Check if student has any sessions
-        session_count = await db.scalar(
-            select(func.count()).select_from(AttendanceSession)
-            .where(AttendanceSession.student_id == student_id)
-        )
-        if session_count and session_count > 0:
-            return RedirectResponse("/admin/students?show_archived=1&has_sessions=1", status_code=303)
-
-        await audit.record(
-            db, request, "student.purge", f"Permanently deleted student {student.name}",
-            entity_type="student", entity_id=student.id,
-        )
-        await db.execute(delete(Student).where(Student.id == student_id))
-        await db.commit()
-    return RedirectResponse("/admin/students?show_archived=1", status_code=303)
+    return RedirectResponse(f"/admin/roster?synced={quote(summary)}", status_code=303)
 
 
 @router.post("/students/send-qr-all")
@@ -444,14 +250,13 @@ async def admin_students_send_qr_all(
     result = await db.execute(
         select(Student).where(
             Student.slack_user_id.is_not(None),
-            Student.student_code.is_not(None),
             Student.is_active.is_(True),
         )
     )
-    students = result.scalars().all()
+    students = [s for s in result.scalars().all() if (s.member_code or s.student_code)]
     for s in students:
-        background_tasks.add_task(send_qr_dm, s.slack_user_id, s.student_code, s.name)
-    return RedirectResponse(f"/admin/students?qr_sent={len(students)}", status_code=303)
+        background_tasks.add_task(send_qr_dm, s.slack_user_id, s.member_code or s.student_code, s.name)
+    return RedirectResponse(f"/admin/roster?qr_sent={len(students)}", status_code=303)
 
 
 @router.post("/mentors/send-qr-all")
@@ -467,134 +272,13 @@ async def admin_mentors_send_qr_all(
     result = await db.execute(
         select(Mentor).where(
             Mentor.slack_user_id.is_not(None),
-            Mentor.mentor_code.is_not(None),
             Mentor.is_active.is_(True),
         )
     )
-    mentors = result.scalars().all()
+    mentors = [m for m in result.scalars().all() if (m.member_code or m.mentor_code)]
     for m in mentors:
-        background_tasks.add_task(send_qr_dm, m.slack_user_id, m.mentor_code, m.name)
-    return RedirectResponse(f"/admin/mentors?qr_sent={len(mentors)}", status_code=303)
-
-
-# ── Mentors ────────────────────────────────────────────────────────────────────
-
-@router.get("/mentors", response_class=HTMLResponse)
-async def admin_mentors_list(
-    request: Request, show_archived: int = 0, db: AsyncSession = Depends(get_db)
-):
-    if redirect := _require_auth(request):
-        return redirect
-
-    mentor_q = select(Mentor).options(selectinload(Mentor.team)).order_by(Mentor.name)
-    if not show_archived:
-        mentor_q = mentor_q.where(Mentor.is_active.is_(True))
-    result = await db.execute(mentor_q)
-    mentors = result.scalars().all()
-
-    teams_result = await db.execute(select(Team).order_by(Team.number))
-    teams = teams_result.scalars().all()
-
-    return templates.TemplateResponse(
-        "admin/mentors.html",
-        {
-            "request": request,
-            "mentors": mentors,
-            "teams": teams,
-            "categories": list(FocusCategory),
-            "show_archived": bool(show_archived),
-        },
-    )
-
-
-@router.post("/mentors")
-async def admin_mentors_create(
-    request: Request,
-    name: str = Form(...),
-    slack_user_id: str = Form(...),
-    team_id: Optional[int] = Form(None),
-    category: Optional[str] = Form(None),
-    db: AsyncSession = Depends(get_db),
-):
-    if redirect := _require_auth(request):
-        return redirect
-
-    db.add(Mentor(
-        name=name.strip(),
-        mentor_code=hashlib.sha256(name.strip().lower().encode()).hexdigest()[:8],
-        slack_user_id=slack_user_id.strip(),
-        team_id=team_id or None,
-        category=FocusCategory(category) if category else None,
-    ))
-    await audit.record(
-        db, request, "mentor.create", f"Created mentor {name.strip()}",
-        entity_type="mentor",
-    )
-    await db.commit()
-    return RedirectResponse("/admin/mentors", status_code=303)
-
-
-@router.post("/mentors/{mentor_id}/delete")
-async def admin_mentors_delete(
-    mentor_id: int, request: Request, db: AsyncSession = Depends(get_db)
-):
-    """Archive a mentor (soft delete) — preserves their session history."""
-    if redirect := _require_auth(request):
-        return redirect
-
-    result = await db.execute(select(Mentor).where(Mentor.id == mentor_id))
-    mentor = result.scalars().first()
-    if mentor and mentor.is_active:
-        mentor.is_active = False
-        mentor.archived_at = datetime.utcnow()
-        await audit.record(
-            db, request, "mentor.archive", f"Archived mentor {mentor.name}",
-            entity_type="mentor", entity_id=mentor.id,
-        )
-        await db.commit()
-    return RedirectResponse("/admin/mentors?show_archived=1", status_code=303)
-
-
-@router.post("/mentors/{mentor_id}/restore")
-async def admin_mentors_restore(
-    mentor_id: int, request: Request, db: AsyncSession = Depends(get_db)
-):
-    if redirect := _require_auth(request):
-        return redirect
-
-    result = await db.execute(select(Mentor).where(Mentor.id == mentor_id))
-    mentor = result.scalars().first()
-    if mentor and not mentor.is_active:
-        mentor.is_active = True
-        mentor.archived_at = None
-        await audit.record(
-            db, request, "mentor.restore", f"Restored mentor {mentor.name}",
-            entity_type="mentor", entity_id=mentor.id,
-        )
-        await db.commit()
-    return RedirectResponse("/admin/mentors?show_archived=1", status_code=303)
-
-
-@router.post("/mentors/{mentor_id}/toggle-lead")
-async def admin_mentors_toggle_lead(
-    mentor_id: int, request: Request, db: AsyncSession = Depends(get_db)
-):
-    """Toggle a mentor's lead flag — leads are the only mentors looped into
-    group DMs when a student falls behind."""
-    if redirect := _require_auth(request):
-        return redirect
-
-    result = await db.execute(select(Mentor).where(Mentor.id == mentor_id))
-    mentor = result.scalars().first()
-    if mentor:
-        mentor.is_lead = not mentor.is_lead
-        await audit.record(
-            db, request, "mentor.toggle_lead",
-            f"{'Marked' if mentor.is_lead else 'Unmarked'} {mentor.name} as lead",
-            entity_type="mentor", entity_id=mentor.id,
-        )
-        await db.commit()
-    return RedirectResponse("/admin/mentors", status_code=303)
+        background_tasks.add_task(send_qr_dm, m.slack_user_id, m.member_code or m.mentor_code, m.name)
+    return RedirectResponse(f"/admin/roster?qr_sent={len(mentors)}", status_code=303)
 
 
 # ── Weekly Requirements ────────────────────────────────────────────────────────
@@ -614,11 +298,13 @@ async def admin_requirements_list(request: Request, db: AsyncSession = Depends(g
     teams_result = await db.execute(select(Team).order_by(Team.number))
     teams = teams_result.scalars().all()
 
-    # Compute per-row "covers until" by grouping entries in each (team_id, category) scope
+    subteams = await _active_subteams(db)
+
+    # Compute per-row "covers until" by grouping entries in each (team_id, subteam) scope
     from collections import defaultdict
     scope_entries: dict = defaultdict(list)
     for r in sorted(requirements, key=lambda x: x.week_start):
-        scope_entries[(r.team_id, r.category)].append(r)
+        scope_entries[(r.team_id, r.subteam_slug)].append(r)
 
     covers_until: dict = {}
     for entries in scope_entries.values():
@@ -634,7 +320,7 @@ async def admin_requirements_list(request: Request, db: AsyncSession = Depends(g
             "request": request,
             "requirements": requirements,
             "teams": teams,
-            "categories": list(FocusCategory),
+            "subteams": subteams,
             "covers_until": covers_until,
         },
     )
@@ -644,7 +330,7 @@ async def admin_requirements_list(request: Request, db: AsyncSession = Depends(g
 async def admin_requirements_create(
     request: Request,
     team_id: Optional[str] = Form(None),
-    category: Optional[str] = Form(None),
+    subteam_slug: Optional[str] = Form(None),
     week_start: date = Form(...),
     required_hours: float = Form(...),
     db: AsyncSession = Depends(get_db),
@@ -654,7 +340,7 @@ async def admin_requirements_create(
 
     # Normalise to Monday
     week_monday = week_start - timedelta(days=week_start.weekday())
-    parsed_category = FocusCategory(category) if category else None
+    parsed_slug = subteam_slug.strip() if subteam_slug and subteam_slug.strip() else None
     parsed_team_id = int(team_id) if team_id else None  # empty = all teams
 
     # Upsert: update if exists
@@ -662,14 +348,14 @@ async def admin_requirements_create(
         WeeklyRequirement.team_id.is_(None) if parsed_team_id is None
         else WeeklyRequirement.team_id == parsed_team_id
     )
-    cat_clause = (
-        WeeklyRequirement.category.is_(None) if parsed_category is None
-        else WeeklyRequirement.category == parsed_category
+    slug_clause = (
+        WeeklyRequirement.subteam_slug.is_(None) if parsed_slug is None
+        else WeeklyRequirement.subteam_slug == parsed_slug
     )
     existing_result = await db.execute(
         select(WeeklyRequirement).where(
             team_clause,
-            cat_clause,
+            slug_clause,
             WeeklyRequirement.week_start == week_monday,
         )
     )
@@ -679,16 +365,16 @@ async def admin_requirements_create(
     else:
         db.add(
             WeeklyRequirement(
-                team_id=parsed_team_id, category=parsed_category, week_start=week_monday, required_hours=required_hours
+                team_id=parsed_team_id, subteam_slug=parsed_slug, week_start=week_monday, required_hours=required_hours
             )
         )
     await audit.record(
         db, request, "requirement.set",
         f"Set requirement {required_hours}h for team={parsed_team_id or 'all'} "
-        f"category={parsed_category.value if parsed_category else 'all'} week {week_monday}",
+        f"subteam={parsed_slug or 'all'} week {week_monday}",
         entity_type="requirement",
         detail={"team_id": parsed_team_id,
-                "category": parsed_category.value if parsed_category else None,
+                "subteam_slug": parsed_slug,
                 "week_start": str(week_monday), "required_hours": required_hours},
     )
     await db.commit()
@@ -712,10 +398,10 @@ async def admin_requirements_delete(
         return RedirectResponse("/admin/requirements", status_code=303)
 
     team_label = f"team {req.team.number}" if req.team else "all teams"
-    category_label = req.category.value if req.category else "all categories"
+    subteam_label = req.subteam_slug or "all subteams"
     await audit.record(
         db, request, "requirement.delete",
-        f"Deleted requirement: {req.required_hours}h for {team_label}, {category_label}, week {req.week_start}",
+        f"Deleted requirement: {req.required_hours}h for {team_label}, {subteam_label}, week {req.week_start}",
         entity_type="requirement", entity_id=req_id,
     )
     await db.execute(delete(WeeklyRequirement).where(WeeklyRequirement.id == req_id))
@@ -747,10 +433,7 @@ async def admin_sessions_list(
     mid = sid if is_mentor else None
     tid = int(team_id) if team_id and team_id.strip().isdigit() else None
     cat_str = category.strip() if category and category.strip() else None
-    try:
-        cat = FocusCategory(cat_str) if cat_str else None
-    except ValueError:
-        cat = None
+    cat = cat_str  # subteam slug (free-form, sourced from Legion)
     try:
         d_from = date.fromisoformat(date_from.strip()) if date_from and date_from.strip() else None
     except ValueError:
@@ -775,7 +458,7 @@ async def admin_sessions_list(
             if tid:
                 query = query.where(Mentor.team_id == tid)
             if cat:
-                query = query.where(Mentor.category == cat)
+                query = query.where(Mentor.subteam_slug == cat)
         if d_from:
             query = query.where(
                 MentorSession.sign_in_time >= local_to_utc(datetime.combine(d_from, datetime.min.time()))
@@ -802,7 +485,7 @@ async def admin_sessions_list(
             if tid:
                 query = query.where(Student.team_id == tid)
             if cat:
-                query = query.where(Student.category == cat)
+                query = query.where(Student.subteam_slug == cat)
         if d_from:
             query = query.where(
                 AttendanceSession.sign_in_time >= local_to_utc(datetime.combine(d_from, datetime.min.time()))
@@ -832,12 +515,12 @@ async def admin_sessions_list(
             "total_pages": max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE),
             "all_students": all_students,
             "teams": teams,
-            "categories": list(FocusCategory),
+            "subteams": await _active_subteams(db),
             "filters": {
                 "person_type": "mentor" if is_mentor else "student",
                 "student_id": mid if is_mentor else sid,
                 "team_id": tid,
-                "category": cat.value if cat else None,
+                "category": cat,
                 "date_from": d_from,
                 "date_to": d_to,
             },
@@ -855,16 +538,13 @@ async def admin_sessions_export(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
 ):
-    if not _is_authenticated(request):
-        return RedirectResponse("/admin/login", status_code=303)
+    if redirect := _require_auth(request):
+        return redirect
 
     sid = int(student_id) if student_id and student_id.strip().isdigit() else None
     tid = int(team_id) if team_id and team_id.strip().isdigit() else None
     cat_str = category.strip() if category and category.strip() else None
-    try:
-        cat = FocusCategory(cat_str) if cat_str else None
-    except ValueError:
-        cat = None
+    cat = cat_str  # subteam slug (free-form, sourced from Legion)
     try:
         d_from = date.fromisoformat(date_from.strip()) if date_from and date_from.strip() else None
     except ValueError:
@@ -886,7 +566,7 @@ async def admin_sessions_export(
         if tid:
             query = query.where(Student.team_id == tid)
         if cat:
-            query = query.where(Student.category == cat)
+            query = query.where(Student.subteam_slug == cat)
     if d_from:
         query = query.where(
             AttendanceSession.sign_in_time >= local_to_utc(datetime.combine(d_from, datetime.min.time()))
@@ -1480,136 +1160,9 @@ async def admin_leaderboard_reset(request: Request, db: AsyncSession = Depends(g
 
 # ── CSV Import ─────────────────────────────────────────────────────────────────
 
-@router.get("/import", response_class=HTMLResponse)
-async def admin_import_get(request: Request):
-    if redirect := _require_auth(request):
-        return redirect
-    return templates.TemplateResponse("admin/import.html", {"request": request})
-
-
-@router.post("/import", response_class=HTMLResponse)
-async def admin_import_post(
-    request: Request,
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
-):
-    if redirect := _require_auth(request):
-        return redirect
-
-    created = []
-    updated = []
-    errors = []
-
-    # Build team lookup by number
-    teams_result = await db.execute(select(Team).order_by(Team.number))
-    team_by_number = {t.number: t for t in teams_result.scalars().all()}
-
-    content = await file.read()
-    try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = content.decode("latin-1")
-
-    reader = csv.DictReader(io.StringIO(text))
-    for i, row in enumerate(reader, start=2):  # row 1 = header
-        row_type = (row.get("type") or "").strip().lower()
-        name = (row.get("name") or "").strip()
-        team_num_str = (row.get("team_number") or "").strip()
-        category_str = (row.get("category") or "").strip().lower()
-        slack_uid = (row.get("slack_user_id") or "").strip() or None
-
-        if not row_type or not name:
-            errors.append({"row": i, "reason": "Missing type or name", "data": dict(row)})
-            continue
-
-        if row_type not in ("student", "mentor"):
-            errors.append({"row": i, "reason": f"Unknown type '{row_type}'", "data": dict(row)})
-            continue
-
-        if row_type == "student":
-            # Required: team_number, category
-            try:
-                team_num = int(team_num_str)
-                team = team_by_number.get(team_num)
-                if not team:
-                    raise ValueError
-            except (ValueError, TypeError):
-                errors.append({"row": i, "reason": f"Invalid team_number '{team_num_str}'", "data": dict(row)})
-                continue
-
-            if category_str not in ("software", "design", "business"):
-                errors.append({"row": i, "reason": f"Invalid category '{category_str}'", "data": dict(row)})
-                continue
-
-            category = FocusCategory(category_str)
-            result = await db.execute(
-                select(Student).where(func.lower(Student.name) == name.lower())
-            )
-            student = result.scalars().first()
-            if student:
-                student.team_id = team.id
-                student.category = category
-                student.slack_user_id = slack_uid
-                updated.append(name)
-            else:
-                db.add(Student(
-                    name=name,
-                    student_code=hashlib.sha256(name.strip().lower().encode()).hexdigest()[:8],
-                    team_id=team.id,
-                    category=category,
-                    slack_user_id=slack_uid,
-                ))
-                created.append(name)
-
-        else:  # mentor
-            team = None
-            if team_num_str:
-                try:
-                    team = team_by_number.get(int(team_num_str))
-                except (ValueError, TypeError):
-                    pass
-
-            category = FocusCategory(category_str) if category_str in ("software", "design", "business") else None
-
-            result = await db.execute(
-                select(Mentor).where(func.lower(Mentor.name) == name.lower())
-            )
-            mentor = result.scalars().first()
-            if mentor:
-                mentor.team_id = team.id if team else None
-                mentor.category = category
-                if slack_uid:
-                    mentor.slack_user_id = slack_uid
-                updated.append(name)
-            else:
-                db.add(Mentor(
-                    name=name,
-                    mentor_code=hashlib.sha256(name.strip().lower().encode()).hexdigest()[:8],
-                    slack_user_id=slack_uid or "",
-                    team_id=team.id if team else None,
-                    category=category,
-                ))
-                created.append(name)
-
-    if created or updated:
-        await audit.record(
-            db, request, "import.csv",
-            f"CSV import: {len(created)} created, {len(updated)} updated, {len(errors)} error(s)",
-            entity_type="import",
-            detail={"created": created, "updated": updated,
-                    "error_count": len(errors), "filename": file.filename},
-        )
-    await db.commit()
-
-    return templates.TemplateResponse(
-        "admin/import.html",
-        {
-            "request": request,
-            "created": created,
-            "updated": updated,
-            "errors": errors,
-        },
-    )
+# CSV roster import was removed — the roster is owned by Legion and pulled in via
+# services/legion_sync.py (see the /admin/roster "Sync now" action). Manage members in
+# Legion's /admin, not here.
 
 
 # ── Audit log ──────────────────────────────────────────────────────────────────
@@ -1745,16 +1298,10 @@ async def admin_report(
     d_to = date_to or default_to
 
     team_id_int = int(team_id) if team_id else None
-
-    cat_enum = None
-    if category:
-        try:
-            cat_enum = FocusCategory(category)
-        except ValueError:
-            pass
+    subteam_slug = category.strip() if category and category.strip() else None
 
     week_starts = week_starts_in_range(d_from, d_to)
-    rows = await weekly_attendance_report(db, week_starts, team_id=team_id_int, category=cat_enum)
+    rows = await weekly_attendance_report(db, week_starts, team_id=team_id_int, subteam_slug=subteam_slug)
 
     teams_result = await db.execute(select(Team).order_by(Team.number))
     teams = teams_result.scalars().all()
@@ -1766,7 +1313,7 @@ async def admin_report(
             "rows": rows,
             "week_starts": week_starts,
             "teams": teams,
-            "categories": list(FocusCategory),
+            "subteams": await _active_subteams(db),
             "filters": {
                 "date_from": d_from,
                 "date_to": d_to,
@@ -1799,28 +1346,22 @@ async def admin_report_export(
     d_to = date_to or default_to
 
     team_id_int = int(team_id) if team_id else None
-
-    cat_enum = None
-    if category:
-        try:
-            cat_enum = FocusCategory(category)
-        except ValueError:
-            pass
+    subteam_slug = category.strip() if category and category.strip() else None
 
     week_starts = week_starts_in_range(d_from, d_to)
-    rows = await weekly_attendance_report(db, week_starts, team_id=team_id_int, category=cat_enum)
+    rows = await weekly_attendance_report(db, week_starts, team_id=team_id_int, subteam_slug=subteam_slug)
 
     def _generate():
         buf = io.StringIO()
         writer = csv.writer(buf)
-        header = ["Student", "Team", "Category"] + [ws.strftime("%Y-%m-%d") for ws in week_starts] + ["Total Hours", "Weeks Met"]
+        header = ["Student", "Team", "Subteam"] + [ws.strftime("%Y-%m-%d") for ws in week_starts] + ["Total Hours", "Weeks Met"]
         writer.writerow(header)
         yield buf.getvalue()
         for row in rows:
             buf.seek(0)
             buf.truncate()
             s = row["student"]
-            data = [s.name, s.team.number if s.team else "", s.category.value if s.category else ""]
+            data = [s.name, s.team.number if s.team else "", s.subteam_slug or ""]
             data += [f"{w['hours']:.2f}" for w in row["weeks"]]
             data += [f"{row['total_hours']:.2f}", f"{row['weeks_met']}/{row['weeks_total']}"]
             writer.writerow(data)

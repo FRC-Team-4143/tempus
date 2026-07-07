@@ -40,9 +40,9 @@
   </div>
   <div class="col-auto">
     <select name="category" class="form-select form-select-sm">
-      <option value="">All Categories</option>
-      {% for c in categories %}
-      <option value="{{ c.value }}" {% if filters.category == c.value %}selected{% endif %}>{{ c.value | capitalize }}</option>
+      <option value="">All Subteams</option>
+      {% for s in subteams %}
+      <option value="{{ s.slug }}" {% if filters.category == s.slug %}selected{% endif %}>{{ s.label }}</option>
       {% endfor %}
     </select>
   </div>

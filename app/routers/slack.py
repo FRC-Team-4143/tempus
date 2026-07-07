@@ -297,7 +297,7 @@ async def slack_command(
             )
             week_hours = float(week_result.scalar() or 0.0)
 
-            required = await resolve_requirement(db, student.team_id, student.category, week_start)
+            required = await resolve_requirement(db, student.team_id, student.subteam_slug, week_start)
 
             on_track = week_hours >= required
             status_icon = "✅" if on_track else "⚠️"

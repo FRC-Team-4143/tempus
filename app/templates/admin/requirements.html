@@ -10,9 +10,9 @@
   </button>
 </div>
 <p class="text-muted small">
-  Each entry applies to the week shown <strong>and all following weeks</strong> until a newer entry for the same team/category overrides it.
+  Each entry applies to the week shown <strong>and all following weeks</strong> until a newer entry for the same team/subteam overrides it.
   To change the requirement from a given week onward, just add a new entry — older entries are kept as history.
-  The most specific match wins: a team-specific entry overrides All Teams, and a category-specific entry overrides one with no category (default 11 hrs).
+  The most specific match wins: a team-specific entry overrides All Teams, and a subteam-specific entry overrides one with no subteam (default 11 hrs).
 </p>
 
 <div class="card shadow-sm">
@@ -33,7 +33,7 @@
         {% set until = covers_until[r.id] %}
         <tr>
           <td>{{ r.team.number if r.team else 'All Teams' }}</td>
-          <td>{{ r.category.value | capitalize if r.category else '—' }}</td>
+          <td>{{ r.subteam_slug | capitalize if r.subteam_slug else '—' }}</td>
           <td>{{ r.week_start.strftime('%b %d, %Y') }}</td>
           <td class="text-muted small">
             {% if until %}
@@ -71,11 +71,11 @@
             </select>
           </div>
           <div class="mb-3">
-            <label class="form-label">Category</label>
-            <select name="category" class="form-select">
-              <option value="">— All (no category) —</option>
-              {% for c in categories %}
-              <option value="{{ c.value }}">{{ c.value | capitalize }}</option>
+            <label class="form-label">Subteam</label>
+            <select name="subteam_slug" class="form-select">
+              <option value="">— All (no subteam) —</option>
+              {% for s in subteams %}
+              <option value="{{ s.slug }}">{{ s.label }}</option>
               {% endfor %}
             </select>
           </div>

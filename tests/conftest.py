@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
-from app.models import FocusCategory, Student, Team
+from app.models import Student, Team
 
 
 @pytest_asyncio.fixture
@@ -50,19 +50,22 @@ async def team(db) -> Team:
 
 @pytest_asyncio.fixture
 async def make_student(db, team):
-    """Factory: create_student(name="Ada", code="abc123", category=..., active=True)."""
+    """Factory: create_student(name="Ada", code="abc123", subteam_slug=..., active=True).
+
+    `code` is stored as `member_code` (the Legion badge/sign-in id); sign-in also accepts
+    the legacy `student_code`, so tests can pass either via the model directly if needed."""
     async def _make(
         name: str = "Ada Lovelace",
         code: str = "ada00001",
-        category: FocusCategory | None = FocusCategory.software,
+        subteam_slug: str | None = "software",
         team_id: int | None = None,
         is_active: bool = True,
     ) -> Student:
         s = Student(
             name=name,
-            student_code=code,
+            member_code=code,
             team_id=team_id or team.id,
-            category=category,
+            subteam_slug=subteam_slug,
             is_active=is_active,
         )
         db.add(s)
@@ -90,13 +93,28 @@ async def client(session_factory):
     app.dependency_overrides.clear()
 
 
-@pytest_asyncio.fixture
-async def authed_client(client):
-    """An httpx client already logged into the admin UI."""
+def make_sso_cookie(groups=("tempus-admin",), *, name="Test Admin", username="test.admin"):
+    """Mint a valid `mw_sso` cookie value for tests, mirroring Legion's `make_sso_token`.
+    Uses the app's own `sso_secret`, so `read_sso_token` verifies it."""
+    from itsdangerous import URLSafeTimedSerializer
     from app.config import settings
 
-    resp = await client.post(
-        "/admin/login", data={"password": settings.admin_password}
-    )
-    assert resp.status_code in (200, 303)
+    signer = URLSafeTimedSerializer(settings.sso_secret, salt="mw-sso")
+    return signer.dumps({
+        "member_code": "test0001",
+        "username": username,
+        "name": name,
+        "role": "mentor",
+        "team_number": 4143,
+        "groups": list(groups),
+        "slack_user_id": None,
+    })
+
+
+@pytest_asyncio.fixture
+async def authed_client(client):
+    """An httpx client carrying a valid `mw_sso` cookie in the `tempus-admin` group."""
+    from app.services.sso import SSO_COOKIE
+
+    client.cookies.set(SSO_COOKIE, make_sso_cookie())
     return client

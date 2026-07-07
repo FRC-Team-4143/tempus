@@ -9,7 +9,7 @@ A web-based attendance tracking system for FIRST Robotics Competition teams **41
 - **Automated sign-out** — nightly auto sign-out at a configurable time
 - **Weekly Slack DMs** — automatic hour-summary messages to students (and mentors if a student is falling behind)
 - **Hours multipliers** — session quality ratings (Contributor / Present / Distraction) apply configurable multipliers to counted hours
-- **Admin UI** — full CRUD for students, mentors, weekly requirements, and sessions; CSV export; live settings editor
+- **Admin UI** — Legion-SSO-gated management of weekly requirements and sessions, a read-only roster synced from Legion, CSV export, and a live settings editor
 - **Stats & leaderboard** — all-time and weekly hours leaders, longest single session, streak tracking, and team totals on the kiosk
 
 ---
@@ -69,8 +69,11 @@ All settings are read from a `.env` file in the working directory (or from envir
 |---|---|---|---|
 | `slack_bot_token` | `SLACK_BOT_TOKEN` | *(required for Slack)* | Slack Bot OAuth token (`xoxb-...`) |
 | `slack_signing_secret` | `SLACK_SIGNING_SECRET` | *(required for Slack)* | Slack app signing secret for request verification |
-| `admin_password` | `ADMIN_PASSWORD` | `changeme` | Password for the `/admin` web UI — **change this** |
-| `session_secret` | `SESSION_SECRET` | `dev-secret-change-in-production` | Secret for signing admin session cookies — **change this** |
+| `sso_secret` | `SSO_SECRET` | *(required for admin)* | Shared secret for verifying Legion's `mw_sso` cookie — **must equal Legion's `SSO_SECRET`** |
+| `sso_session_ttl` | `SSO_SESSION_TTL` | `43200` | Max age (seconds) of the SSO cookie; match Legion |
+| `sso_cookie_domain` | `SSO_COOKIE_DOMAIN` | *(none)* | Cookie domain (e.g. `.marswars.org`) so one login spans subdomains |
+| `legion_base_url` | `LEGION_BASE_URL` | *(required for admin/sync)* | Base URL of the Legion app (SSO + roster API) |
+| `legion_api_key` | `LEGION_API_KEY` | *(required for sync)* | Shared key sent as `X-API-Key` to Legion's roster API — **must equal Legion's `LEGION_API_KEY`** |
 | `database_url` | `DATABASE_URL` | `sqlite+aiosqlite:///./tracker.db` | SQLAlchemy async database URL; swap for PostgreSQL if needed |
 | `timezone` | `TIMEZONE` | `America/New_York` | IANA timezone name used for scheduling and display |
 | `auto_signout_time` | `AUTO_SIGNOUT_TIME` | `22:00` | Daily auto sign-out time in 24-hour `HH:MM` format |
@@ -89,15 +92,16 @@ All settings are read from a `.env` file in the working directory (or from envir
 
 > **Note:** `contributor_multiplier` applies to both self sign-outs (QR badge rescan) and sessions closed by the nightly auto sign-out job.
 >
-> Most non-secret settings — the multipliers, scheduling times, timezone, backup settings, IP whitelist, and the Wall of Shame options — can be updated at runtime from **Admin → Settings** without restarting the server. Changes are written back to `.env` and take effect immediately. API keys/secrets (`SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `ADMIN_PASSWORD`, `SESSION_SECRET`) are intentionally **not** editable from the UI.
+> Most non-secret settings — the multipliers, scheduling times, timezone, backup settings, IP whitelist, and the Wall of Shame options — can be updated at runtime from **Admin → Settings** without restarting the server. Changes are written back to `.env` and take effect immediately. API keys/secrets (`SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SSO_SECRET`, `LEGION_API_KEY`) are intentionally **not** editable from the UI.
 
 ### Minimal `.env` example
 
 ```dotenv
 SLACK_BOT_TOKEN=xoxb-your-token-here
 SLACK_SIGNING_SECRET=your-signing-secret-here
-ADMIN_PASSWORD=a-strong-password
-SESSION_SECRET=a-long-random-string
+SSO_SECRET=must-match-legions-sso-secret
+LEGION_BASE_URL=https://legion.example.org
+LEGION_API_KEY=must-match-legions-api-key
 TIMEZONE=America/Chicago
 AUTO_SIGNOUT_TIME=21:30
 ```
@@ -134,22 +138,40 @@ AUTO_SIGNOUT_TIME=21:30
 > Tempus's own `/slack/interact` directly if it's the shared app — that would starve
 > Munus's and Legion's interactive buttons of real traffic.
 
-Mentors must have their Slack user ID recorded in the admin UI under **Mentors**. Students need their Slack UID set under **Students** to receive DMs.
+Slack user IDs come from **Legion** (the roster source of truth) via the sync — mentors and
+students need their Slack UID set in Legion to receive DMs.
 
 ---
 
 ## Admin UI
 
-Navigate to `/admin` and log in with your configured `ADMIN_PASSWORD`. Sessions expire after 12 hours.
+Navigate to `/admin`. Access is gated by **Legion SSO** — you're redirected to Legion to sign
+in (a Slack Approve/Deny push, no password), and you must hold the **`tempus-admin`** group in
+Legion. There is no local admin password; grant the first admin `tempus-admin` in Legion's
+`/admin/groups`. The signed-in identity (Legion username) is recorded as the audit actor, and
+the session lasts as long as the shared `mw_sso` cookie (12h).
 
 | Section | Description |
 |---|---|
 | **Dashboard** | View currently signed-in students, all-time hours leaderboard, and manually sign in any student |
-| **Students** | Create, edit, and delete students; set team, focus category (software / design / business), Slack UID, and active status |
-| **Mentors** | Manage mentors with their Slack UIDs and optional team/category for hours-notification matching |
-| **Requirements** | Set per-team, per-category, per-week required hours |
+| **Roster** | Read-only view of the members synced from Legion (students & mentors, team, subteam, lead groups, link status), a **Sync now** button, and QR-badge sending. Add/edit/archive members in Legion, not here |
+| **Requirements** | Set per-team, per-subteam, per-week required hours (subteams come from Legion) |
 | **Sessions** | Filterable and paginated session log; edit individual sessions (recalculates counted hours); CSV export |
 | **Settings** | Live-edit non-secret configuration — hour multipliers, auto sign-out / weekly DM / backup times, timezone, IP whitelist, Wall of Shame meme options, and the leaderboard season cutoff. Changes write back to `.env` and apply immediately |
+
+### Legion integration
+
+Tempus is a **Legion consumer**: Legion owns the roster (members, teams, subteams, user groups)
+and Tempus mirrors it read-only.
+
+- **Auth** — `/admin` verifies Legion's `mw_sso` cookie locally with the shared `SSO_SECRET` and
+  checks for the `tempus-admin` group. Add Tempus's host to Legion's `SSO_ALLOWED_RETURN_HOSTS`.
+- **Roster sync** — an hourly job (and the **Sync now** button) pulls `GET /api/members?updated_since=…`
+  plus teams/subteams, keyed on Legion's stable `member_code`, and upserts the local mirror.
+  QR badges and kiosk sign-in use `member_code` (legacy `student_code` badges still work).
+- **Leads** — a mentor is "looped in" for a student's escalation DM when they hold the student's
+  `tempus-lead-<team_number>-<subteam_slug>` group in Legion (e.g. `tempus-lead-4143-software`).
+  Create those groups in Legion's `/admin/groups`.
 
 ---
 
@@ -213,13 +235,24 @@ app/
 ├── schemas.py         # Pydantic request/response schemas
 ├── utils.py           # Timezone helpers (utc_to_local, local_to_utc, today_local)
 ├── routers/
-│   ├── admin.py       # /admin — password-protected management UI
+│   ├── admin.py       # /admin — Legion-SSO-gated management UI (tempus-admin group)
 │   ├── kiosk.py       # / — kiosk display, sign-in endpoint, SSE stream
 │   └── slack.py       # /slack — slash commands and interactive button handler
 ├── services/
 │   ├── attendance.py  # Sign-in/sign-out logic and queries
+│   ├── sso.py         # Verifies Legion's mw_sso cookie (verify-only consumer)
+│   ├── legion_sync.py # Pulls the roster from Legion's read-only API into the local mirror
+│   ├── leads.py       # Resolves lead mentors from tempus-lead-<team>-<subteam> groups
 │   ├── broadcaster.py # SSE event broadcaster (asyncio.Queue fan-out)
-│   ├── scheduler.py   # APScheduler jobs for auto sign-out and weekly DMs
+│   ├── scheduler.py   # APScheduler jobs (auto sign-out, weekly DMs, hourly Legion sync)
 │   └── slack_client.py# Slack AsyncWebClient wrapper and DM notification logic
 └── templates/         # Jinja2 HTML templates
 ```
+
+## Legion rework — done
+
+The migration to Legion (SSO auth via the `tempus-admin` group, a read-only roster synced
+from Legion's API, subteam-driven requirements, and lead escalation via
+`tempus-lead-<team>-<subteam>` groups) is complete. See **Admin UI → Legion integration**
+above. The one external step is operational: add Tempus's host to Legion's
+`SSO_ALLOWED_RETURN_HOSTS` and create the `tempus-admin` / `tempus-lead-*` groups in Legion

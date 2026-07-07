@@ -4,7 +4,7 @@ Attendance business logic — sign in / sign out / hour calculation.
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -35,13 +35,17 @@ async def get_open_session(db: AsyncSession, student_id: int) -> Optional[Attend
 
 async def sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optional[Student]]:
     """
-    Look up a student by their tracker UID (student_code on the QR badge).
+    Look up a student by the QR-badge UID — Legion `member_code`, or the legacy
+    `student_code` for badges minted before the Legion cutover.
     Returns (success, message, student).
     """
     result = await db.execute(
         select(Student)
         .options(selectinload(Student.team))
-        .where(Student.student_code == uid, Student.is_active.is_(True))
+        .where(
+            or_(Student.member_code == uid, Student.student_code == uid),
+            Student.is_active.is_(True),
+        )
     )
     student = result.scalars().first()
 
@@ -185,10 +189,14 @@ async def get_signed_in_students(db: AsyncSession) -> list[AttendanceSession]:
 # ── Mentor sign-in/out ─────────────────────────────────────────────────────────
 
 async def mentor_sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optional[Mentor]]:
-    """Sign in a mentor by their tracker UID (mentor_code). Returns (success, message, mentor)."""
+    """Sign in a mentor by their badge UID — Legion `member_code`, or the legacy
+    `mentor_code`. Returns (success, message, mentor)."""
     result = await db.execute(
         select(Mentor)
-        .where(Mentor.mentor_code == uid, Mentor.is_active.is_(True))
+        .where(
+            or_(Mentor.member_code == uid, Mentor.mentor_code == uid),
+            Mentor.is_active.is_(True),
+        )
     )
     mentor = result.scalars().first()
     if not mentor:

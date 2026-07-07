@@ -44,17 +44,5 @@ async def test_session_edit_writes_audit_row(authed_client, db, make_student):
     detail = json.loads(entry.detail)
     assert detail["before"]["status"] == "contributor"
     assert detail["after"]["status"] == "present"
-
-
-async def test_archive_writes_audit_row(authed_client, db, make_student):
-    student = await make_student(code="badge001")
-
-    await authed_client.post(
-        f"/admin/students/{student.id}/delete", follow_redirects=False
-    )
-
-    rows = (await db.execute(
-        select(AuditLog).where(AuditLog.action == "student.archive")
-    )).scalars().all()
-    assert len(rows) == 1
-    assert rows[0].entity_id == str(student.id)
+    # Actor is the SSO identity from the mw_sso cookie (not a hardcoded "admin").
+    assert entry.actor == "test.admin"
