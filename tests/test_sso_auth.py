@@ -116,6 +116,30 @@ async def test_admin_sidebar_shows_all_links(client):
     assert 'href="/admin/settings"' in resp.text
 
 
+async def test_admin_sidebar_shows_legion_link_when_configured(client):
+    from app.config import settings
+    original = settings.legion_base_url
+    try:
+        settings.legion_base_url = "https://legion.example.org"
+        client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-admin"]))
+        resp = await client.get("/admin")
+        assert 'href="https://legion.example.org"' in resp.text
+    finally:
+        settings.legion_base_url = original
+
+
+async def test_admin_sidebar_hides_legion_link_when_unconfigured(client):
+    from app.config import settings
+    original = settings.legion_base_url
+    try:
+        settings.legion_base_url = ""
+        client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-admin"]))
+        resp = await client.get("/admin")
+        assert ">Legion</a>" not in resp.text
+    finally:
+        settings.legion_base_url = original
+
+
 async def test_read_sso_token_roundtrip():
     token = make_sso_cookie(groups=["tempus-admin"], name="Ada")
     claims = read_sso_token(token)

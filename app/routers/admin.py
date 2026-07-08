@@ -117,9 +117,13 @@ def _session_role(request: Request) -> Optional[str]:
 
 # Expose to templates: `session_role` hides admin-only nav from managers;
 # `session_identity` is the raw SSO claims, used for the portal <-> admin
-# cross-navigation links.
+# cross-navigation links; `legion_base_url()` powers the persistent "Legion" nav
+# link back to the identity provider's own home page (blank = link omitted). A
+# callable, not a plain value, so it reflects live Settings-page edits rather
+# than whatever `settings.legion_base_url` was at import time.
 templates.env.globals["session_role"] = _session_role
 templates.env.globals["session_identity"] = sso_identity
+templates.env.globals["legion_base_url"] = lambda: settings.legion_base_url
 
 
 async def _active_subteams(db: AsyncSession):
@@ -272,7 +276,6 @@ async def admin_roster(request: Request, db: AsyncSession = Depends(get_db)):
             "students": students,
             "mentors": mentors,
             "last_synced": last_synced,
-            "legion_base_url": settings.legion_base_url,
         },
     )
 

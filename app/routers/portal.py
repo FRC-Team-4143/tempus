@@ -50,6 +50,7 @@ def _session_role(request: Request) -> Optional[str]:
 
 templates.env.globals["session_role"] = _session_role
 templates.env.globals["session_identity"] = sso_identity
+templates.env.globals["legion_base_url"] = lambda: settings.legion_base_url
 
 
 async def _current_person(request: Request, db: AsyncSession):

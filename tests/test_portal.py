@@ -128,6 +128,32 @@ async def test_admin_link_hidden_for_plain_member(client, db, make_student):
     assert 'href="/admin"' not in resp.text
 
 
+async def test_portal_navbar_shows_legion_link_when_configured(client, db, make_student):
+    from app.config import settings
+    original = settings.legion_base_url
+    try:
+        settings.legion_base_url = "https://legion.example.org"
+        await make_student(code="ada00001")
+        client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="ada00001", role="student"))
+        resp = await client.get("/me")
+        assert 'href="https://legion.example.org"' in resp.text
+    finally:
+        settings.legion_base_url = original
+
+
+async def test_portal_navbar_hides_legion_link_when_unconfigured(client, db, make_student):
+    from app.config import settings
+    original = settings.legion_base_url
+    try:
+        settings.legion_base_url = ""
+        await make_student(code="ada00001")
+        client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="ada00001", role="student"))
+        resp = await client.get("/me")
+        assert ">Legion</a>" not in resp.text
+    finally:
+        settings.legion_base_url = original
+
+
 async def test_dashboard_shows_admin_card_for_staff(client, db, make_student):
     await make_student(code="ada00001")
     client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-admin"], member_code="ada00001", role="student"))

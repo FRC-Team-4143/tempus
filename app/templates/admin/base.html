@@ -108,6 +108,9 @@
         <li class="nav-item"><a class="nav-link {% if active_page == 'backup' %}active{% endif %}" href="/admin/backup"><i class="bi bi-database-down me-2"></i>Backup</a></li>
         <li class="nav-item"><a class="nav-link {% if active_page == 'settings' %}active{% endif %}" href="/admin/settings"><i class="bi bi-gear me-2"></i>Settings</a></li>
         <li class="nav-item mt-4"><a class="nav-link" href="/me"><i class="bi bi-stopwatch me-2"></i>My Tempus</a></li>
+        {% if legion_base_url() %}
+        <li class="nav-item"><a class="nav-link" href="{{ legion_base_url() }}" target="_blank"><i class="bi bi-box-arrow-up-right me-2"></i>Legion</a></li>
+        {% endif %}
         <li class="nav-item"><a class="nav-link text-danger" href="/admin/logout"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
       </ul>
     </nav>
