@@ -1,0 +1,116 @@
+{% extends "portal/base.html" %}
+{% block title %}My Hours — Tempus{% endblock %}
+
+{% block head %}
+<style>
+  .report-table th, .report-table td { white-space: nowrap; }
+  .week-met { background-color: rgba(25, 135, 84, 0.25) !important; }
+  .week-miss { background-color: rgba(220, 53, 69, 0.18) !important; }
+  .week-zero { color: #888; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Hi, {{ person.name.split()[0] }} 👋</h2>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="text-muted small">{{ 'Student' if kind == 'student' else 'Mentor' }} · Total hours</div>
+        <div class="fs-2 fw-bold">{{ '%.1f' % total_hours }} <span class="text-muted fs-6">hrs</span></div>
+        <div class="text-muted small mt-1">
+          {% if leaderboard_since %}Counting since {{ leaderboard_since.strftime('%b %d, %Y') }}{% else %}All time{% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if report and kind == 'student' %}
+    <div class="card mb-4 mb-lg-0">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Weeks meeting requirement</div>
+        <div class="fs-4 fw-bold">
+          <span class="{% if report.weeks_met == report.weeks_total and report.weeks_total > 0 %}text-success{% elif report.weeks_met == 0 %}text-danger{% else %}text-warning{% endif %}">
+            {{ report.weeks_met }}/{{ report.weeks_total }}
+          </span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-clock-history me-1"></i> Recent Sessions</div>
+      <div class="card-body p-0">
+        {% if recent %}
+        <table class="table table-hover mb-0 align-middle">
+          <tbody>
+            {% for s in recent %}
+            <tr>
+              <td>{{ s.sign_in_time | localdt('%b %d, %I:%M %p') }}</td>
+              <td class="text-muted">{{ s.sign_out_time | localdt('%I:%M %p') if s.sign_out_time else 'In progress' }}</td>
+              {% if kind == 'student' %}
+              <td class="text-muted small">{{ s.status.value | capitalize if s.status else '—' }}</td>
+              {% endif %}
+              <td class="text-end fw-semibold">{{ '%.1f' % s.hours_counted if s.hours_counted is not none else '—' }} hrs</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted p-3 mb-0">No sessions recorded yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<h4 class="mt-5 mb-3">Weekly Report</h4>
+<form method="get" class="row g-2 mb-3 align-items-end">
+  <div class="col-auto">
+    <label class="form-label small mb-1">From</label>
+    <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.date_from }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">To</label>
+    <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.date_to }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1 d-block">&nbsp;</label>
+    <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+    <a href="/me" class="btn btn-sm btn-outline-secondary ms-1">Clear</a>
+  </div>
+  <div class="col-12"><small class="text-muted">Date range snaps to Mondays. Max 26 weeks.</small></div>
+</form>
+
+{% if not report or not report.weeks %}
+<div class="alert alert-secondary">No weeks in the selected range.</div>
+{% else %}
+<div class="card shadow-sm">
+  <div class="card-body p-0" style="overflow-x: auto;">
+    <table class="table table-sm mb-0 report-table">
+      <thead class="table-dark">
+        <tr>
+          {% for w in report.weeks %}
+          <th class="text-center">{{ w.week_start.strftime('%b %d') }}</th>
+          {% endfor %}
+          <th class="text-end">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          {% for w in report.weeks %}
+          <td class="text-center {% if kind == 'student' %}{% if w.met %}week-met{% else %}week-miss{% endif %}{% endif %}{% if w.hours == 0 %} week-zero{% endif %}"
+              title="{% if kind == 'student' %}{{ '%.1f'|format(w.hours) }} / {{ '%.1f'|format(w.required) }} hrs{% else %}{{ '%.1f'|format(w.hours) }} hrs{% endif %}">
+            {{ '%.1f'|format(w.hours) }}
+          </td>
+          {% endfor %}
+          <td class="text-end fw-semibold">{{ '%.1f'|format(report.total_hours) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -22,6 +22,7 @@ from app.config import settings
 from app.database import get_db
 from app.models import AttendanceSession, Mentor, MentorSession, SessionStatus, Student, Team
 from app.services import audit
+from app.services.app_settings import get_leaderboard_since, leaderboard_since_utc
 from app.services.attendance import update_session_status, get_signed_in_students
 from app.services.broadcaster import broadcaster
 from app.services.requirements import resolve_requirement
@@ -244,22 +245,34 @@ async def slack_command(
         week_start_utc, week_end_utc = current_week_bounds()
         week_str = week_start.strftime("%b %d")
 
+        leaderboard_since = await get_leaderboard_since(db)
+        since_utc = await leaderboard_since_utc(db)
+
         s_result = await db.execute(
             select(Student).where(Student.slack_user_id == user_id)
         )
         student = s_result.scalars().first()
 
         if student:
-            season_result = await db.execute(
+            season_q = (
                 select(sqlfunc.coalesce(sqlfunc.sum(AttendanceSession.hours_counted), 0.0))
                 .where(
                     AttendanceSession.student_id == student.id,
                     AttendanceSession.sign_out_time.is_not(None),
                 )
             )
+            if since_utc is not None:
+                season_q = season_q.where(AttendanceSession.sign_in_time >= since_utc)
+            season_result = await db.execute(season_q)
             season_total = float(season_result.scalar() or 0.0)
 
-            # Leaderboard rank across program teams — same all-time basis as season_total above.
+            # Leaderboard rank across program teams — same "counts since" basis as season_total above.
+            rank_join = and_(
+                AttendanceSession.student_id == Student.id,
+                AttendanceSession.sign_out_time.is_not(None),
+            )
+            if since_utc is not None:
+                rank_join = and_(rank_join, AttendanceSession.sign_in_time >= since_utc)
             rank_rows = (await db.execute(
                 select(
                     Student.id.label("sid"),
@@ -268,14 +281,7 @@ async def slack_command(
                     sqlfunc.coalesce(sqlfunc.sum(AttendanceSession.hours_counted), 0.0).label("total"),
                 )
                 .join(Team, Team.id == Student.team_id)
-                .join(
-                    AttendanceSession,
-                    and_(
-                        AttendanceSession.student_id == Student.id,
-                        AttendanceSession.sign_out_time.is_not(None),
-                    ),
-                    isouter=True,
-                )
+                .join(AttendanceSession, rank_join, isouter=True)
                 .where(Team.number.in_([4143, 4423]))
                 .where(Student.is_active.is_(True))
                 .group_by(Student.id)
@@ -316,6 +322,8 @@ async def slack_command(
                 reply += f"\n_Overall: {overall_gap}_"
             if team_gap:
                 reply += f"\n_Team: {team_gap}_"
+            if leaderboard_since:
+                reply += f"\n_(Counting since {leaderboard_since.strftime('%b %d')})_"
             if on_track:
                 reply += "\nYou're on track — great work! 💪"
             else:
@@ -330,29 +338,31 @@ async def slack_command(
         mentor = m_result.scalars().first()
 
         if mentor:
-            season_result = await db.execute(
+            season_q = (
                 select(sqlfunc.coalesce(sqlfunc.sum(MentorSession.hours_counted), 0.0))
                 .where(
                     MentorSession.mentor_id == mentor.id,
                     MentorSession.sign_out_time.is_not(None),
                 )
             )
+            if since_utc is not None:
+                season_q = season_q.where(MentorSession.sign_in_time >= since_utc)
+            season_result = await db.execute(season_q)
             season_total = float(season_result.scalar() or 0.0)
 
-            # Leaderboard rank across all mentors — same all-time basis as season_total above.
+            # Leaderboard rank across all mentors — same "counts since" basis as season_total above.
+            rank_join = and_(
+                MentorSession.mentor_id == Mentor.id,
+                MentorSession.sign_out_time.is_not(None),
+            )
+            if since_utc is not None:
+                rank_join = and_(rank_join, MentorSession.sign_in_time >= since_utc)
             rank_rows = (await db.execute(
                 select(
                     Mentor.id.label("mid"),
                     sqlfunc.coalesce(sqlfunc.sum(MentorSession.hours_counted), 0.0).label("total"),
                 )
-                .join(
-                    MentorSession,
-                    and_(
-                        MentorSession.mentor_id == Mentor.id,
-                        MentorSession.sign_out_time.is_not(None),
-                    ),
-                    isouter=True,
-                )
+                .join(MentorSession, rank_join, isouter=True)
                 .where(Mentor.is_active.is_(True))
                 .group_by(Mentor.id)
             )).all()
@@ -376,6 +386,8 @@ async def slack_command(
                 f"Season total: *{season_total:.1f} hrs*\n"
                 f"Rank: *#{overall_rank} of {overall_count}* overall"
             )
+            if leaderboard_since:
+                reply += f"\n_(Counting since {leaderboard_since.strftime('%b %d')})_"
 
             return Response(content=reply, media_type="text/plain")
 

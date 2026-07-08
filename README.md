@@ -5,11 +5,12 @@ A web-based attendance tracking system for FIRST Robotics Competition teams **41
 ## Features
 
 - **Kiosk sign-in / self sign-out** — QR badge scan signs students in; a second scan signs them out (with a 60-second debounce to prevent accidental double-scans)
-- **Slack integration** — mentors edit session ratings via `/edit`, query the current roster with `/shop`, and students check their hours with `/hours`
+- **Slack integration** — mentors edit session ratings via `/edit`, query the current roster with `/shop`, students check their hours with `/hours`, and anyone can grab a replacement badge with `/qr`
 - **Automated sign-out** — nightly auto sign-out at a configurable time
 - **Weekly Slack DMs** — automatic hour-summary messages to students (and mentors if a student is falling behind)
 - **Hours multipliers** — session quality ratings (Contributor / Present / Distraction) apply configurable multipliers to counted hours
-- **Admin UI** — Legion-SSO-gated management of weekly requirements and sessions, a read-only roster synced from Legion, CSV export, and a live settings editor
+- **Admin UI** — Legion-SSO-gated management of weekly requirements and sessions, a read-only roster synced from Legion, CSV export, and a live settings editor. A lighter `tempus-manager` group grants dashboard + report-view access only
+- **Personal portal** — any active student or mentor can sign in at `/me` to see their own recent sessions, total hours, and weekly report — no admin group required
 - **Stats & leaderboard** — all-time and weekly hours leaders, longest single session, streak tracking, and team totals on the kiosk
 
 ---
@@ -73,7 +74,7 @@ All settings are read from a `.env` file in the working directory (or from envir
 | `sso_session_ttl` | `SSO_SESSION_TTL` | `43200` | Max age (seconds) of the SSO cookie; match Legion |
 | `sso_cookie_domain` | `SSO_COOKIE_DOMAIN` | *(none)* | Cookie domain (e.g. `.marswars.org`) so one login spans subdomains |
 | `legion_base_url` | `LEGION_BASE_URL` | *(required for admin/sync)* | Base URL of the Legion app (SSO + roster API) |
-| `legion_api_key` | `LEGION_API_KEY` | *(required for sync)* | Key sent as `X-API-Key` to Legion's roster API — **must equal Legion's `TEMPUS_API_KEY`** (Legion has a separate key per consumer) |
+| `legion_api_key` | `LEGION_API_KEY` | *(required for sync)* | Shared key sent as `X-API-Key` to Legion's roster API — **must equal Legion's `LEGION_API_KEY`** |
 | `database_url` | `DATABASE_URL` | `sqlite+aiosqlite:///./tracker.db` | SQLAlchemy async database URL; swap for PostgreSQL if needed |
 | `timezone` | `TIMEZONE` | `America/New_York` | IANA timezone name used for scheduling and display |
 | `auto_signout_time` | `AUTO_SIGNOUT_TIME` | `22:00` | Daily auto sign-out time in 24-hour `HH:MM` format |
@@ -101,7 +102,7 @@ SLACK_BOT_TOKEN=xoxb-your-token-here
 SLACK_SIGNING_SECRET=your-signing-secret-here
 SSO_SECRET=must-match-legions-sso-secret
 LEGION_BASE_URL=https://legion.example.org
-LEGION_API_KEY=must-match-legions-tempus-api-key
+LEGION_API_KEY=must-match-legions-api-key
 TIMEZONE=America/Chicago
 AUTO_SIGNOUT_TIME=21:30
 ```
@@ -118,10 +119,12 @@ AUTO_SIGNOUT_TIME=21:30
    - `im:write`
    - `mpim:write`
    - `commands`
+   - `files:write` (needed to DM QR badge images — both `/qr` and the Roster page's "Send student/mentor badges" buttons)
 3. Add slash commands (all point to the same URL):
    - `/hours` → `https://<your-host>/slack/command`
    - `/edit` → `https://<your-host>/slack/command`
    - `/shop` → `https://<your-host>/slack/command`
+   - `/qr` → `https://<your-host>/slack/command`
 4. Under **Interactivity & Shortcuts**, set the Request URL to `https://<your-host>/slack/interact`
    — see the note below if this app is shared with the sibling apps.
 5. Install the app to your workspace and copy the **Bot User OAuth Token** and **Signing Secret** to `.env`
@@ -146,10 +149,11 @@ students need their Slack UID set in Legion to receive DMs.
 ## Admin UI
 
 Navigate to `/admin`. Access is gated by **Legion SSO** — you're redirected to Legion to sign
-in (a Slack Approve/Deny push, no password), and you must hold the **`tempus-admin`** group in
-Legion. There is no local admin password; grant the first admin `tempus-admin` in Legion's
-`/admin/groups`. The signed-in identity (Legion username) is recorded as the audit actor, and
-the session lasts as long as the shared `mw_sso` cookie (12h).
+in (a Slack Approve/Deny push, no password), and you must hold the **`tempus-admin`** (full
+access) or **`tempus-manager`** (dashboard + report view only — every other page redirects
+back to the dashboard) group in Legion. There is no local admin password; grant the first admin
+`tempus-admin` in Legion's `/admin/groups`. The signed-in identity (Legion username) is recorded
+as the audit actor, and the session lasts as long as the shared `mw_sso` cookie (12h).
 
 | Section | Description |
 |---|---|
@@ -157,7 +161,8 @@ the session lasts as long as the shared `mw_sso` cookie (12h).
 | **Roster** | Read-only view of the members synced from Legion (students & mentors, team, subteam, lead groups, link status), a **Sync now** button, and QR-badge sending. Add/edit/archive members in Legion, not here |
 | **Requirements** | Set per-team, per-subteam, per-week required hours (subteams come from Legion) |
 | **Sessions** | Filterable and paginated session log; edit individual sessions (recalculates counted hours); CSV export |
-| **Settings** | Live-edit non-secret configuration — hour multipliers, auto sign-out / weekly DM / backup times, timezone, IP whitelist, Wall of Shame meme options, and the leaderboard season cutoff. Changes write back to `.env` and apply immediately |
+| **Report** | Weekly hours-vs-requirement table across the roster, filterable by date range/team/subteam, plus CSV export. Defaults to the "counts hours since" week through the current week (a rolling 4 weeks if no cutoff is set) — `tempus-manager` can reach this page too |
+| **Settings** | Live-edit non-secret configuration — hour multipliers, auto sign-out / weekly DM / backup times, timezone, IP whitelist, Wall of Shame meme options, and the "counts hours since" season cutoff (also drives `/hours`'s season total and the Report page's default date range). Changes write back to `.env` and apply immediately |
 
 ### Legion integration
 
@@ -187,6 +192,23 @@ The kiosk page (`/kiosk`) is designed for a dedicated touchscreen display. It sh
 
 ---
 
+## Personal Portal
+
+Navigate to `/me`. Gated by **Legion SSO** like `/admin`, but with no group requirement — any
+active student or mentor synced from Legion gets in, matched by the cookie's `member_code`.
+Shows recent sessions, a total-hours headline (respecting the "counts hours since" cutoff, same
+as the leaderboard and `/hours`), and a personal weekly report table (students see the
+requirement met/not-met styling; mentors see hours only, since mentors have no weekly
+requirement). Signed in but not yet on the roster (or no longer active) → a clear "not synced
+yet" message rather than a silent bounce. An **Admin** link appears in the nav for anyone
+holding `tempus-admin`/`tempus-manager`; the admin sidebar always links back with **My Tempus**.
+
+The kiosk's old "Admin" nav link is gone — with a personal page to send people to as well, the
+kiosk stays a clean, unauthenticated display. The way anyone reaches `/admin` or `/me` today is
+Legion's own home-page app launcher, not a link inside Tempus.
+
+---
+
 ## Slack Workflow
 
 ### Student sign-in / sign-out
@@ -204,7 +226,11 @@ The kiosk page (`/kiosk`) is designed for a dedicated touchscreen display. It sh
 
 ### Hours queries
 
-- Students run `/hours` in any Slack channel to get a private summary of their hours this week and for the season vs. their requirement
+- Students and mentors run `/hours` in any Slack channel to get a private summary of their hours this week and for the season (students also see their rank and their requirement status). The season total respects the "counts hours since" cutoff (Admin → Settings) — the reply notes the cutoff date when one's set
+
+### QR badge lookup
+
+- Anyone (student or mentor) runs `/qr` to get their own kiosk sign-in QR code DMed to them — a self-service way to get a replacement if they lose theirs, without needing an admin to resend it from the Roster page
 
 ### Weekly summary DMs
 
@@ -235,7 +261,8 @@ app/
 ├── schemas.py         # Pydantic request/response schemas
 ├── utils.py           # Timezone helpers (utc_to_local, local_to_utc, today_local)
 ├── routers/
-│   ├── admin.py       # /admin — Legion-SSO-gated management UI (tempus-admin group)
+│   ├── admin.py       # /admin — Legion-SSO-gated management UI (tempus-admin/tempus-manager)
+│   ├── portal.py      # /me — personal page for any active student/mentor, no group required
 │   ├── kiosk.py       # / — kiosk display, sign-in endpoint, SSE stream
 │   └── slack.py       # /slack — slash commands and interactive button handler
 ├── services/
@@ -255,4 +282,5 @@ The migration to Legion (SSO auth via the `tempus-admin` group, a read-only rost
 from Legion's API, subteam-driven requirements, and lead escalation via
 `tempus-lead-<team>-<subteam>` groups) is complete. See **Admin UI → Legion integration**
 above. The one external step is operational: add Tempus's host to Legion's
-`SSO_ALLOWED_RETURN_HOSTS` and create the `tempus-admin` / `tempus-lead-*` groups in Legion
+`SSO_ALLOWED_RETURN_HOSTS` and create the `tempus-admin` / `tempus-manager` / `tempus-lead-*`
+groups in Legion (`tempus-manager` is auto-seeded on Legion startup, same as the others).

@@ -11,9 +11,9 @@ from sqlalchemy.orm import selectinload
 
 from sqlalchemy import or_
 
-from app.models import AttendanceSession, Student, WeeklyRequirement
+from app.models import AttendanceSession, Mentor, MentorSession, Student, WeeklyRequirement
 from app.services.requirements import DEFAULT_REQUIRED_HOURS, requirement_lookup_order
-from app.utils import local_to_utc, utc_to_local
+from app.utils import local_to_utc, today_local, utc_to_local
 
 
 def week_starts_in_range(date_from: date, date_to: date) -> list[date]:
@@ -28,11 +28,26 @@ def week_starts_in_range(date_from: date, date_to: date) -> list[date]:
     return weeks
 
 
+def default_report_range(since: Optional[date]) -> tuple[date, date]:
+    """The report view's default (date_from, date_to) when the caller hasn't filtered:
+    from the Monday of the "counts hours since" week (app_settings.get_leaderboard_since)
+    through the current week — falling back to a rolling 4-week window when no cutoff is
+    configured, matching the app's original behavior."""
+    today = today_local()
+    this_monday = today - timedelta(days=today.weekday())
+    if since is not None:
+        start = since - timedelta(days=since.weekday())
+    else:
+        start = this_monday - timedelta(weeks=3)
+    return start, this_monday
+
+
 async def weekly_attendance_report(
     db: AsyncSession,
     week_starts: list[date],
     team_id: Optional[int] = None,
     subteam_slug: Optional[str] = None,
+    student_ids: Optional[list[int]] = None,
 ) -> list[dict]:
     """
     Returns one dict per student, sorted by team number then name:
@@ -43,6 +58,9 @@ async def weekly_attendance_report(
         "weeks_met": int,
         "weeks_total": int,
       }
+
+    `student_ids`, when given, scopes to just those students (e.g. a personal report
+    view for one student) — independent of / combinable with `team_id`/`subteam_slug`.
     """
     if not week_starts:
         return []
@@ -62,6 +80,8 @@ async def weekly_attendance_report(
         student_q = student_q.where(Student.team_id == team_id)
     if subteam_slug is not None:
         student_q = student_q.where(Student.subteam_slug == subteam_slug)
+    if student_ids is not None:
+        student_q = student_q.where(Student.id.in_(student_ids))
     students = (await db.execute(student_q)).scalars().all()
 
     if not students:
@@ -133,3 +153,54 @@ async def weekly_attendance_report(
         })
 
     return rows
+
+
+async def weekly_mentor_hours(db: AsyncSession, week_starts: list[date], mentor_id: int) -> Optional[dict]:
+    """
+    The mentor analogue of `weekly_attendance_report`, for one mentor. Simpler than the
+    student version — mentor hours have no weekly requirement or status multiplier
+    (`MentorSession` has no `status` column; hours are always counted in full), so this
+    just buckets `hours_counted` by week:
+      {
+        "mentor": Mentor,
+        "weeks": [{"week_start": date, "hours": float}, ...],
+        "total_hours": float,
+      }
+    Returns None if `mentor_id` doesn't match an existing mentor.
+    """
+    mentor = (await db.execute(select(Mentor).where(Mentor.id == mentor_id))).scalars().first()
+    if mentor is None:
+        return None
+    if not week_starts:
+        return {"mentor": mentor, "weeks": [], "total_hours": 0.0}
+
+    range_start = week_starts[0]
+    range_end = week_starts[-1] + timedelta(days=7)
+    range_start_utc = local_to_utc(datetime.combine(range_start, datetime.min.time()))
+    range_end_utc = local_to_utc(datetime.combine(range_end, datetime.min.time()))
+
+    sessions = (
+        await db.execute(
+            select(MentorSession).where(
+                MentorSession.mentor_id == mentor_id,
+                MentorSession.sign_out_time.is_not(None),
+                MentorSession.sign_in_time >= range_start_utc,
+                MentorSession.sign_in_time < range_end_utc,
+            )
+        )
+    ).scalars().all()
+
+    hours_map: dict[date, float] = {}
+    for s in sessions:
+        local_date = utc_to_local(s.sign_in_time).date()
+        monday = local_date - timedelta(days=local_date.weekday())
+        hours_map[monday] = hours_map.get(monday, 0.0) + (s.hours_counted or 0.0)
+
+    week_rows = []
+    total_hours = 0.0
+    for ws in week_starts:
+        hours = round(hours_map.get(ws, 0.0), 2)
+        week_rows.append({"week_start": ws, "hours": hours})
+        total_hours += hours
+
+    return {"mentor": mentor, "weeks": week_rows, "total_hours": round(total_hours, 2)}

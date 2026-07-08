@@ -46,10 +46,11 @@ def make_authorize_url(request: Request) -> str:
     return f"{settings.legion_base_url}/sso/authorize?app=tempus&return_to={return_to}"
 
 
-def logout_url(request: Request) -> str:
-    """Legion's single-logout endpoint, returning to Tempus's /admin afterward."""
+def logout_url(request: Request, *, return_to: str = "/admin") -> str:
+    """Legion's single-logout endpoint, returning to `return_to` (default: Tempus's
+    /admin) afterward."""
     from urllib.parse import quote
-    base = f"{request.url.scheme}://{request.url.netloc}/admin"
+    base = f"{request.url.scheme}://{request.url.netloc}{return_to}"
     return f"{settings.legion_base_url}/sso/logout?return_to={quote(base, safe='')}"
 
 

@@ -93,7 +93,10 @@ async def client(session_factory):
     app.dependency_overrides.clear()
 
 
-def make_sso_cookie(groups=("tempus-admin",), *, name="Test Admin", username="test.admin"):
+def make_sso_cookie(
+    groups=("tempus-admin",), *, name="Test Admin", username="test.admin",
+    member_code="test0001", role="mentor",
+):
     """Mint a valid `mw_sso` cookie value for tests, mirroring Legion's `make_sso_token`.
     Uses the app's own `sso_secret`, so `read_sso_token` verifies it."""
     from itsdangerous import URLSafeTimedSerializer
@@ -101,10 +104,10 @@ def make_sso_cookie(groups=("tempus-admin",), *, name="Test Admin", username="te
 
     signer = URLSafeTimedSerializer(settings.sso_secret, salt="mw-sso")
     return signer.dumps({
-        "member_code": "test0001",
+        "member_code": member_code,
         "username": username,
         "name": name,
-        "role": "mentor",
+        "role": role,
         "team_number": 4143,
         "groups": list(groups),
         "slack_user_id": None,

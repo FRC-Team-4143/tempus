@@ -16,7 +16,7 @@
     <a class="btn btn-outline-light btn-sm" href="/mentor" target="_blank">
       <i class="bi bi-person-badge me-1"></i> Mentor Board
     </a>
-    {% if not_signed_in %}
+    {% if not_signed_in and session_role(request) != 'manager' %}
     <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#manualSigninModal">
       <i class="bi bi-person-plus me-1"></i> Manual Sign-In
     </button>
@@ -95,8 +95,8 @@
   </div>
 </div>
 
+{% if not_signed_in and session_role(request) != 'manager' %}
 <!-- Manual Sign-In Modal -->
-{% if not_signed_in %}
 <div class="modal fade" id="manualSigninModal" tabindex="-1">
   <div class="modal-dialog modal-sm">
     <div class="modal-content">

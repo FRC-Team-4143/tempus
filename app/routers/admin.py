@@ -40,21 +40,35 @@ templates.env.filters["localdt"] = (
 # ── Auth helpers ───────────────────────────────────────────────────────────────
 #
 # /admin is gated by Legion SSO: the shared `mw_sso` cookie must carry the `tempus-admin`
-# group. There is no local password — Legion mints the cookie, Tempus only verifies it
-# (services/sso.py). The first admin is granted `tempus-admin` in Legion's /admin/groups.
+# or `tempus-manager` group. There is no local password — Legion mints the cookie, Tempus
+# only verifies it (services/sso.py). The first admin is granted `tempus-admin` in
+# Legion's /admin/groups.
 
 _ADMIN_GROUP = "tempus-admin"
+_MANAGER_GROUP = "tempus-manager"
 
 
-def _require_groups(request: Request, groups: set[str]):
-    """Gate a route on the SSO identity holding at least one of `groups`. Returns a
-    redirect (no/invalid cookie → sign in at Legion) or a 403 (signed in but not
-    authorized) to short-circuit the route with, or None to let it proceed."""
+def _manager_allowed(path: str) -> bool:
+    """The only routes a 'manager' may reach: the dashboard and the report view."""
+    p = path.rstrip("/")
+    return p == "/admin" or p == "/admin/report" or p.startswith("/admin/report/")
+
+
+def _require_auth(request: Request):
+    """Gate every admin route via Legion SSO. `tempus-admin` passes everywhere;
+    `tempus-manager` only on the dashboard + report view (otherwise bounced to the
+    dashboard); no/invalid cookie -> Legion sign-in; signed in but holding neither
+    group -> 403."""
     identity = sso_identity(request)
     if identity is None:
         return RedirectResponse(make_authorize_url(request), status_code=303)
-    if groups & set(identity.get("groups") or []):
+    groups = set(identity.get("groups") or [])
+    if _ADMIN_GROUP in groups:
         return None
+    if _MANAGER_GROUP in groups:
+        if _manager_allowed(request.url.path):
+            return None
+        return RedirectResponse("/admin", status_code=303)
     return templates.TemplateResponse(
         "admin/forbidden.html",
         {"request": request, "name": identity.get("name", "")},
@@ -62,9 +76,25 @@ def _require_groups(request: Request, groups: set[str]):
     )
 
 
-def _require_auth(request: Request):
-    """Full admin access: the `tempus-admin` group via Legion SSO."""
-    return _require_groups(request, {_ADMIN_GROUP})
+def _session_role(request: Request) -> Optional[str]:
+    """The signed-in role for template gating: 'admin', 'manager', or None — backed by
+    live Legion SSO groups, not a cookie of our own."""
+    identity = sso_identity(request)
+    if identity is None:
+        return None
+    groups = set(identity.get("groups") or [])
+    if _ADMIN_GROUP in groups:
+        return "admin"
+    if _MANAGER_GROUP in groups:
+        return "manager"
+    return None
+
+
+# Expose to templates: `session_role` hides admin-only nav from managers;
+# `session_identity` is the raw SSO claims, used for the portal <-> admin
+# cross-navigation links.
+templates.env.globals["session_role"] = _session_role
+templates.env.globals["session_identity"] = sso_identity
 
 
 async def _active_subteams(db: AsyncSession):
@@ -1302,11 +1332,11 @@ async def admin_report(
     if redirect := _require_auth(request):
         return redirect
 
-    from app.services.reports import week_starts_in_range, weekly_attendance_report
+    from app.services.app_settings import get_leaderboard_since
+    from app.services.reports import default_report_range, week_starts_in_range, weekly_attendance_report
 
-    today = today_local()
-    default_from = today - timedelta(days=today.weekday()) - timedelta(weeks=3)
-    default_to = today - timedelta(days=today.weekday())
+    since = await get_leaderboard_since(db)
+    default_from, default_to = default_report_range(since)
 
     d_from = date_from or default_from
     d_to = date_to or default_to
@@ -1350,11 +1380,11 @@ async def admin_report_export(
     if redirect := _require_auth(request):
         return redirect
 
-    from app.services.reports import week_starts_in_range, weekly_attendance_report
+    from app.services.app_settings import get_leaderboard_since
+    from app.services.reports import default_report_range, week_starts_in_range, weekly_attendance_report
 
-    today = today_local()
-    default_from = today - timedelta(days=today.weekday()) - timedelta(weeks=3)
-    default_to = today - timedelta(days=today.weekday())
+    since = await get_leaderboard_since(db)
+    default_from, default_to = default_report_range(since)
 
     d_from = date_from or default_from
     d_to = date_to or default_to
