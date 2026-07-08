@@ -22,7 +22,12 @@ class Settings(BaseSettings):
 
     # Legion roster API — the read-only source of truth Tempus mirrors from.
     legion_base_url: str = ""     # e.g. "https://legion.marswars.org"
-    legion_api_key: str = ""      # presented as X-API-Key to Legion's /api/*
+    legion_api_key: str = ""      # presented as X-API-Key to Legion's /api/* and /sso/challenge
+
+    # Tempus's own public URL — used to build absolute links back to /me in Slack
+    # messages (e.g. the /hours "open my dashboard" link). Prod: https://tempus.<domain>
+    # (whose host must be in Legion's SSO_ALLOWED_RETURN_HOSTS, as /admin already needs).
+    base_url: str = "http://localhost:8000"
 
     database_url: str = "sqlite+aiosqlite:///./tracker.db"
 

@@ -11,6 +11,7 @@ import json
 import time
 from datetime import datetime, timedelta
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -225,6 +226,21 @@ def _neighbor_gap_text(rows: list, my_sid: int, my_total: float) -> str:
     return " · ".join(parts)
 
 
+def _hours_response(reply: str, member_code: Optional[str]) -> JSONResponse:
+    """Ephemeral /hours reply with a one-tap "open my dashboard" link appended (mirrors
+    Munus's /vhours). The link is a plain mrkdwn hyperlink to /enter, so it opens in the
+    browser without firing a Slack interaction. Omitted when the member has no
+    `member_code` (legacy-only rows Legion's /sso/challenge can't match)."""
+    if member_code:
+        link = f"<{settings.base_url}/enter?member={member_code}&next={quote('/me')}|📊 Open my dashboard>"
+        reply = f"{reply}\n{link}"
+    return JSONResponse({
+        "response_type": "ephemeral",
+        "text": reply,
+        "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": reply}}],
+    })
+
+
 # ── Slash command router ───────────────────────────────────────────────────────
 
 @router.post("/command")
@@ -330,7 +346,7 @@ async def slack_command(
                 remaining = required - week_hours
                 reply += f"\n_{remaining:.1f} hrs still needed — you may need to make up hours in the upcoming week._"
 
-            return Response(content=reply, media_type="text/plain")
+            return _hours_response(reply, student.member_code)
 
         m_result = await db.execute(
             select(Mentor).where(Mentor.slack_user_id == user_id)
@@ -389,7 +405,7 @@ async def slack_command(
             if leaderboard_since:
                 reply += f"\n_(Counting since {leaderboard_since.strftime('%b %d')})_"
 
-            return Response(content=reply, media_type="text/plain")
+            return _hours_response(reply, mentor.member_code)
 
         return Response(
             content="❌ Your Slack account isn't linked to a student or mentor record. Please ask a mentor.",

@@ -200,8 +200,16 @@ Shows recent sessions, a total-hours headline (respecting the "counts hours sinc
 as the leaderboard and `/hours`), and a personal weekly report table (students see the
 requirement met/not-met styling; mentors see hours only, since mentors have no weekly
 requirement). Signed in but not yet on the roster (or no longer active) → a clear "not synced
-yet" message rather than a silent bounce. An **Admin** link appears in the nav for anyone
-holding `tempus-admin`/`tempus-manager`; the admin sidebar always links back with **My Tempus**.
+yet" message rather than a silent bounce. Staff (holding `tempus-admin`/`tempus-manager`) get an
+**Admin** link in the nav **and** a prominent "Open admin area" card on the dashboard; the admin
+sidebar always links back with **My Tempus**.
+
+**One-tap entry (`/enter`).** The `/hours` Slack reply ends with an "open my dashboard" link to
+`/enter?member=<code>&next=/me`. If you're already signed in it drops you straight on `/me`;
+otherwise it fires a Legion Approve/Deny push for you (no username typing) and lands you on `/me`
+once you approve — the same one-tap flow as Munus's `/vhours`. This needs `BASE_URL` set to
+Tempus's public URL (whose host must be in Legion's `SSO_ALLOWED_RETURN_HOSTS`, as `/admin`
+sign-in already requires).
 
 The kiosk's old "Admin" nav link is gone — with a personal page to send people to as well, the
 kiosk stays a clean, unauthenticated display. The way anyone reaches `/admin` or `/me` today is
@@ -226,7 +234,7 @@ Legion's own home-page app launcher, not a link inside Tempus.
 
 ### Hours queries
 
-- Students and mentors run `/hours` in any Slack channel to get a private summary of their hours this week and for the season (students also see their rank and their requirement status). The season total respects the "counts hours since" cutoff (Admin → Settings) — the reply notes the cutoff date when one's set
+- Students and mentors run `/hours` in any Slack channel to get a private summary of their hours this week and for the season (students also see their rank and their requirement status). The season total respects the "counts hours since" cutoff (Admin → Settings) — the reply notes the cutoff date when one's set. The reply ends with a one-tap **📊 Open my dashboard** link to `/me` (see Personal Portal → One-tap entry)
 
 ### QR badge lookup
 

@@ -16,10 +16,13 @@ from sqlalchemy import func as sqlfunc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.database import get_db
 from app.models import AttendanceSession, Mentor, MentorSession, Student
 from app.routers.admin import _ADMIN_GROUP, _MANAGER_GROUP
+from app.services import legion_auth
 from app.services.app_settings import get_leaderboard_since, leaderboard_since_utc
+from app.services.legion_auth import safe_next
 from app.services.reports import (
     default_report_range, week_starts_in_range, weekly_attendance_report, weekly_mentor_hours,
 )
@@ -159,6 +162,50 @@ async def portal_home(
             "filters": {"date_from": d_from, "date_to": d_to},
         },
     )
+
+
+async def _member_exists(db: AsyncSession, member_code: str) -> bool:
+    """True if `member_code` is an active local student OR mentor."""
+    student = (
+        await db.execute(
+            select(Student.id).where(Student.member_code == member_code, Student.is_active.is_(True))
+        )
+    ).first()
+    if student:
+        return True
+    mentor = (
+        await db.execute(
+            select(Mentor.id).where(Mentor.member_code == member_code, Mentor.is_active.is_(True))
+        )
+    ).first()
+    return mentor is not None
+
+
+@router.get("/enter")
+async def enter(
+    request: Request, member: str = "", next: str = "/me", db: AsyncSession = Depends(get_db)
+):
+    """One-tap sign-in bootstrap — the `/hours` Slack link points here with a known Legion
+    `member_code`. If the browser already holds a live `mw_sso` cookie, skip Legion
+    entirely (instant, and it stops a repeated `/hours` link click from spamming a fresh
+    Slack push). Otherwise start a Legion SSO challenge for that member and send the
+    browser to the "check Slack" pending page; an unrecognized/missing member falls back
+    to Legion's normal username-entry sign-in. Mirrors Munus's `/enter`, but passes an
+    absolute `return_to` so the fresh-sign-in path lands back on Tempus's own host (Legion
+    redirects to `return_to` as-is after completion)."""
+    next_path = safe_next(next)
+    if sso_identity(request) is not None:
+        return RedirectResponse(next_path, status_code=303)
+
+    if not (member and await _member_exists(db, member)):
+        return RedirectResponse(make_authorize_url(request), status_code=303)
+
+    pending_url = await legion_auth.start_challenge(member, return_to=f"{settings.base_url}{next_path}")
+    if pending_url is None:
+        return templates.TemplateResponse(
+            "portal/sso_unavailable.html", {"request": request}, status_code=503
+        )
+    return RedirectResponse(pending_url, status_code=303)
 
 
 @router.get("/me/logout")

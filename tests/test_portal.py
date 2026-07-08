@@ -128,6 +128,20 @@ async def test_admin_link_hidden_for_plain_member(client, db, make_student):
     assert 'href="/admin"' not in resp.text
 
 
+async def test_dashboard_shows_admin_card_for_staff(client, db, make_student):
+    await make_student(code="ada00001")
+    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-admin"], member_code="ada00001", role="student"))
+    resp = await client.get("/me")
+    assert "Open admin area" in resp.text
+
+
+async def test_dashboard_hides_admin_card_for_plain_member(client, db, make_student):
+    await make_student(code="ada00001")
+    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="ada00001", role="student"))
+    resp = await client.get("/me")
+    assert "Open admin area" not in resp.text
+
+
 async def test_portal_logout_redirects_to_legion_returning_to_me(client):
     resp = await client.get("/me/logout", follow_redirects=False)
     assert resp.status_code == 303

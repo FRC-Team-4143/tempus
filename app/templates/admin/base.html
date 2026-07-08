@@ -85,7 +85,7 @@
     <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-controls="sidebar" aria-label="Menu">
       <i class="bi bi-list"></i>
     </button>
-    <a class="sidebar-brand" href="/admin"><i>Tempus</i></a>
+    <a class="sidebar-brand" href="/me"><i>Tempus</i></a>
   </div>
 </nav>
 
@@ -94,10 +94,10 @@
     <!-- Sidebar: off-canvas drawer on mobile, static column on desktop -->
     <nav id="sidebar" class="col-md-2 sidebar px-3 py-4 offcanvas-md offcanvas-start" tabindex="-1" aria-labelledby="sidebarLabel">
       <div class="offcanvas-header px-0 d-md-none">
-        <a class="sidebar-brand" id="sidebarLabel" href="/admin"><i>Tempus</i></a>
+        <a class="sidebar-brand" id="sidebarLabel" href="/me"><i>Tempus</i></a>
         <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close"></button>
       </div>
-      <a class="sidebar-brand d-none d-md-block mb-4" href="/admin"><i>Tempus</i></a>
+      <a class="sidebar-brand d-none d-md-block mb-4" href="/me"><i>Tempus</i></a>
       <ul class="nav flex-column gap-1">
         <li class="nav-item"><a class="nav-link {% if active_page == 'dashboard' %}active{% endif %}" href="/admin"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a></li>
         {% if session_role(request) != 'manager' %}

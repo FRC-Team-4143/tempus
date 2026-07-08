@@ -9,7 +9,7 @@ source venv/bin/activate
 uvicorn app.main:app --reload
 ```
 
-Requires a `.env` file (see `.env.example`). Key vars: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, and the Legion integration — `SSO_SECRET` (must equal Legion's), `LEGION_BASE_URL`, `LEGION_API_KEY`. There is **no** admin password; `/admin` is gated by Legion SSO + the `tempus-admin` (full) or `tempus-manager` (dashboard + report view only) group. `/me` (the personal portal) is gated by Legion SSO alone — any active student or mentor on the roster gets in, no group required.
+Requires a `.env` file (see `.env.example`). Key vars: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `BASE_URL` (Tempus's own public URL, for the `/hours` → `/me` Slack link), and the Legion integration — `SSO_SECRET` (must equal Legion's), `LEGION_BASE_URL`, `LEGION_API_KEY`. There is **no** admin password; `/admin` is gated by Legion SSO + the `tempus-admin` (full) or `tempus-manager` (dashboard + report view only) group. `/me` (the personal portal) is gated by Legion SSO alone — any active student or mentor on the roster gets in, no group required.
 
 ## Testing
 
@@ -65,10 +65,21 @@ data flows Legion → Tempus only, never back.
   yet" message rather than a silent bounce. Cross-navigation is trivial since both surfaces read
   the same live `mw_sso` claims (no bridging route): `admin/base.html` always shows a **My
   Tempus** link to `/me`; `portal/base.html` shows an **Admin** link when
-  `session_identity(request).groups` intersects `{tempus-admin, tempus-manager}`. Since the
-  kiosk lost its old unguarded "Admin" nav link, the actual way anyone reaches `/admin` or `/me`
-  today is Legion's own home-page app launcher (`legion/app/services/home.py`), not any link
-  inside Tempus itself.
+  `session_identity(request).groups` intersects `{tempus-admin, tempus-manager}` (both as a
+  navbar link and a prominent "Open admin area" card on the dashboard body). Since the kiosk
+  lost its old unguarded "Admin" nav link, the actual way anyone reaches `/admin` or `/me` today
+  is Legion's own home-page app launcher (`legion/app/services/home.py`), not any link inside
+  Tempus itself.
+- **One-tap `/enter` (`routers/portal.py`, `services/legion_auth.py`):** the `/hours` Slack
+  reply ends with an "open my dashboard" link to `/enter?member=<code>&next=/me`. If the browser
+  already holds a live `mw_sso` cookie, `/enter` redirects straight to `next` (no Legion round
+  trip — stops repeat clicks from spamming a fresh Slack push); otherwise it calls Legion's
+  `POST /sso/challenge` (`X-API-Key`) to start an Approve/Deny push for that member without a
+  typed username, then redirects to Legion's `/sso/pending/{nonce}`. Mirrors Munus's `/enter`,
+  but passes an **absolute** `return_to` (`{BASE_URL}{next}`) so the fresh-sign-in path lands
+  back on Tempus's host — Legion redirects to `return_to` verbatim, and a bare path would
+  resolve against Legion's own host. Needs `BASE_URL` set (Tempus's public URL, whose host is
+  already in Legion's `SSO_ALLOWED_RETURN_HOSTS`).
 - **Roster mirror (`services/legion_sync.py`):** the local `Student`/`Mentor`/`Team`/`Subteam`
   tables are a synced mirror keyed on Legion's stable `member_code`. Sync pulls
   `/api/members?updated_since=…` (+ teams/subteams) hourly and on the **Sync now** button;
