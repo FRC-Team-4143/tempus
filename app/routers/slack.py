@@ -35,6 +35,9 @@ router = APIRouter(prefix="/slack")
 
 async def _verify_slack_signature(request: Request) -> bytes:
     """Read raw body and verify Slack request signature. Raises 403 on failure."""
+    if not settings.slack_signing_secret:
+        raise HTTPException(status_code=503, detail="Slack integration is not configured (no signing secret set).")
+
     body = await request.body()
     timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
     signature = request.headers.get("X-Slack-Signature", "")

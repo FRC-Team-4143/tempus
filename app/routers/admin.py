@@ -176,6 +176,10 @@ async def admin_manual_signin(
                 student_id=student.id,
                 sign_in_time=datetime.utcnow(),
             ))
+            await audit.record(
+                db, request, "attendance.manual_signin", f"Manually signed in {student.name}",
+                entity_type="student", entity_id=student.id,
+            )
             await db.commit()
             await broadcaster.broadcast("update")
 
@@ -256,6 +260,8 @@ async def admin_students_send_qr_all(
     students = [s for s in result.scalars().all() if (s.member_code or s.student_code)]
     for s in students:
         background_tasks.add_task(send_qr_dm, s.slack_user_id, s.member_code or s.student_code, s.name)
+    await audit.record(db, request, "roster.send_qr_all_students", f"Sent QR badges to {len(students)} students")
+    await db.commit()
     return RedirectResponse(f"/admin/roster?qr_sent={len(students)}", status_code=303)
 
 
@@ -278,6 +284,8 @@ async def admin_mentors_send_qr_all(
     mentors = [m for m in result.scalars().all() if (m.member_code or m.mentor_code)]
     for m in mentors:
         background_tasks.add_task(send_qr_dm, m.slack_user_id, m.member_code or m.mentor_code, m.name)
+    await audit.record(db, request, "roster.send_qr_all_mentors", f"Sent QR badges to {len(mentors)} mentors")
+    await db.commit()
     return RedirectResponse(f"/admin/roster?qr_sent={len(mentors)}", status_code=303)
 
 
@@ -931,6 +939,9 @@ ENV_PATH = ".env"
 
 def _write_env(updates: dict[str, str]) -> None:
     """Upsert KEY=value pairs into .env, preserving other lines."""
+    # Values become raw KEY=VALUE lines below — strip any embedded CR/LF so a
+    # submitted value can never inject an extra line (e.g. overwriting SSO_SECRET).
+    updates = {k: v.replace("\r", "").replace("\n", "") for k, v in updates.items()}
     try:
         with open(ENV_PATH, "r") as f:
             lines = f.readlines()
@@ -1219,7 +1230,7 @@ async def admin_backup_get(request: Request):
 
 
 @router.get("/backup/download")
-async def admin_backup_download(request: Request):
+async def admin_backup_download(request: Request, db: AsyncSession = Depends(get_db)):
     if redirect := _require_auth(request):
         return redirect
 
@@ -1234,6 +1245,9 @@ async def admin_backup_download(request: Request):
     with open(tmp, "rb") as f:
         data = f.read()
     os.remove(tmp)
+
+    await audit.record(db, request, "backup.download", "Downloaded a full database backup", entity_type="backup")
+    await db.commit()
 
     filename = f"tracker-backup-{datetime.now():%Y%m%d-%H%M}.db"
     return Response(

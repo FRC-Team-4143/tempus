@@ -73,7 +73,7 @@ All settings are read from a `.env` file in the working directory (or from envir
 | `sso_session_ttl` | `SSO_SESSION_TTL` | `43200` | Max age (seconds) of the SSO cookie; match Legion |
 | `sso_cookie_domain` | `SSO_COOKIE_DOMAIN` | *(none)* | Cookie domain (e.g. `.marswars.org`) so one login spans subdomains |
 | `legion_base_url` | `LEGION_BASE_URL` | *(required for admin/sync)* | Base URL of the Legion app (SSO + roster API) |
-| `legion_api_key` | `LEGION_API_KEY` | *(required for sync)* | Shared key sent as `X-API-Key` to Legion's roster API — **must equal Legion's `LEGION_API_KEY`** |
+| `legion_api_key` | `LEGION_API_KEY` | *(required for sync)* | Key sent as `X-API-Key` to Legion's roster API — **must equal Legion's `TEMPUS_API_KEY`** (Legion has a separate key per consumer) |
 | `database_url` | `DATABASE_URL` | `sqlite+aiosqlite:///./tracker.db` | SQLAlchemy async database URL; swap for PostgreSQL if needed |
 | `timezone` | `TIMEZONE` | `America/New_York` | IANA timezone name used for scheduling and display |
 | `auto_signout_time` | `AUTO_SIGNOUT_TIME` | `22:00` | Daily auto sign-out time in 24-hour `HH:MM` format |
@@ -101,7 +101,7 @@ SLACK_BOT_TOKEN=xoxb-your-token-here
 SLACK_SIGNING_SECRET=your-signing-secret-here
 SSO_SECRET=must-match-legions-sso-secret
 LEGION_BASE_URL=https://legion.example.org
-LEGION_API_KEY=must-match-legions-api-key
+LEGION_API_KEY=must-match-legions-tempus-api-key
 TIMEZONE=America/Chicago
 AUTO_SIGNOUT_TIME=21:30
 ```
