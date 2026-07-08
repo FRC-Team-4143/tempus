@@ -25,7 +25,7 @@ from app.services import audit
 from app.services.attendance import update_session_status, get_signed_in_students
 from app.services.broadcaster import broadcaster
 from app.services.requirements import resolve_requirement
-from app.services.slack_client import send_dm
+from app.services.slack_client import send_dm, send_qr_dm
 from app.utils import utc_to_local, today_local, format_elapsed, current_week_bounds
 
 router = APIRouter(prefix="/slack")
@@ -397,6 +397,38 @@ async def slack_command(
         student_sessions = await get_signed_in_students(db)
         return Response(
             content=_build_shop_text(student_sessions, team_filter),
+            media_type="text/plain",
+        )
+
+    # ── /qr — DM the caller their own kiosk QR badge (so they can get a replacement
+    # themselves if they lose it; works for both students and mentors) ──
+    if command == "/qr":
+        student_result = await db.execute(
+            select(Student).where(Student.slack_user_id == user_id, Student.is_active.is_(True))
+        )
+        student = student_result.scalars().first()
+        if student and (student.member_code or student.student_code):
+            sent = await send_qr_dm(user_id, student.member_code or student.student_code, student.name)
+            return Response(
+                content="📬 Sent your QR badge to your DMs!" if sent
+                else "❌ Couldn't send your QR badge — try again in a bit, or ask a mentor.",
+                media_type="text/plain",
+            )
+
+        mentor_result = await db.execute(
+            select(Mentor).where(Mentor.slack_user_id == user_id, Mentor.is_active.is_(True))
+        )
+        mentor = mentor_result.scalars().first()
+        if mentor and (mentor.member_code or mentor.mentor_code):
+            sent = await send_qr_dm(user_id, mentor.member_code or mentor.mentor_code, mentor.name)
+            return Response(
+                content="📬 Sent your QR badge to your DMs!" if sent
+                else "❌ Couldn't send your QR badge — try again in a bit, or ask a mentor.",
+                media_type="text/plain",
+            )
+
+        return Response(
+            content="❌ Your Slack account isn't linked to a student or mentor record with a badge code yet. Please ask a mentor.",
             media_type="text/plain",
         )
 
