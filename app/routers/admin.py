@@ -54,24 +54,49 @@ def _manager_allowed(path: str) -> bool:
     return p == "/admin" or p == "/admin/report" or p.startswith("/admin/report/")
 
 
+_SECTION_LABELS = [
+    ("/admin/roster", "Roster"),
+    ("/admin/requirements", "Hour Requirements"),
+    ("/admin/sessions", "Sessions"),
+    ("/admin/report", "Report"),
+    ("/admin/audit", "Audit Log"),
+    ("/admin/backup", "Backup"),
+    ("/admin/settings", "Settings"),
+    ("/admin", "Dashboard"),
+]
+
+
+def _section_label(path: str) -> str:
+    """A human label for the section a denied request was aimed at, for the
+    forbidden page's message. Order matters — most-specific prefix first, since
+    "/admin" is itself a prefix of every other admin path."""
+    for prefix, label in _SECTION_LABELS:
+        if path.startswith(prefix):
+            return label
+    return "this page"
+
+
 def _require_auth(request: Request):
     """Gate every admin route via Legion SSO. `tempus-admin` passes everywhere;
-    `tempus-manager` only on the dashboard + report view (otherwise bounced to the
-    dashboard); no/invalid cookie -> Legion sign-in; signed in but holding neither
-    group -> 403."""
+    `tempus-manager` only on the dashboard + report view — anything else renders the
+    same shell-wrapped "No Access" page as a fully unauthorized visitor (rather than
+    silently redirecting away, which is more disorienting); no/invalid cookie -> Legion
+    sign-in."""
     identity = sso_identity(request)
     if identity is None:
         return RedirectResponse(make_authorize_url(request), status_code=303)
     groups = set(identity.get("groups") or [])
     if _ADMIN_GROUP in groups:
         return None
-    if _MANAGER_GROUP in groups:
-        if _manager_allowed(request.url.path):
-            return None
-        return RedirectResponse("/admin", status_code=303)
+    if _MANAGER_GROUP in groups and _manager_allowed(request.url.path):
+        return None
     return templates.TemplateResponse(
         "admin/forbidden.html",
-        {"request": request, "name": identity.get("name", "")},
+        {
+            "request": request,
+            "name": identity.get("name", ""),
+            "section": _section_label(request.url.path),
+        },
         status_code=403,
     )
 

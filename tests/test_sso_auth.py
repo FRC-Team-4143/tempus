@@ -61,18 +61,25 @@ async def test_manager_can_reach_report_export(client):
     assert resp.status_code == 200
 
 
-async def test_manager_is_redirected_away_from_roster(client):
+async def test_manager_denied_page_stays_in_admin_shell(client):
+    """Regression test: a manager hitting a disallowed page used to be silently
+    303-redirected to the dashboard — more disorienting than informative ("why did
+    clicking Settings send me to the dashboard?"). It now stays on the same admin
+    shell (sidebar still fully visible/clickable) with a blurred placeholder + "No
+    Access" badge naming the section."""
     client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-manager"]))
     resp = await client.get("/admin/roster", follow_redirects=False)
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/admin"
+    assert resp.status_code == 403
+    assert 'href="/admin/report"' in resp.text  # sidebar still rendered
+    assert "No Access" in resp.text
+    assert "Roster" in resp.text
 
 
-async def test_manager_is_redirected_away_from_settings(client):
+async def test_manager_is_denied_from_settings(client):
     client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-manager"]))
     resp = await client.get("/admin/settings", follow_redirects=False)
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/admin"
+    assert resp.status_code == 403
+    assert "Settings" in resp.text
 
 
 async def test_manager_dashboard_hides_manual_signin(client, db, make_student):
@@ -91,11 +98,14 @@ async def test_admin_dashboard_still_shows_manual_signin(client, db, make_studen
     assert "Manual Sign-In" in resp.text
 
 
-async def test_manager_sidebar_hides_admin_only_links(client):
+async def test_manager_sidebar_shows_all_links(client):
+    """The sidebar shows every section to every tier, regardless of access — a
+    manager clicking a disallowed one gets the blur-blocked "No Access" page rather
+    than the tab being hidden outright."""
     client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-manager"]))
     resp = await client.get("/admin")
-    assert 'href="/admin/roster"' not in resp.text
-    assert 'href="/admin/settings"' not in resp.text
+    assert 'href="/admin/roster"' in resp.text
+    assert 'href="/admin/settings"' in resp.text
     assert 'href="/admin/report"' in resp.text
 
 
