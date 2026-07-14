@@ -38,6 +38,12 @@ async def _add_mentor_session(db, mentor_id, hours, days_ago=0):
     await db.commit()
 
 
+async def test_root_redirects_to_me(client):
+    resp = await client.get("/", follow_redirects=False)
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "/me"
+
+
 async def test_signed_out_shows_identify_with_signin_link(client):
     resp = await client.get("/me")
     assert resp.status_code == 200
