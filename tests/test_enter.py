@@ -2,6 +2,7 @@
 link. Mirrors Munus's /enter, but passes an absolute return_to so a fresh (cookie-less)
 sign-in lands back on Tempus's own host after Legion approves."""
 import app.routers.portal as portal
+from app.config import settings
 from app.models import Mentor
 from app.services.sso import SSO_COOKIE
 from tests.conftest import make_sso_cookie
@@ -54,6 +55,7 @@ async def test_blank_member_falls_back_to_authorize(client, monkeypatch):
 
 
 async def test_known_student_starts_challenge_with_absolute_return_to(client, db, make_student, monkeypatch):
+    monkeypatch.setattr(settings, "base_url", "http://localhost:8000")
     calls = _stub_start_challenge(monkeypatch)
     await make_student(code="ada00001")
 
@@ -65,6 +67,7 @@ async def test_known_student_starts_challenge_with_absolute_return_to(client, db
 
 
 async def test_known_mentor_starts_challenge(client, db, monkeypatch):
+    monkeypatch.setattr(settings, "base_url", "http://localhost:8000")
     calls = _stub_start_challenge(monkeypatch)
     await _add_mentor(db, code="mnt00001")
 
@@ -98,6 +101,7 @@ async def test_legion_unavailable_returns_503(client, db, make_student, monkeypa
 async def test_bad_next_is_sanitized_to_me(client, db, make_student, monkeypatch):
     """An open-redirect attempt in `next` is coerced to /me by safe_next before it can
     reach start_challenge's return_to."""
+    monkeypatch.setattr(settings, "base_url", "http://localhost:8000")
     calls = _stub_start_challenge(monkeypatch)
     await make_student(code="ada00001")
 

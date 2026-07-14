@@ -73,9 +73,13 @@ async def test_student_ids_none_returns_everyone(db, make_student):
 async def test_weekly_mentor_hours_buckets_by_week(db):
     mentor = await _add_mentor(db)
     await _add_mentor_session(db, mentor.id, hours=2.0, days_ago=0)
-    await _add_mentor_session(db, mentor.id, hours=1.5, days_ago=8)  # prior week
 
+    # Comfortably mid-week *last* week (this Monday minus 5 days), regardless of
+    # what weekday "today" happens to be. A fixed day-count like 7 or 8 sits right
+    # on the query window's boundary when today is a Monday and flakes.
     today = date.today()
+    await _add_mentor_session(db, mentor.id, hours=1.5, days_ago=today.weekday() + 5)
+
     week_starts = week_starts_in_range(today - timedelta(weeks=1), today)
     result = await weekly_mentor_hours(db, week_starts, mentor.id)
 
