@@ -47,7 +47,16 @@ async def start_challenge(member_code: str, *, return_to: str = "/me") -> Option
 def safe_next(path: Optional[str]) -> str:
     """Only allow local, single-slash-rooted redirect targets (no open redirects).
     Falls back to the personal dashboard (`/me`) rather than `/` — Tempus's `/` is the
-    public kiosk redirect, not a place to land a signed-in member."""
-    if path and path.startswith("/") and not path.startswith("//"):
+    public kiosk redirect, not a place to land a signed-in member.
+
+    Rejects a leading `//` (protocol-relative) and a leading `/\\` — some browsers
+    normalize the backslash to `/`, turning `/\\evil.com` into `//evil.com` and
+    bypassing the plain `//` check (mirrors Legion's `allowed_return_to`)."""
+    if (
+        path
+        and path.startswith("/")
+        and not path.startswith("//")
+        and not path.startswith("/\\")
+    ):
         return path
     return "/me"

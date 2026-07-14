@@ -109,3 +109,33 @@ async def test_bad_next_is_sanitized_to_me(client, db, make_student, monkeypatch
 
     assert resp.status_code == 303
     assert calls == [("ada00001", "http://localhost:8000/me")]
+
+
+def test_safe_next_blocks_backslash_and_protocol_relative():
+    """safe_next must reject both `//` and `/\\` — some browsers normalize a leading
+    backslash to `/`, turning `/\\evil.com` into a protocol-relative `//evil.com`."""
+    from app.services.legion_auth import safe_next
+
+    assert safe_next("/me") == "/me"
+    assert safe_next("/opportunities/1") == "/opportunities/1"
+    assert safe_next("//evil.com") == "/me"
+    assert safe_next("/\\evil.com") == "/me"
+    assert safe_next("\\evil.com") == "/me"
+    assert safe_next("https://evil.com") == "/me"
+
+
+async def test_signed_in_backslash_next_is_sanitized(client, monkeypatch):
+    """The already-signed-in fast path redirects straight to `next`, so it must sanitize
+    a `/\\evil.com` target to the local fallback rather than off-site."""
+    calls = _stub_start_challenge(monkeypatch)
+    client.cookies.set(
+        SSO_COOKIE, make_sso_cookie(groups=[], member_code="ada00001", role="student")
+    )
+
+    resp = await client.get(
+        "/enter", params={"next": "/\\evil.com"}, follow_redirects=False
+    )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/me"
+    assert calls == []  # already signed in — no Legion round trip
