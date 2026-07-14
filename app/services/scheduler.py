@@ -122,11 +122,17 @@ async def job_weekly_dms() -> None:
         )
         students = students_result.scalars().all()
 
+    skipped = 0
     for student in students:
         async with AsyncSessionLocal() as db:
-            hours = await _weekly_hours_for_student(db, student.id, week_start)
-
             required = await _get_requirement(student.team_id, week_start, student.subteam_slug)
+            if required <= 0:
+                # Nothing required this week (team/subteam's WeeklyRequirement is 0) —
+                # a "0.0 / 0.0 hrs" update has no useful information, so skip it.
+                skipped += 1
+                continue
+
+            hours = await _weekly_hours_for_student(db, student.id, week_start)
             on_track = hours >= required
 
             # Lead mentors for this student = holders of `tempus-lead-<team>-<subteam>`.
@@ -151,6 +157,11 @@ async def job_weekly_dms() -> None:
             await send_group_dm([student.slack_user_id] + mentor_ids, text, automated=True)
         else:
             await send_dm(student.slack_user_id, text, automated=True)
+
+    log.info(
+        "Weekly DM job done: %d sent, %d skipped (no requirement this week)",
+        len(students) - skipped, skipped,
+    )
 
 
 async def job_nightly_backup() -> None:
