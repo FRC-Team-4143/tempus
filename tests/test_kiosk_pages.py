@@ -10,6 +10,12 @@ async def test_kiosk_page_has_no_admin_link(client):
     assert 'href="/admin"' not in resp.text
 
 
+async def test_kiosk_page_has_favicon(client):
+    resp = await client.get("/kiosk")
+    assert resp.status_code == 200
+    assert '<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">' in resp.text
+
+
 async def test_mentor_page_has_no_admin_link(client):
     resp = await client.get("/mentor")
     assert resp.status_code == 200
