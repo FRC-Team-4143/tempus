@@ -7,7 +7,7 @@ from collections import defaultdict
 from datetime import date
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -47,6 +47,15 @@ def _is_allowed_ip(request: Request) -> bool:
     return False
 
 
+def _require_onsite(request: Request) -> None:
+    """Route dependency gating the read-only display pages/APIs (kiosk + mentor board)
+    to the same `signin_ip_whitelist` CIDRs as sign-in itself — these pages show real
+    student/mentor names, so they shouldn't be reachable from off the shop's network.
+    Blank whitelist (the default) means unrestricted, same as `_is_allowed_ip`."""
+    if not _is_allowed_ip(request):
+        raise HTTPException(status_code=403, detail="Not available from this network.")
+
+
 def _format_sessions(sessions) -> dict:
     """Return signed-in students grouped by team number."""
     by_team: dict[int, list[dict]] = {}
@@ -65,7 +74,7 @@ def _format_sessions(sessions) -> dict:
     return by_team
 
 
-@router.get("/kiosk", response_class=HTMLResponse)
+@router.get("/kiosk", response_class=HTMLResponse, dependencies=[Depends(_require_onsite)])
 async def kiosk_page(request: Request, db: AsyncSession = Depends(get_db)):
     sessions = await get_signed_in_students(db)
     by_team = _format_sessions(sessions)
@@ -176,7 +185,7 @@ async def kiosk_signin(
     return SignInResponse(success=success, message=message)
 
 
-@router.get("/kiosk/data")
+@router.get("/kiosk/data", dependencies=[Depends(_require_onsite)])
 async def kiosk_data(db: AsyncSession = Depends(get_db)):
     """JSON snapshot of currently signed-in students, grouped by team number."""
     sessions = await get_signed_in_students(db)
@@ -187,7 +196,7 @@ async def kiosk_data(db: AsyncSession = Depends(get_db)):
     return by_team
 
 
-@router.get("/kiosk/stats")
+@router.get("/kiosk/stats", dependencies=[Depends(_require_onsite)])
 async def kiosk_stats(db: AsyncSession = Depends(get_db)):
     """Return leaderboard stats for the kiosk stats panel."""
 
@@ -322,7 +331,7 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.get("/kiosk/stream")
+@router.get("/kiosk/stream", dependencies=[Depends(_require_onsite)])
 async def kiosk_stream():
     """Server-Sent Events endpoint — pushes 'update' events to all connected kiosks."""
 
@@ -356,7 +365,7 @@ def _format_mentor_sessions(sessions) -> list[dict]:
     return result
 
 
-@router.get("/mentor", response_class=HTMLResponse)
+@router.get("/mentor", response_class=HTMLResponse, dependencies=[Depends(_require_onsite)])
 async def mentor_board(request: Request, db: AsyncSession = Depends(get_db)):
     sessions = await get_signed_in_mentors(db)
     signed_in = _format_mentor_sessions(sessions)
@@ -366,13 +375,13 @@ async def mentor_board(request: Request, db: AsyncSession = Depends(get_db)):
     })
 
 
-@router.get("/mentor/data")
+@router.get("/mentor/data", dependencies=[Depends(_require_onsite)])
 async def mentor_data(db: AsyncSession = Depends(get_db)):
     sessions = await get_signed_in_mentors(db)
     return {"signed_in": _format_mentor_sessions(sessions)}
 
 
-@router.get("/mentor/stats")
+@router.get("/mentor/stats", dependencies=[Depends(_require_onsite)])
 async def mentor_stats(db: AsyncSession = Depends(get_db)):
     """Return mentor leaderboard: all-time, this week, longest session, longest streak."""
     week_start_utc, _ = current_week_bounds()
@@ -459,7 +468,7 @@ async def mentor_stats(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.get("/mentor/stream")
+@router.get("/mentor/stream", dependencies=[Depends(_require_onsite)])
 async def mentor_stream():
     """SSE endpoint — pushes 'mentor_update' events to connected mentor boards."""
 

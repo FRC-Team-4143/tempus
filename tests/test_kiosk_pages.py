@@ -1,7 +1,9 @@
-"""The kiosk and mentor board are public physical-display pages with no auth gate.
-Their nav used to include a plain, unguarded "Admin" link — removed since discovery of
-/admin now happens through Legion's app launcher instead (see services/home.py in the
-Legion repo), and a dead-looking public button was more confusing than useful."""
+"""The kiosk and mentor board are public physical-display pages — no login/account is
+required, but they're gated to on-site traffic by `signin_ip_whitelist` when configured
+(`_require_onsite`, blank whitelist = unrestricted; see test_kiosk_ip_gating.py). Their
+nav used to include a plain, unguarded "Admin" link — removed since discovery of /admin
+now happens through Legion's app launcher instead (see services/home.py in the Legion
+repo), and a dead-looking public button was more confusing than useful."""
 
 
 async def test_kiosk_page_has_no_admin_link(client):
