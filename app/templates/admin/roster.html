@@ -7,19 +7,16 @@
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <h2 class="mb-0">Roster</h2>
   <div class="d-flex gap-2 flex-wrap">
+    <form method="post" action="/admin/roster/send-badges" class="d-inline">
+      <button class="btn btn-outline-info btn-sm"><i class="bi bi-qr-code me-1"></i> Send badges</button>
+    </form>
     {% if legion_base_url() %}
     <a class="btn btn-outline-light btn-sm" href="{{ legion_base_url() }}/admin" target="_blank">
       <i class="bi bi-box-arrow-up-right me-1"></i> Manage in Legion
     </a>
     {% endif %}
     <form method="post" action="/admin/roster/sync" class="d-inline">
-      <button class="btn btn-outline-light btn-sm"><i class="bi bi-arrow-repeat me-1"></i> Sync now</button>
-    </form>
-    <form method="post" action="/admin/students/send-qr-all" class="d-inline">
-      <button class="btn btn-outline-light btn-sm"><i class="bi bi-qr-code me-1"></i> Send student badges</button>
-    </form>
-    <form method="post" action="/admin/mentors/send-qr-all" class="d-inline">
-      <button class="btn btn-outline-light btn-sm"><i class="bi bi-qr-code me-1"></i> Send mentor badges</button>
+      <button class="btn btn-primary btn-sm"><i class="bi bi-arrow-repeat me-1"></i> Sync now</button>
     </form>
   </div>
 </div>

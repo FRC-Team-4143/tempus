@@ -5,7 +5,7 @@ A web-based attendance tracking system for FIRST Robotics Competition teams **41
 ## Features
 
 - **Kiosk sign-in / self sign-out** — QR badge scan signs students in; a second scan signs them out (with a 60-second debounce to prevent accidental double-scans)
-- **Slack integration** — mentors edit session ratings via `/edit`, query the current roster with `/shop`, students check their hours with `/hours`, and anyone can grab a replacement badge with `/qr`
+- **Slack integration** — mentors edit session ratings via `/edit`, query the current roster with `/shop`, students check their hours with `/hours`, anyone can grab a replacement badge with `/qr`, and mentors can mass sign-out everyone still signed in with `/gtfo`
 - **Automated sign-out** — nightly auto sign-out at a configurable time
 - **Weekly Slack DMs** — automatic hour-summary messages to students (and mentors if a student is falling behind)
 - **Hours multipliers** — session quality ratings (Contributor / Present / Distraction) apply configurable multipliers to counted hours
@@ -125,6 +125,7 @@ AUTO_SIGNOUT_TIME=21:30
    - `/edit` → `https://<your-host>/slack/command`
    - `/shop` → `https://<your-host>/slack/command`
    - `/qr` → `https://<your-host>/slack/command`
+   - `/gtfo` → `https://<your-host>/slack/command`
 4. Under **Interactivity & Shortcuts**, set the Request URL to `https://<your-host>/slack/interact`
    — see the note below if this app is shared with the sibling apps.
 5. Install the app to your workspace and copy the **Bot User OAuth Token** and **Signing Secret** to `.env`
@@ -239,6 +240,12 @@ Legion's own home-page app launcher, not a link inside Tempus.
 ### QR badge lookup
 
 - Anyone (student or mentor) runs `/qr` to get their own kiosk sign-in QR code DMed to them — a self-service way to get a replacement if they lose theirs, without needing an admin to resend it from the Roster page
+
+### Mass sign-out
+
+- A mentor runs `/gtfo` to immediately sign out every student still signed in (e.g. wrapping up a build session early), counted as **Contributor** hours up to that moment — same status the nightly auto sign-out uses
+- If **Admin → Settings** has the Wall of Shame meme enabled, one is posted per student signed out this way, same as the nightly job
+- Only registered mentors can run it; students get an error
 
 ### Weekly summary DMs
 

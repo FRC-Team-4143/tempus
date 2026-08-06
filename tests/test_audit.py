@@ -64,7 +64,7 @@ async def test_manual_signin_writes_audit_row(authed_client, db, make_student):
     assert rows[0].entity_id == str(student.id)
 
 
-async def test_send_qr_all_students_writes_audit_row(authed_client, db, make_student, monkeypatch):
+async def test_send_badges_writes_audit_row(authed_client, db, make_student, monkeypatch):
     import app.services.slack_client as slack_client_mod
 
     async def _noop(*a, **k):
@@ -73,32 +73,14 @@ async def test_send_qr_all_students_writes_audit_row(authed_client, db, make_stu
 
     student = await make_student(name="Has Slack", code="badge003")
     student.slack_user_id = "U0STU"
-    await db.commit()
-
-    resp = await authed_client.post("/admin/students/send-qr-all", follow_redirects=False)
-    assert resp.status_code == 303
-
-    rows = (await db.execute(
-        select(AuditLog).where(AuditLog.action == "roster.send_qr_all_students")
-    )).scalars().all()
-    assert len(rows) == 1
-
-
-async def test_send_qr_all_mentors_writes_audit_row(authed_client, db, monkeypatch):
-    import app.services.slack_client as slack_client_mod
-
-    async def _noop(*a, **k):
-        return True
-    monkeypatch.setattr(slack_client_mod, "send_qr_dm", _noop)
-
     db.add(Mentor(name="Mentor One", member_code="mnt00001", slack_user_id="U0MENTOR"))
     await db.commit()
 
-    resp = await authed_client.post("/admin/mentors/send-qr-all", follow_redirects=False)
+    resp = await authed_client.post("/admin/roster/send-badges", follow_redirects=False)
     assert resp.status_code == 303
 
     rows = (await db.execute(
-        select(AuditLog).where(AuditLog.action == "roster.send_qr_all_mentors")
+        select(AuditLog).where(AuditLog.action == "roster.send_badges")
     )).scalars().all()
     assert len(rows) == 1
 

@@ -1,9 +1,11 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import init_db
+from app.database import get_db, init_db
 from app.routers import kiosk, admin, portal, slack
 from app.services.scheduler import create_scheduler
 
@@ -26,6 +28,17 @@ app.include_router(kiosk.router)
 app.include_router(admin.router)
 app.include_router(portal.router)
 app.include_router(slack.router)
+
+
+@app.get("/health")
+async def health(db: AsyncSession = Depends(get_db)):
+    """Unauthenticated liveness + DB check — polled by Legion's admin dashboard
+    System Status panel and available for external uptime monitoring."""
+    try:
+        await db.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse({"status": "error", "app": "tempus"}, status_code=503)
+    return {"status": "ok", "app": "tempus"}
 
 
 @app.get("/")

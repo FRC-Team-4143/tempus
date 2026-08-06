@@ -24,9 +24,10 @@ from app.database import get_db
 from app.models import AttendanceSession, Mentor, MentorSession, SessionStatus, Student, Team
 from app.services import audit
 from app.services.app_settings import get_leaderboard_since, leaderboard_since_utc
-from app.services.attendance import update_session_status, get_signed_in_students
+from app.services.attendance import update_session_status, get_signed_in_students, sign_out_all_open
 from app.services.broadcaster import broadcaster
 from app.services.requirements import resolve_requirement
+from app.services.scheduler import _post_wall_of_shame
 from app.services.slack_client import send_dm, send_qr_dm
 from app.utils import utc_to_local, today_local, format_elapsed, current_week_bounds
 
@@ -459,6 +460,40 @@ async def slack_command(
             content="❌ Your Slack account isn't linked to a student or mentor record with a badge code yet. Please ask a mentor.",
             media_type="text/plain",
         )
+
+    # ── /gtfo — mentor-only: sign every currently signed-in student out right now.
+    # Requires an *active* mentor — this is more consequential than /edit (which only
+    # checks slack_user_id match), so an archived mentor's stale Slack link shouldn't
+    # still be able to trigger a mass sign-out.
+    if command == "/gtfo":
+        mentor_result = await db.execute(
+            select(Mentor).where(Mentor.slack_user_id == user_id, Mentor.is_active.is_(True))
+        )
+        mentor = mentor_result.scalars().first()
+        if not mentor:
+            return Response(
+                content="❌ Only registered mentors can sign everyone out.",
+                media_type="text/plain",
+            )
+
+        closed = await sign_out_all_open(db, status=SessionStatus.auto)
+        if closed:
+            await broadcaster.broadcast("update")
+
+        await audit.record(
+            db, request, "attendance.bulk_signout",
+            f"{mentor.name} signed out {len(closed)} student(s) via /gtfo",
+            entity_type="session",
+            actor=mentor.name,
+            detail={"count": len(closed), "via": "slack"},
+        )
+        await db.commit()
+
+        await _post_wall_of_shame(closed)
+
+        if not closed:
+            return Response(content="No students were signed in.", media_type="text/plain")
+        return Response(content=f"✅ Signed out {len(closed)} student(s).", media_type="text/plain")
 
     if command != "/edit":
         return Response(content="Unknown command.", media_type="text/plain")

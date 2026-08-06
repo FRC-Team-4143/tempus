@@ -299,8 +299,8 @@ async def admin_roster_sync(request: Request, db: AsyncSession = Depends(get_db)
     return RedirectResponse(f"/admin/roster?synced={quote(summary)}", status_code=303)
 
 
-@router.post("/students/send-qr-all")
-async def admin_students_send_qr_all(
+@router.post("/roster/send-badges")
+async def admin_roster_send_badges(
     request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -309,42 +309,33 @@ async def admin_students_send_qr_all(
         return redirect
 
     from app.services.slack_client import send_qr_dm
-    result = await db.execute(
+
+    student_result = await db.execute(
         select(Student).where(
             Student.slack_user_id.is_not(None),
             Student.is_active.is_(True),
         )
     )
-    students = [s for s in result.scalars().all() if (s.member_code or s.student_code)]
+    students = [s for s in student_result.scalars().all() if (s.member_code or s.student_code)]
     for s in students:
         background_tasks.add_task(send_qr_dm, s.slack_user_id, s.member_code or s.student_code, s.name)
-    await audit.record(db, request, "roster.send_qr_all_students", f"Sent QR badges to {len(students)} students")
-    await db.commit()
-    return RedirectResponse(f"/admin/roster?qr_sent={len(students)}", status_code=303)
 
-
-@router.post("/mentors/send-qr-all")
-async def admin_mentors_send_qr_all(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-):
-    if redirect := _require_auth(request):
-        return redirect
-
-    from app.services.slack_client import send_qr_dm
-    result = await db.execute(
+    mentor_result = await db.execute(
         select(Mentor).where(
             Mentor.slack_user_id.is_not(None),
             Mentor.is_active.is_(True),
         )
     )
-    mentors = [m for m in result.scalars().all() if (m.member_code or m.mentor_code)]
+    mentors = [m for m in mentor_result.scalars().all() if (m.member_code or m.mentor_code)]
     for m in mentors:
         background_tasks.add_task(send_qr_dm, m.slack_user_id, m.member_code or m.mentor_code, m.name)
-    await audit.record(db, request, "roster.send_qr_all_mentors", f"Sent QR badges to {len(mentors)} mentors")
+
+    await audit.record(
+        db, request, "roster.send_badges",
+        f"Sent QR badges to {len(students)} students and {len(mentors)} mentors",
+    )
     await db.commit()
-    return RedirectResponse(f"/admin/roster?qr_sent={len(mentors)}", status_code=303)
+    return RedirectResponse(f"/admin/roster?qr_sent={len(students) + len(mentors)}", status_code=303)
 
 
 # ── Weekly Requirements ────────────────────────────────────────────────────────
