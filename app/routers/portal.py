@@ -10,7 +10,7 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func as sqlfunc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -163,6 +163,27 @@ async def portal_home(
             "filters": {"date_from": d_from, "date_to": d_to},
         },
     )
+
+
+@router.get("/me/qr.png")
+async def portal_qr(request: Request, db: AsyncSession = Depends(get_db)):
+    """The signed-in member's own kiosk QR badge, rendered as a PNG — lets them pull it
+    up on the dashboard directly instead of needing the Slack `/qr` DM."""
+    import io
+
+    import qrcode
+
+    identity, student, mentor = await _current_person(request, db)
+    if student is None and mentor is None:
+        return Response(status_code=404)
+
+    code = (student or mentor).member_code or (
+        student.student_code if student else mentor.mentor_code
+    )
+    img = qrcode.make(code)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
 
 
 async def _member_exists(db: AsyncSession, member_code: str) -> bool:

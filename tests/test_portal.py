@@ -183,6 +183,40 @@ async def test_dashboard_hides_admin_card_for_plain_member(client, db, make_stud
     assert "Open admin area" not in resp.text
 
 
+async def test_dashboard_shows_qr_badge_image(client, db, make_student):
+    await make_student(code="ada00001")
+    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="ada00001", role="student"))
+    resp = await client.get("/me")
+    assert 'src="/me/qr.png"' in resp.text
+
+
+async def test_qr_png_returns_image_for_signed_in_student(client, db, make_student):
+    await make_student(code="ada00001")
+    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="ada00001", role="student"))
+    resp = await client.get("/me/qr.png")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+
+
+async def test_qr_png_works_for_mentor(client, db):
+    await _add_mentor(db, code="mnt00001", name="Coach Ray")
+    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="mnt00001", role="mentor"))
+    resp = await client.get("/me/qr.png")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+
+
+async def test_qr_png_404s_when_not_synced(client):
+    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="ghost001"))
+    resp = await client.get("/me/qr.png")
+    assert resp.status_code == 404
+
+
+async def test_qr_png_404s_when_signed_out(client):
+    resp = await client.get("/me/qr.png")
+    assert resp.status_code == 404
+
+
 async def test_portal_logout_redirects_to_legion_returning_to_me(client):
     resp = await client.get("/me/logout", follow_redirects=False)
     assert resp.status_code == 303
