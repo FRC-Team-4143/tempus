@@ -165,6 +165,30 @@ async def portal_home(
     )
 
 
+@router.get("/me/qr", response_class=HTMLResponse)
+async def portal_qr_page(request: Request, db: AsyncSession = Depends(get_db)):
+    """Standalone full-page view of the signed-in member's kiosk QR badge —
+    meant to be bookmarked/favorited on a phone for quick access at the kiosk,
+    separate from the full /me dashboard."""
+    identity, student, mentor = await _current_person(request, db)
+
+    if identity is None:
+        return templates.TemplateResponse(
+            "portal/identify.html", {"request": request, "authorize_url": make_authorize_url(request)}
+        )
+    if student is None and mentor is None:
+        return templates.TemplateResponse(
+            "portal/identify.html",
+            {"request": request, "not_synced": True, "signed_in_name": identity.get("name") or "that account"},
+        )
+
+    person = student or mentor
+    return templates.TemplateResponse(
+        "portal/qr.html",
+        {"request": request, "person": person, "kind": "student" if student else "mentor"},
+    )
+
+
 @router.get("/me/qr.png")
 async def portal_qr(request: Request, db: AsyncSession = Depends(get_db)):
     """The signed-in member's own kiosk QR badge, rendered as a PNG — lets them pull it

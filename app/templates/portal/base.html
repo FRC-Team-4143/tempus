@@ -64,7 +64,8 @@
   </button>
   <div class="collapse navbar-collapse" id="nav">
     <ul class="navbar-nav me-auto">
-      <li class="nav-item"><a class="nav-link active" href="/me">My Hours</a></li>
+      <li class="nav-item"><a class="nav-link {% if request.url.path == '/me' %}active{% endif %}" href="/me">My Hours</a></li>
+      <li class="nav-item"><a class="nav-link {% if request.url.path == '/me/qr' %}active{% endif %}" href="/me/qr"><i class="bi bi-qr-code me-1"></i>My QR</a></li>
     </ul>
     <ul class="navbar-nav align-items-center">
       {% if person %}<li class="nav-item"><span class="navbar-text py-0 me-3">{{ person.name }}</span></li>{% endif %}
