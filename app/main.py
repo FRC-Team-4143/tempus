@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db, init_db
-from app.routers import kiosk, admin, portal, slack
+from app.routers import badge, kiosk, admin, portal, slack
 from app.services.scheduler import create_scheduler
 
 
@@ -28,6 +28,7 @@ app.include_router(kiosk.router)
 app.include_router(admin.router)
 app.include_router(portal.router)
 app.include_router(slack.router)
+app.include_router(badge.router)
 
 
 @app.get("/health")

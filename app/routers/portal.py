@@ -10,7 +10,7 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func as sqlfunc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,7 @@ from app.routers.admin import _ADMIN_GROUP, _MANAGER_GROUP
 from app.services import legion_auth
 from app.services.app_settings import get_leaderboard_since, leaderboard_since_utc
 from app.services.legion_auth import safe_next
+from app.services.badge import compute_badge_id, effective_code
 from app.services.reports import (
     default_report_range, week_starts_in_range, weekly_attendance_report, weekly_mentor_hours,
 )
@@ -51,6 +52,7 @@ def _session_role(request: Request) -> Optional[str]:
 templates.env.globals["session_role"] = _session_role
 templates.env.globals["session_identity"] = sso_identity
 templates.env.globals["legion_base_url"] = lambda: settings.legion_base_url
+templates.env.globals["badge_url"] = lambda person: f"/badge/{compute_badge_id(effective_code(person))}"
 
 
 async def _current_person(request: Request, db: AsyncSession):
@@ -163,51 +165,6 @@ async def portal_home(
             "filters": {"date_from": d_from, "date_to": d_to},
         },
     )
-
-
-@router.get("/me/qr", response_class=HTMLResponse)
-async def portal_qr_page(request: Request, db: AsyncSession = Depends(get_db)):
-    """Standalone full-page view of the signed-in member's kiosk QR badge —
-    meant to be bookmarked/favorited on a phone for quick access at the kiosk,
-    separate from the full /me dashboard."""
-    identity, student, mentor = await _current_person(request, db)
-
-    if identity is None:
-        return templates.TemplateResponse(
-            "portal/identify.html", {"request": request, "authorize_url": make_authorize_url(request)}
-        )
-    if student is None and mentor is None:
-        return templates.TemplateResponse(
-            "portal/identify.html",
-            {"request": request, "not_synced": True, "signed_in_name": identity.get("name") or "that account"},
-        )
-
-    person = student or mentor
-    return templates.TemplateResponse(
-        "portal/qr.html",
-        {"request": request, "person": person, "kind": "student" if student else "mentor"},
-    )
-
-
-@router.get("/me/qr.png")
-async def portal_qr(request: Request, db: AsyncSession = Depends(get_db)):
-    """The signed-in member's own kiosk QR badge, rendered as a PNG — lets them pull it
-    up on the dashboard directly instead of needing the Slack `/qr` DM."""
-    import io
-
-    import qrcode
-
-    identity, student, mentor = await _current_person(request, db)
-    if student is None and mentor is None:
-        return Response(status_code=404)
-
-    code = (student or mentor).member_code or (
-        student.student_code if student else mentor.mentor_code
-    )
-    img = qrcode.make(code)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return Response(content=buf.getvalue(), media_type="image/png")
 
 
 async def _member_exists(db: AsyncSession, member_code: str) -> bool:

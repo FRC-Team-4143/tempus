@@ -251,7 +251,8 @@ async def admin_manual_signin(
 #
 # The roster is owned by Legion and synced in (see services/legion_sync.py). Tempus no
 # longer creates/edits/archives members — manage them in Legion's /admin. These routes
-# are read-only plus a manual "Sync now" and the QR-badge send.
+# are read-only plus a manual "Sync now" and the QR-badge send. Archived members are
+# filtered out entirely (no toggle) — Legion's own roster page is where to view them.
 
 @router.get("/roster", response_class=HTMLResponse)
 @router.get("/students", response_class=HTMLResponse)  # legacy path → roster
@@ -260,10 +261,16 @@ async def admin_roster(request: Request, db: AsyncSession = Depends(get_db)):
         return redirect
 
     students = (await db.execute(
-        select(Student).options(selectinload(Student.team)).order_by(Student.name)
+        select(Student)
+        .options(selectinload(Student.team))
+        .where(Student.is_active.is_(True))
+        .order_by(Student.name)
     )).scalars().all()
     mentors = (await db.execute(
-        select(Mentor).options(selectinload(Mentor.team)).order_by(Mentor.name)
+        select(Mentor)
+        .options(selectinload(Mentor.team))
+        .where(Mentor.is_active.is_(True))
+        .order_by(Mentor.name)
     )).scalars().all()
 
     from app.services.app_settings import get_setting

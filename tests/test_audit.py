@@ -45,7 +45,7 @@ async def test_session_edit_writes_audit_row(authed_client, db, make_student):
     assert detail["before"]["status"] == "contributor"
     assert detail["after"]["status"] == "present"
     # Actor is the SSO identity from the mw_sso cookie (not a hardcoded "admin").
-    assert entry.actor == "test.admin"
+    assert entry.actor == "Test Admin"
 
 
 async def test_manual_signin_writes_audit_row(authed_client, db, make_student):

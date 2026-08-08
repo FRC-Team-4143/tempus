@@ -32,10 +32,12 @@ app/
     kiosk.py       # Student-facing display pages + SSE stream
     admin.py       # Legion-SSO-gated management UI (tempus-admin / tempus-manager groups)
     portal.py      # Personal page at /me — any active student/mentor, no group required
+    badge.py       # Unauthenticated, predetermined QR badge page at /badge/<id> — no SSO
     slack.py       # Slack slash commands (/hours, /shop, /edit, /qr) + interactions
   services/
     attendance.py  # Sign-in/out logic, hours calculation
     sso.py         # Verifies Legion's mw_sso cookie (verify-only; Tempus never mints it)
+    badge.py       # Deterministic /badge/<id> derivation (HMAC of sso_secret) + QR PNG rendering
     legion_sync.py # Pulls the roster from Legion's read-only API into the local mirror
     leads.py       # Lead mentors from tempus-lead-<team>-<subteam> groups
     slack_client.py # Slack API helpers (DMs, file uploads)

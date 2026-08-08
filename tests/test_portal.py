@@ -190,69 +190,13 @@ async def test_dashboard_no_longer_embeds_qr_badge_image(client, db, make_studen
     assert 'src="/me/qr.png"' not in resp.text
 
 
-async def test_navbar_links_to_qr_page(client, db, make_student):
+async def test_navbar_links_to_badge_page(client, db, make_student):
+    from app.services.badge import compute_badge_id
+
     await make_student(code="ada00001")
     client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="ada00001", role="student"))
     resp = await client.get("/me")
-    assert 'href="/me/qr"' in resp.text
-
-
-async def test_qr_page_signed_out_shows_identify_with_signin_link(client):
-    resp = await client.get("/me/qr")
-    assert resp.status_code == 200
-    assert "Sign in with Legion" in resp.text
-
-
-async def test_qr_page_not_synced_shows_identify(client):
-    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="ghost001"))
-    resp = await client.get("/me/qr")
-    assert resp.status_code == 200
-    assert "don't have an active student or mentor record" in resp.text
-
-
-async def test_qr_page_shows_badge_for_active_student(client, db, make_student):
-    await make_student(name="Ada Lovelace", code="ada00001")
-    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="ada00001", role="student"))
-    resp = await client.get("/me/qr")
-    assert resp.status_code == 200
-    assert 'src="/me/qr.png"' in resp.text
-    assert "Ada Lovelace" in resp.text
-
-
-async def test_qr_page_shows_badge_for_active_mentor(client, db):
-    await _add_mentor(db, code="mnt00001", name="Coach Ray")
-    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="mnt00001", role="mentor"))
-    resp = await client.get("/me/qr")
-    assert resp.status_code == 200
-    assert 'src="/me/qr.png"' in resp.text
-    assert "Coach Ray" in resp.text
-
-
-async def test_qr_png_returns_image_for_signed_in_student(client, db, make_student):
-    await make_student(code="ada00001")
-    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="ada00001", role="student"))
-    resp = await client.get("/me/qr.png")
-    assert resp.status_code == 200
-    assert resp.headers["content-type"] == "image/png"
-
-
-async def test_qr_png_works_for_mentor(client, db):
-    await _add_mentor(db, code="mnt00001", name="Coach Ray")
-    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="mnt00001", role="mentor"))
-    resp = await client.get("/me/qr.png")
-    assert resp.status_code == 200
-    assert resp.headers["content-type"] == "image/png"
-
-
-async def test_qr_png_404s_when_not_synced(client):
-    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=[], member_code="ghost001"))
-    resp = await client.get("/me/qr.png")
-    assert resp.status_code == 404
-
-
-async def test_qr_png_404s_when_signed_out(client):
-    resp = await client.get("/me/qr.png")
-    assert resp.status_code == 404
+    assert f'href="/badge/{compute_badge_id("ada00001")}"' in resp.text
 
 
 async def test_portal_logout_redirects_to_legion_returning_to_me(client):

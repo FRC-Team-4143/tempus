@@ -46,19 +46,18 @@
   <div class="tab-pane fade show active" id="students-tab">
     <div class="table-responsive">
       <table class="table table-sm align-middle">
-        <thead><tr><th>Name</th><th>Team</th><th>Subteam</th><th>Slack</th><th>Linked</th><th>Status</th></tr></thead>
+        <thead><tr><th>Name</th><th>Team</th><th>Subteam</th><th>Slack</th><th>Linked</th></tr></thead>
         <tbody>
           {% for s in students %}
-          <tr class="{% if not s.is_active %}text-muted{% endif %}">
+          <tr>
             <td>{{ s.name }}</td>
             <td>{{ s.team.number if s.team else '—' }}</td>
             <td>{{ s.subteam_slug | capitalize if s.subteam_slug else '—' }}</td>
             <td>{{ '✓' if s.slack_user_id else '—' }}</td>
             <td>{% if s.member_code %}<span class="badge bg-success">Legion</span>{% else %}<span class="badge bg-secondary">legacy</span>{% endif %}</td>
-            <td>{{ 'Active' if s.is_active else 'Archived' }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="6" class="text-muted text-center">No students. Run a sync.</td></tr>
+          <tr><td colspan="5" class="text-muted text-center">No students. Run a sync.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -67,10 +66,10 @@
   <div class="tab-pane fade" id="mentors-tab">
     <div class="table-responsive">
       <table class="table table-sm align-middle">
-        <thead><tr><th>Name</th><th>Team</th><th>Subteam</th><th>Slack</th><th>Lead groups</th><th>Linked</th><th>Status</th></tr></thead>
+        <thead><tr><th>Name</th><th>Team</th><th>Subteam</th><th>Slack</th><th>Lead groups</th><th>Linked</th></tr></thead>
         <tbody>
           {% for m in mentors %}
-          <tr class="{% if not m.is_active %}text-muted{% endif %}">
+          <tr>
             <td>{{ m.name }}</td>
             <td>{{ m.team.number if m.team else '—' }}</td>
             <td>{{ m.subteam_slug | capitalize if m.subteam_slug else '—' }}</td>
@@ -79,10 +78,9 @@
               {% if m.lead_groups %}{% for g in m.lead_groups %}<span class="badge bg-danger me-1">{{ g }}</span>{% endfor %}{% else %}—{% endif %}
             </td>
             <td>{% if m.member_code %}<span class="badge bg-success">Legion</span>{% else %}<span class="badge bg-secondary">legacy</span>{% endif %}</td>
-            <td>{{ 'Active' if m.is_active else 'Archived' }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="7" class="text-muted text-center">No mentors. Run a sync.</td></tr>
+          <tr><td colspan="6" class="text-muted text-center">No mentors. Run a sync.</td></tr>
           {% endfor %}
         </tbody>
       </table>
