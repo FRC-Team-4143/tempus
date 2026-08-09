@@ -1359,7 +1359,9 @@ async def admin_report(
         return redirect
 
     from app.services.app_settings import get_leaderboard_since
-    from app.services.reports import default_report_range, week_starts_in_range, weekly_attendance_report
+    from app.services.reports import (
+        default_report_range, drop_zero_requirement_weeks, week_starts_in_range, weekly_attendance_report,
+    )
 
     since = await get_leaderboard_since(db)
     default_from, default_to = default_report_range(since)
@@ -1372,6 +1374,7 @@ async def admin_report(
 
     week_starts = week_starts_in_range(d_from, d_to)
     rows = await weekly_attendance_report(db, week_starts, team_id=team_id_int, subteam_slug=subteam_slug)
+    week_starts, rows = drop_zero_requirement_weeks(week_starts, rows)
 
     teams_result = await db.execute(select(Team).order_by(Team.number))
     teams = teams_result.scalars().all()
@@ -1407,7 +1410,9 @@ async def admin_report_export(
         return redirect
 
     from app.services.app_settings import get_leaderboard_since
-    from app.services.reports import default_report_range, week_starts_in_range, weekly_attendance_report
+    from app.services.reports import (
+        default_report_range, drop_zero_requirement_weeks, week_starts_in_range, weekly_attendance_report,
+    )
 
     since = await get_leaderboard_since(db)
     default_from, default_to = default_report_range(since)
@@ -1420,6 +1425,7 @@ async def admin_report_export(
 
     week_starts = week_starts_in_range(d_from, d_to)
     rows = await weekly_attendance_report(db, week_starts, team_id=team_id_int, subteam_slug=subteam_slug)
+    week_starts, rows = drop_zero_requirement_weeks(week_starts, rows)
 
     def _generate():
         buf = io.StringIO()

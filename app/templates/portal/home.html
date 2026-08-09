@@ -106,7 +106,7 @@
       <thead class="table-dark">
         <tr>
           {% for w in report.weeks %}
-          <th class="text-center">{{ w.week_start.strftime('%b %d') }}</th>
+          <th class="text-center">{{ w.week_start.month }}/{{ w.week_start.day }}</th>
           {% endfor %}
           <th class="text-end">Total</th>
         </tr>

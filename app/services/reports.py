@@ -55,8 +55,8 @@ async def weekly_attendance_report(
         "student": Student,
         "weeks": [{"week_start": date, "hours": float, "required": float, "met": bool}, ...],
         "total_hours": float,
-        "weeks_met": int,
-        "weeks_total": int,
+        "weeks_met": int,   # counts only weeks with a nonzero requirement
+        "weeks_total": int, # ditto
       }
 
     `student_ids`, when given, scopes to just those students (e.g. a personal report
@@ -135,24 +135,43 @@ async def weekly_attendance_report(
         week_rows = []
         total_hours = 0.0
         weeks_met = 0
+        weeks_total = 0
         for ws in week_starts:
             hours = round(hours_map.get((student.id, ws), 0.0), 2)
             required = _resolve_req(student.team_id, student.subteam_slug, ws)
             met = hours >= required
             week_rows.append({"week_start": ws, "hours": hours, "required": required, "met": met})
             total_hours += hours
-            if met:
-                weeks_met += 1
+            # A 0-required week (e.g. an off week) trivially "meets" any hours total, so it's
+            # excluded from the ratio rather than inflating it.
+            if required > 0:
+                weeks_total += 1
+                if met:
+                    weeks_met += 1
 
         rows.append({
             "student": student,
             "weeks": week_rows,
             "total_hours": round(total_hours, 2),
             "weeks_met": weeks_met,
-            "weeks_total": len(week_starts),
+            "weeks_total": weeks_total,
         })
 
     return rows
+
+
+def drop_zero_requirement_weeks(week_starts: list[date], rows: list[dict]) -> tuple[list[date], list[dict]]:
+    """Drop week columns where every row's requirement is 0 (e.g. a scheduled off week) —
+    a week is kept if any row has a nonzero requirement that week, so nothing meaningful is
+    ever hidden. `total_hours`/`weeks_met`/`weeks_total` are already computed over the full
+    range and are left untouched. No-op for `weekly_mentor_hours` rows, which have no
+    "required" key since mentors have no weekly requirement."""
+    if not rows or "required" not in rows[0]["weeks"][0]:
+        return week_starts, rows
+    keep = [any(row["weeks"][i]["required"] != 0 for row in rows) for i in range(len(week_starts))]
+    filtered_week_starts = [ws for ws, k in zip(week_starts, keep) if k]
+    filtered_rows = [{**row, "weeks": [w for w, k in zip(row["weeks"], keep) if k]} for row in rows]
+    return filtered_week_starts, filtered_rows
 
 
 async def weekly_mentor_hours(db: AsyncSession, week_starts: list[date], mentor_id: int) -> Optional[dict]:

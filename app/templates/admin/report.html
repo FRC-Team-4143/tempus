@@ -86,7 +86,7 @@
         <tr>
           <th class="col-student sortable" data-type="text">Student</th>
           {% for ws in week_starts %}
-          <th class="text-center sortable" data-type="num">{{ ws.strftime('%b %d') }}</th>
+          <th class="text-center sortable" data-type="num">{{ ws.month }}/{{ ws.day }}</th>
           {% endfor %}
           <th class="text-end sortable" data-type="num">Total</th>
           <th class="text-center sortable" data-type="num">Weeks Met</th>

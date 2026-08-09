@@ -3,9 +3,10 @@ hours analogue, and the shared default-date-range helper used by /admin/report,
 /admin/report/export, and the personal portal's own report table."""
 from datetime import date, datetime, timedelta
 
-from app.models import AttendanceSession, Mentor, MentorSession
+from app.models import AttendanceSession, Mentor, MentorSession, WeeklyRequirement
 from app.services.reports import (
-    default_report_range, week_starts_in_range, weekly_attendance_report, weekly_mentor_hours,
+    default_report_range, drop_zero_requirement_weeks, week_starts_in_range, weekly_attendance_report,
+    weekly_mentor_hours,
 )
 
 
@@ -66,6 +67,88 @@ async def test_student_ids_none_returns_everyone(db, make_student):
     rows = await weekly_attendance_report(db, week_starts)
 
     assert len(rows) == 2
+
+
+# ── weeks_met / weeks_total exclude 0-requirement weeks ────────────────────────
+
+async def test_weeks_total_excludes_zero_requirement_weeks(db, make_student, team):
+    ada = await make_student(name="Ada Lovelace", code="ada00001")
+
+    today = date.today()
+    this_monday = today - timedelta(days=today.weekday())
+    last_monday = this_monday - timedelta(weeks=1)
+
+    # last_monday is a scheduled 0-hour off week; this_monday resumes at 11.0. A
+    # requirement holds until overridden by a newer entry, so both rows are needed —
+    # otherwise the 0.0 would also apply going forward to this_monday.
+    db.add(WeeklyRequirement(team_id=team.id, subteam_slug=None, week_start=last_monday, required_hours=0.0))
+    db.add(WeeklyRequirement(team_id=team.id, subteam_slug=None, week_start=this_monday, required_hours=11.0))
+    await db.commit()
+
+    week_starts = week_starts_in_range(last_monday, this_monday)
+    rows = await weekly_attendance_report(db, week_starts, team_id=team.id)
+
+    assert len(rows) == 1
+    assert rows[0]["weeks_total"] == 1
+    assert rows[0]["weeks_met"] == 0  # no hours logged this week, so the one counted week is unmet
+
+
+# ── drop_zero_requirement_weeks ─────────────────────────────────────────────────
+
+def test_drop_zero_requirement_weeks_drops_only_all_zero_columns():
+    w1, w2, w3 = date(2026, 6, 1), date(2026, 6, 8), date(2026, 6, 15)
+    rows = [
+        {
+            "weeks": [
+                {"week_start": w1, "hours": 0.0, "required": 0.0, "met": True},
+                {"week_start": w2, "hours": 3.0, "required": 11.0, "met": False},
+                {"week_start": w3, "hours": 0.0, "required": 0.0, "met": True},
+            ],
+        },
+        {
+            "weeks": [
+                {"week_start": w1, "hours": 0.0, "required": 0.0, "met": True},
+                {"week_start": w2, "hours": 12.0, "required": 11.0, "met": True},
+                # w3 stays even though this row is 0 too, since another row is nonzero at w2 only —
+                # w3 is genuinely all-zero across every row and should drop.
+                {"week_start": w3, "hours": 0.0, "required": 0.0, "met": True},
+            ],
+        },
+    ]
+
+    new_week_starts, new_rows = drop_zero_requirement_weeks([w1, w2, w3], rows)
+
+    assert new_week_starts == [w2]
+    assert [w["week_start"] for w in new_rows[0]["weeks"]] == [w2]
+    assert [w["week_start"] for w in new_rows[1]["weeks"]] == [w2]
+
+
+def test_drop_zero_requirement_weeks_keeps_column_if_any_row_nonzero():
+    w1, w2 = date(2026, 6, 1), date(2026, 6, 8)
+    rows = [
+        {"weeks": [{"week_start": w1, "hours": 0.0, "required": 0.0, "met": True},
+                    {"week_start": w2, "hours": 0.0, "required": 0.0, "met": True}]},
+        {"weeks": [{"week_start": w1, "hours": 5.0, "required": 6.0, "met": False},
+                    {"week_start": w2, "hours": 0.0, "required": 0.0, "met": True}]},
+    ]
+
+    new_week_starts, _ = drop_zero_requirement_weeks([w1, w2], rows)
+
+    assert new_week_starts == [w1]  # w1 kept (row 2 has a nonzero requirement); w2 dropped
+
+
+def test_drop_zero_requirement_weeks_noop_for_mentor_rows():
+    w1 = date(2026, 6, 1)
+    rows = [{"weeks": [{"week_start": w1, "hours": 2.0}]}]
+
+    new_week_starts, new_rows = drop_zero_requirement_weeks([w1], rows)
+
+    assert new_week_starts == [w1]
+    assert new_rows == rows
+
+
+def test_drop_zero_requirement_weeks_empty_rows_passthrough():
+    assert drop_zero_requirement_weeks([], []) == ([], [])
 
 
 # ── weekly_mentor_hours ─────────────────────────────────────────────────────────

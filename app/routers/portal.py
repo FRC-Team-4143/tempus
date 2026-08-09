@@ -25,7 +25,8 @@ from app.services.app_settings import get_leaderboard_since, leaderboard_since_u
 from app.services.legion_auth import safe_next
 from app.services.badge import compute_badge_id, effective_code
 from app.services.reports import (
-    default_report_range, week_starts_in_range, weekly_attendance_report, weekly_mentor_hours,
+    default_report_range, drop_zero_requirement_weeks, week_starts_in_range, weekly_attendance_report,
+    weekly_mentor_hours,
 )
 from app.services.sso import logout_url, make_authorize_url, sso_identity
 from app.utils import utc_to_local
@@ -127,6 +128,7 @@ async def portal_home(
         total_hours = float((await db.execute(total_q)).scalar() or 0.0)
 
         report_rows = await weekly_attendance_report(db, week_starts, student_ids=[student.id])
+        _, report_rows = drop_zero_requirement_weeks(week_starts, report_rows)
         report = report_rows[0] if report_rows else None
         person, kind = student, "student"
     else:
