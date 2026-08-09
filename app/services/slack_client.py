@@ -63,16 +63,21 @@ async def send_group_dm(user_ids: list[str], text: str, blocks=None, automated: 
 
 
 async def send_qr_dm(slack_user_id: str, code: str, name: str) -> bool:
-    """Generate a QR code PNG for `code` and send it as a file DM to the user."""
+    """Generate a QR code PNG for `code` and send it as a file DM to the user, alongside a
+    link to their bookmarkable `/badge/<id>` page (see `services/badge.py`) — an alternative
+    to saving the image for anyone who'd rather not clutter their camera roll."""
     import io as _io
     import logging
     import qrcode
+    from app.services.badge import compute_badge_id
     log = logging.getLogger(__name__)
 
     img = qrcode.make(code)
     buf = _io.BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
+
+    badge_url = f"{settings.base_url}/badge/{compute_badge_id(code)}"
 
     client = get_slack_client()
     try:
@@ -85,7 +90,10 @@ async def send_qr_dm(slack_user_id: str, code: str, name: str) -> bool:
             title=f"QR Badge — {name}",
             initial_comment=(
                 f"Hi {name.split()[0]}! Here's your QR badge for the shop kiosk. "
-                "Screenshot or save this and scan it to sign in and out."
+                "Screenshot or save this and scan it to sign in and out.\n\n"
+                f"You can also just bookmark <{badge_url}|your QR badge page> — it doesn't require a Legion "
+                "login, so if you'd rather not save the image to your camera roll, favorite that page or add "
+                "it to your phone's home screen as a shortcut instead."
             ),
         )
         return True
