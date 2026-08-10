@@ -51,6 +51,7 @@ class WeeklyRequirementOut(BaseModel):
     subteam_slug: Optional[str]
     week_start: date
     required_hours: float
+    note: Optional[str]
     team: TeamOut
 
     model_config = {"from_attributes": True}
