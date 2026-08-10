@@ -24,7 +24,7 @@ from app.database import get_db
 from app.models import AttendanceSession, Mentor, MentorSession, SessionStatus, Student, Team
 from app.services import audit
 from app.services.app_settings import get_leaderboard_since, leaderboard_since_utc
-from app.services.attendance import update_session_status, get_signed_in_students, sign_out_all_open
+from app.services.attendance import update_session_status, get_signed_in_students, get_signed_in_mentors, sign_out_all_open
 from app.services.broadcaster import broadcaster
 from app.services.requirements import resolve_requirement
 from app.services.scheduler import _post_wall_of_shame
@@ -181,25 +181,42 @@ async def _notify_student_of_status_change(
 # ── /shop helper ──────────────────────────────────────────────────────────────
 
 
-def _build_shop_text(student_sessions, team_filter: Optional[int]) -> str:
+def _build_shop_text(student_sessions, mentor_sessions, team_filter: Optional[int]) -> str:
     """Build the /shop roster message. team_filter is None, 4143, or 4423."""
     teams = [4143, 4423] if team_filter is None else [team_filter]
     lines = []
 
     total_students = 0
+    total_mentors = 0
     for team_num in teams:
         team_students = [s for s in student_sessions if s.student.team.number == team_num]
+        team_mentors = [
+            m for m in mentor_sessions
+            if (m.mentor.team.number if m.mentor.team else 4143) == team_num
+        ]
         total_students += len(team_students)
-        lines.append(f"*Team {team_num} — {len(team_students)} signed in*")
+        total_mentors += len(team_mentors)
+
+        lines.append(
+            f"*Team {team_num} — {len(team_students)} student{'s' if len(team_students) != 1 else ''}, "
+            f"{len(team_mentors)} mentor{'s' if len(team_mentors) != 1 else ''} signed in*"
+        )
         if team_students:
             for s in team_students:
                 lines.append(f"• {s.student.name} · {format_elapsed(s.sign_in_time)}")
         else:
-            lines.append("  _Nobody signed in_")
+            lines.append("  _No students signed in_")
+        if team_mentors:
+            lines.append("_Mentors_")
+            for m in team_mentors:
+                lines.append(f"• {m.mentor.name} · {format_elapsed(m.sign_in_time)}")
         lines.append("")
 
     if team_filter is None:
-        header = f"*{total_students} student{'s' if total_students != 1 else ''} in the shop*\n"
+        header = (
+            f"*{total_students} student{'s' if total_students != 1 else ''}, "
+            f"{total_mentors} mentor{'s' if total_mentors != 1 else ''} in the shop*\n"
+        )
         return header + "\n".join(lines)
 
     return "\n".join(lines)
@@ -424,8 +441,9 @@ async def slack_command(
                 )
             team_filter = int(text)
         student_sessions = await get_signed_in_students(db)
+        mentor_sessions = await get_signed_in_mentors(db)
         return Response(
-            content=_build_shop_text(student_sessions, team_filter),
+            content=_build_shop_text(student_sessions, mentor_sessions, team_filter),
             media_type="text/plain",
         )
 
