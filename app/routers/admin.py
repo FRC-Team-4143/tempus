@@ -50,13 +50,15 @@ _MANAGER_GROUP = "tempus-manager"
 
 
 def _manager_allowed(path: str) -> bool:
-    """The only routes a 'manager' may reach: the dashboard, the report view, and the
-    weekly-requirements editor."""
+    """The only routes a 'manager' may reach: the dashboard, the report view, the
+    weekly-requirements editor, and the sessions editor (student + mentor)."""
     p = path.rstrip("/")
     return (
         p == "/admin"
         or p == "/admin/report" or p.startswith("/admin/report/")
         or p == "/admin/requirements" or p.startswith("/admin/requirements/")
+        or p == "/admin/sessions" or p.startswith("/admin/sessions/")
+        or p == "/admin/mentor-sessions" or p.startswith("/admin/mentor-sessions/")
     )
 
 
@@ -84,9 +86,9 @@ def _section_label(path: str) -> str:
 
 def _require_auth(request: Request):
     """Gate every admin route via Legion SSO. `tempus-admin` passes everywhere;
-    `tempus-manager` only on the dashboard + report view + weekly-requirements editor —
-    anything else renders the same shell-wrapped "No Access" page as a fully
-    unauthorized visitor (rather than silently redirecting away, which is more
+    `tempus-manager` only on the dashboard + report view + weekly-requirements editor +
+    sessions editor — anything else renders the same shell-wrapped "No Access" page as
+    a fully unauthorized visitor (rather than silently redirecting away, which is more
     disorienting); no/invalid cookie -> Legion sign-in."""
     identity = sso_identity(request)
     if identity is None:

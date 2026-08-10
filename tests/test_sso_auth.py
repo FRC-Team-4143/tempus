@@ -2,8 +2,11 @@
 Admin SSO gate — /admin is protected by Legion's `mw_sso` cookie + the `tempus-admin`
 group. There is no local password login anymore.
 """
+from datetime import datetime, timedelta
+
 import pytest
 
+from app.models import AttendanceSession
 from app.services.sso import SSO_COOKIE, read_sso_token
 from tests.conftest import make_sso_cookie
 
@@ -121,6 +124,72 @@ async def test_manager_can_delete_requirement(client, db):
     from sqlalchemy import select
     result = await db.execute(select(WeeklyRequirement))
     assert result.scalars().all() == []
+
+
+async def test_manager_can_reach_sessions_list(client):
+    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-manager"]))
+    resp = await client.get("/admin/sessions", follow_redirects=False)
+    assert resp.status_code == 200
+
+
+async def test_manager_can_edit_session(client, db, make_student):
+    student = await make_student()
+    now = datetime.utcnow()
+    session = AttendanceSession(
+        student_id=student.id, sign_in_time=now - timedelta(hours=2), sign_out_time=now,
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+
+    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-manager"]))
+    resp = await client.post(
+        f"/admin/sessions/{session.id}/edit",
+        data={
+            "sign_in_time": (now - timedelta(hours=1)).isoformat(timespec="minutes"),
+            "sign_out_time": now.isoformat(timespec="minutes"),
+            "status": "contributor",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    await db.refresh(session)
+    assert session.status.value == "contributor"
+
+
+async def test_manager_can_force_signout_session(client, db, make_student):
+    student = await make_student()
+    session = AttendanceSession(student_id=student.id, sign_in_time=datetime.utcnow())
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+
+    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-manager"]))
+    resp = await client.post(f"/admin/sessions/{session.id}/force-signout", follow_redirects=False)
+    assert resp.status_code == 303
+
+    await db.refresh(session)
+    assert session.sign_out_time is not None
+
+
+async def test_manager_can_delete_session(client, db, make_student):
+    student = await make_student()
+    session = AttendanceSession(
+        student_id=student.id, sign_in_time=datetime.utcnow() - timedelta(hours=1),
+        sign_out_time=datetime.utcnow(),
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+
+    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-manager"]))
+    resp = await client.post(f"/admin/sessions/{session.id}/delete", follow_redirects=False)
+    assert resp.status_code == 303
+
+    from sqlalchemy import select
+    result = await db.execute(select(AttendanceSession).where(AttendanceSession.id == session.id))
+    assert result.scalar_one_or_none() is None
 
 
 async def test_manager_dashboard_hides_manual_signin(client, db, make_student):
