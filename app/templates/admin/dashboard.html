@@ -42,6 +42,7 @@
       <div class="card-header fw-semibold"><i class="bi bi-person-check me-1"></i> Signed In Now</div>
       <div class="card-body p-0">
         {% if signed_in %}
+        <div class="table-responsive">
         <table class="table table-sm mb-0">
           <thead class="table-light"><tr><th>Name</th><th>Team</th><th>Since</th></tr></thead>
           <tbody>
@@ -54,6 +55,7 @@
             {% endfor %}
           </tbody>
         </table>
+        </div>
         {% else %}
           <p class="text-muted p-3 mb-0">No one currently signed in.</p>
         {% endif %}
@@ -77,6 +79,7 @@
         </form>
       </div>
       <div class="card-body p-0">
+        <div class="table-responsive">
         <table class="table table-sm mb-0">
           <thead class="table-light"><tr><th>#</th><th>Name</th><th>Team</th><th>Hours</th></tr></thead>
           <tbody>
@@ -90,6 +93,7 @@
             {% endfor %}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   </div>
