@@ -56,7 +56,8 @@ data flows Legion → Tempus only, never back.
 - **Auth (`services/sso.py`, `routers/admin.py`):** `/admin` verifies Legion's `mw_sso` cookie
   locally with the shared `SSO_SECRET` (no callback) via `_require_auth`, which recognizes two
   tiers: `tempus-admin` (everything) and `tempus-manager` (`_manager_allowed` — only the
-  dashboard and report view; anything else 303s back to the dashboard). No local password. On a
+  dashboard, report view, weekly-requirements editor, and sessions editor; anything else
+  303s back to the dashboard). No local password. On a
   missing/invalid cookie, redirect to `{LEGION_BASE_URL}/sso/authorize?app=tempus`. The audit
   actor is the SSO username.
 - **Personal portal (`routers/portal.py`, `/me`):** open to any active student or mentor on the

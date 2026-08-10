@@ -5,12 +5,17 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2>{{ "Mentor" if is_mentor else "Student" }} Sessions</h2>
-  {% if not is_mentor %}
-  <a href="/admin/sessions/export?{% if filters.student_id %}student_id={{ filters.student_id }}&{% endif %}{% if filters.team_id %}team_id={{ filters.team_id }}&{% endif %}{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.date_from %}date_from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}date_to={{ filters.date_to }}{% endif %}"
-     class="btn btn-outline-secondary btn-sm">
-    <i class="bi bi-download me-1"></i> Export CSV
-  </a>
-  {% endif %}
+  <div class="d-flex gap-2">
+    <a href="/admin/{{ 'mentor-sessions' if is_mentor else 'sessions' }}/new" class="btn btn-success btn-sm">
+      <i class="bi bi-plus-lg me-1"></i> New Session
+    </a>
+    {% if not is_mentor %}
+    <a href="/admin/sessions/export?{% if filters.student_id %}student_id={{ filters.student_id }}&{% endif %}{% if filters.team_id %}team_id={{ filters.team_id }}&{% endif %}{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.date_from %}date_from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}date_to={{ filters.date_to }}{% endif %}"
+       class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-download me-1"></i> Export CSV
+    </a>
+    {% endif %}
+  </div>
 </div>
 
 <!-- Person type toggle -->
