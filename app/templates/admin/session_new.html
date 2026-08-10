@@ -1,0 +1,61 @@
+{% extends "admin/base.html" %}
+{% set active_page = "sessions" %}
+{% block title %}New Session — Tempus Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Log a Forgotten Session</h2>
+  <a href="/admin/sessions{% if is_mentor %}?person_type=mentor{% endif %}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i> Back to Sessions
+  </a>
+</div>
+
+<div class="card shadow-sm" style="max-width: 540px;">
+  <div class="card-body">
+    <form method="post" action="/admin/{{ 'mentor-sessions' if is_mentor else 'sessions' }}/new">
+      <div class="mb-3">
+        <label class="form-label">{{ "Mentor" if is_mentor else "Student" }}</label>
+        <select name="person_id" class="form-select" required>
+          <option value="">— Select —</option>
+          {% for p in people %}
+          <option value="{{ p.id }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Date</label>
+        <input type="date" name="session_date" class="form-control" value="{{ today }}" required>
+      </div>
+      <div class="row g-2">
+        <div class="col mb-3">
+          <label class="form-label">Start Time</label>
+          <input type="time" name="start_time" class="form-control" required>
+        </div>
+        <div class="col mb-3">
+          <label class="form-label">End Time</label>
+          <input type="time" name="end_time" class="form-control" required>
+        </div>
+      </div>
+      <p class="form-text text-muted mb-3">
+        If the end time is earlier than the start time, the session is assumed to run past midnight into the next day.
+      </p>
+      {% if not is_mentor %}
+      <div class="mb-3">
+        <label class="form-label">Status</label>
+        <select name="status" class="form-select">
+          {% for st in statuses %}
+          <option value="{{ st.value }}" {% if st.value == 'contributor' %}selected{% endif %}>
+            {{ st.value | capitalize }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Create Session</button>
+        <a href="/admin/sessions{% if is_mentor %}?person_type=mentor{% endif %}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

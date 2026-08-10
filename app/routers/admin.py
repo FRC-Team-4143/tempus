@@ -697,6 +697,84 @@ async def admin_sessions_export(
     )
 
 
+@router.get("/sessions/new", response_class=HTMLResponse)
+async def admin_sessions_new_form(request: Request, db: AsyncSession = Depends(get_db)):
+    if redirect := _require_auth(request):
+        return redirect
+
+    students_result = await db.execute(
+        select(Student).where(Student.is_active.is_(True)).order_by(Student.name)
+    )
+    return templates.TemplateResponse(
+        "admin/session_new.html",
+        {
+            "request": request,
+            "is_mentor": False,
+            "people": students_result.scalars().all(),
+            "statuses": [s for s in SessionStatus if s != SessionStatus.auto],
+            "today": today_local().isoformat(),
+        },
+    )
+
+
+@router.post("/sessions/new")
+async def admin_sessions_new(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    person_id: int = Form(...),
+    session_date: date = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+    status: str = Form("contributor"),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(select(Student).where(Student.id == person_id))
+    student = result.scalar_one_or_none()
+    if not student:
+        return RedirectResponse("/admin/sessions/new", status_code=303)
+
+    start = datetime.combine(session_date, datetime.strptime(start_time, "%H:%M").time())
+    end = datetime.combine(session_date, datetime.strptime(end_time, "%H:%M").time())
+    if end <= start:
+        end += timedelta(days=1)  # ran past midnight
+
+    sign_in_utc = local_to_utc(start)
+    sign_out_utc = local_to_utc(end)
+    parsed_status = SessionStatus(status)
+
+    from app.services.attendance import _status_multiplier
+    elapsed_hours = (sign_out_utc - sign_in_utc).total_seconds() / 3600.0
+    hours_counted = round(elapsed_hours * _status_multiplier(parsed_status), 4)
+
+    session = AttendanceSession(
+        student_id=student.id,
+        sign_in_time=sign_in_utc,
+        sign_out_time=sign_out_utc,
+        status=parsed_status,
+        hours_counted=hours_counted,
+    )
+    db.add(session)
+    await db.flush()
+
+    await audit.record(
+        db, request, "session.create",
+        f"admin logged a session for {student.name} ({start.strftime('%b %d %I:%M %p')} → "
+        f"{end.strftime('%I:%M %p')}, {parsed_status.value}, {hours_counted:.2f}h) via Admin",
+        entity_type="session", entity_id=session.id,
+        detail={
+            "student_id": student.id,
+            "sign_in_time": str(sign_in_utc),
+            "sign_out_time": str(sign_out_utc),
+            "status": parsed_status.value,
+            "hours_counted": hours_counted,
+        },
+    )
+    await db.commit()
+    return RedirectResponse("/admin/sessions", status_code=303)
+
+
 @router.get("/sessions/{session_id}/edit")
 async def admin_sessions_edit_form(
     session_id: int, request: Request, db: AsyncSession = Depends(get_db)
@@ -871,6 +949,76 @@ async def admin_mentor_sessions_force_signout(
     from app.services.broadcaster import broadcaster
     await broadcaster.broadcast("mentor_update")
 
+    return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+
+
+@router.get("/mentor-sessions/new", response_class=HTMLResponse)
+async def admin_mentor_sessions_new_form(request: Request, db: AsyncSession = Depends(get_db)):
+    if redirect := _require_auth(request):
+        return redirect
+
+    mentors_result = await db.execute(
+        select(Mentor).where(Mentor.is_active.is_(True)).order_by(Mentor.name)
+    )
+    return templates.TemplateResponse(
+        "admin/session_new.html",
+        {
+            "request": request,
+            "is_mentor": True,
+            "people": mentors_result.scalars().all(),
+            "today": today_local().isoformat(),
+        },
+    )
+
+
+@router.post("/mentor-sessions/new")
+async def admin_mentor_sessions_new(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    person_id: int = Form(...),
+    session_date: date = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    result = await db.execute(select(Mentor).where(Mentor.id == person_id))
+    mentor = result.scalar_one_or_none()
+    if not mentor:
+        return RedirectResponse("/admin/mentor-sessions/new", status_code=303)
+
+    start = datetime.combine(session_date, datetime.strptime(start_time, "%H:%M").time())
+    end = datetime.combine(session_date, datetime.strptime(end_time, "%H:%M").time())
+    if end <= start:
+        end += timedelta(days=1)  # ran past midnight
+
+    sign_in_utc = local_to_utc(start)
+    sign_out_utc = local_to_utc(end)
+    hours_counted = round((sign_out_utc - sign_in_utc).total_seconds() / 3600.0, 4)
+
+    session = MentorSession(
+        mentor_id=mentor.id,
+        sign_in_time=sign_in_utc,
+        sign_out_time=sign_out_utc,
+        hours_counted=hours_counted,
+    )
+    db.add(session)
+    await db.flush()
+
+    await audit.record(
+        db, request, "mentor_session.create",
+        f"admin logged a mentor session for {mentor.name} ({start.strftime('%b %d %I:%M %p')} → "
+        f"{end.strftime('%I:%M %p')}, {hours_counted:.2f}h) via Admin",
+        entity_type="mentor_session", entity_id=session.id,
+        detail={
+            "mentor_id": mentor.id,
+            "sign_in_time": str(sign_in_utc),
+            "sign_out_time": str(sign_out_utc),
+            "hours_counted": hours_counted,
+        },
+    )
+    await db.commit()
     return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
 
 
