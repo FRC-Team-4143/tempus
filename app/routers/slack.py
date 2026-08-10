@@ -186,16 +186,12 @@ def _build_shop_text(student_sessions, mentor_sessions, team_filter: Optional[in
     teams = [4143, 4423] if team_filter is None else [team_filter]
     lines = []
 
-    total_students = 0
-    total_mentors = 0
     for team_num in teams:
         team_students = [s for s in student_sessions if s.student.team.number == team_num]
         team_mentors = [
             m for m in mentor_sessions
             if (m.mentor.team.number if m.mentor.team else 4143) == team_num
         ]
-        total_students += len(team_students)
-        total_mentors += len(team_mentors)
 
         lines.append(
             f"*Team {team_num} — {len(team_students)} student{'s' if len(team_students) != 1 else ''}, "
@@ -211,13 +207,6 @@ def _build_shop_text(student_sessions, mentor_sessions, team_filter: Optional[in
             for m in team_mentors:
                 lines.append(f"• {m.mentor.name} · {format_elapsed(m.sign_in_time)}")
         lines.append("")
-
-    if team_filter is None:
-        header = (
-            f"*{total_students} student{'s' if total_students != 1 else ''}, "
-            f"{total_mentors} mentor{'s' if total_mentors != 1 else ''} in the shop*\n"
-        )
-        return header + "\n".join(lines)
 
     return "\n".join(lines)
 
