@@ -82,3 +82,7 @@ class SignInResponse(BaseModel):
     message: str
     student_name: Optional[str] = None
     team_name: Optional[str] = None
+    # Tells the scanning browser whether to hold the mentor board (see
+    # kiosk_combined.html's onResult) — the swap is local to that browser now,
+    # not driven by the SSE broadcast.
+    is_mentor: bool = False

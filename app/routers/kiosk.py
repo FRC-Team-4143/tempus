@@ -39,10 +39,12 @@ templates.env.filters["localdt"] = (
 )
 
 # The app runs behind an nginx reverse proxy (see README), which buffers proxied
-# responses by default — silently delaying every SSE push (including mentor_update,
-# the swap trigger for the combined kiosk display) until the buffer fills or the
-# connection closes. `X-Accel-Buffering: no` is nginx's per-response opt-out;
-# `Cache-Control: no-cache` stops any other cache in the path from holding the stream.
+# responses by default — silently delaying every SSE push (including mentor_update)
+# until the buffer fills or the connection closes. Every open board relies on that
+# push to keep its counts current; `X-Accel-Buffering: no` is nginx's per-response
+# opt-out. `Cache-Control: no-cache` stops any other cache in the path from holding
+# the stream. Note the combined kiosk's board *swap* no longer rides this stream at
+# all — see kiosk_page()'s docstring below.
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
@@ -134,9 +136,14 @@ async def kiosk_page(request: Request, db: AsyncSession = Depends(get_db)):
     """The combined auto-swapping display — what the shop kiosk points at.
 
     The hardware has no mouse or keyboard, only a QR scanner, so the mentor board
-    can't be reached by clicking. Instead a mentor badge scan swaps this display to
-    the mentor board for `kiosk_mentor_hold_seconds`, and any student scan snaps it
-    straight back. Both boards render here; the swap is client-side.
+    can't be reached by clicking. Instead a mentor badge scan swaps *this* display
+    to the mentor board for `kiosk_mentor_hold_seconds`, and a student scan on
+    *this* display snaps it straight back. Both boards render here; the swap is
+    client-side and driven only by this browser's own `/kiosk/signin` response
+    (see kiosk_combined.html's `onResult`) — never by the SSE broadcast below,
+    which has no notion of which physical kiosk (if any) triggered it, and also
+    fires from sources with no display to swap at all (Slack, the admin panel,
+    the nightly auto-sign-out job).
     """
     if page := await _pairing_gate(request, db, "Kiosk"):
         return page
@@ -273,9 +280,13 @@ async def kiosk_signin(
     m_success, m_message, mentor = await mentor_sign_in(db, body.name.strip())
     if m_success:
         await broadcaster.broadcast("mentor_update")
-        return SignInResponse(success=True, message=m_message)
+        return SignInResponse(success=True, message=m_message, is_mentor=True)
 
-    return SignInResponse(success=success, message=message)
+    # Use the mentor lookup's own outcome here, not the student lookup's stale
+    # one above — a debounced duplicate mentor scan otherwise gets reported as
+    # "Badge not recognized" (the student branch's message) instead of its own
+    # "Duplicate scan ignored".
+    return SignInResponse(success=m_success, message=m_message)
 
 
 @router.get("/kiosk/student/data", dependencies=[Depends(_require_paired_device)])

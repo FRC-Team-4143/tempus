@@ -5,6 +5,14 @@
    navigation. So the mentor board can't be reached by clicking, and a badge scan
    drives the view instead. Both boards render here; only one is visible.
 
+   The swap is local to this browser — driven by initBadgeScanner's onResult
+   callback below, reading this browser's own /kiosk/signin response, not the SSE
+   broadcast. That broadcast also fires from sources with no display to swap at
+   all (Slack, the admin panel, the nightly auto-sign-out), so it's wired to
+   refresh board data only; letting it drive the swap would flip every open kiosk
+   in the building over whenever any of those fired, regardless of which (if any)
+   physical kiosk was actually scanned.
+
    No cross-links in the header on purpose — they'd be unclickable, and the swap
    is the answer to "how do I see the other board". #}
 
@@ -112,21 +120,22 @@
     countdownTimer = setInterval(() => { left -= 1; if (left >= 0) render(); }, 1000);
   }
 
-  // Snap back to students and cancel any hold. Called unconditionally on every
-  // student event — that is the "any student scan brings it back" requirement.
+  // Snap back to students and cancel any hold. Called only from this browser's
+  // own badge-scan result (see the onResult wiring below) when the scan wasn't a
+  // mentor — never from the SSE 'update' handler, which fires for every open
+  // kiosk regardless of which one (if any) was actually scanned.
   function toStudent() {
     if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
     stopCountdown();
     show('student');
   }
 
-  async function onMentorEvent() {
+  // Holds the mentor board for HOLD_MS. Called only from this browser's own
+  // badge-scan result, never from SSE — see the module-level comment above.
+  async function holdMentorBoard() {
     await mentor.refresh();
     mentor.refreshStats();
-    // Never swap to an empty board. This also handles the last mentor badging
-    // out (same event as badging in) and the 22:00 auto-sign-out, which
-    // broadcasts mentor_update once everyone is already signed out.
-    if (mentor.isEmpty()) { toStudent(); return; }
+    if (mentor.isEmpty()) { toStudent(); return; }   // never swap to an empty board
     show('mentor');
     if (holdTimer) clearTimeout(holdTimer);   // re-arm rather than stack
     holdTimer = setTimeout(toStudent, HOLD_MS);
@@ -134,16 +143,24 @@
   }
 
   Kiosk.startClock();
-  Kiosk.initBadgeScanner();
+  // onResult drives the swap locally from this browser's own scan — see the
+  // module-level comment above for why the SSE broadcast doesn't.
+  Kiosk.initBadgeScanner((data) => {
+    if (!data.success) return;
+    if (data.is_mentor) { holdMentorBoard(); return; }
+    student.refresh();
+    student.refreshStats();
+    toStudent();
+  });
   student.refreshStats();
   mentor.refreshStats();
   Kiosk.initScrollers(studentEl);
 
-  // The student stream forwards *every* broadcast event, including mentor_update,
-  // so one connection drives both boards.
+  // Data-refresh only now — every open kiosk keeps its counts current on any
+  // broadcast, but the board *swap* is local (see initBadgeScanner above).
   Kiosk.connectSSE('/kiosk/student/stream', {
-    update: () => { student.refresh(); student.refreshStats(); toStudent(); },
-    mentor_update: () => { student.refresh(); onMentorEvent(); },
+    update: () => { student.refresh(); student.refreshStats(); },
+    mentor_update: () => { student.refresh(); mentor.refresh(); mentor.refreshStats(); },
   });
 
   setInterval(() => { student.refresh(); mentor.refresh(); }, 60000);

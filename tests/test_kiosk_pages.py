@@ -24,6 +24,14 @@ async def test_student_board_has_no_admin_link(paired_client):
     assert 'href="/admin"' not in resp.text
 
 
+async def test_student_board_scanner_takes_no_result_callback(paired_client):
+    """Unlike the combined display, this page never swaps views, so its scanner
+    stays a plain no-argument call — the shared initBadgeScanner(onResult) change
+    in kiosk-boards.js is a no-op here."""
+    resp = await paired_client.get("/kiosk/student")
+    assert "Kiosk.initBadgeScanner();" in resp.text
+
+
 async def test_mentor_page_has_no_admin_link(paired_client):
     resp = await paired_client.get("/kiosk/mentor")
     assert resp.status_code == 200

@@ -104,9 +104,10 @@ async def test_json_routes_serve_when_paired(paired_client, path):
 async def test_stream_routes_disable_proxy_buffering():
     """The app sits behind an nginx reverse proxy (see README), which buffers
     proxied responses by default — silently delaying every SSE push (including
-    mentor_update, the swap trigger for the combined kiosk display) until the
-    buffer fills or the connection closes. Without `X-Accel-Buffering: no`, the
-    kiosk display can look like it's simply not reacting to badge scans.
+    mentor_update, which every open board relies on to keep its counts current)
+    until the buffer fills or the connection closes. Without
+    `X-Accel-Buffering: no`, a kiosk display can look like it's simply not
+    reacting to badge scans elsewhere.
 
     Called directly rather than through a client: the generator body never runs
     until the ASGI server starts pulling from it, so this only inspects the

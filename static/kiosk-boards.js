@@ -6,7 +6,9 @@
  * ids, so both can coexist in one document on the combined page.
  *
  * Each board exposes refresh() and isEmpty(); the combined page's swap
- * controller is built on exactly those two.
+ * controller is built on exactly those two, triggered by initBadgeScanner's
+ * optional onResult callback (this browser's own scan) rather than by the SSE
+ * events also handled below, which are data-refresh only.
  */
 window.Kiosk = (function () {
   'use strict';
@@ -219,7 +221,13 @@ window.Kiosk = (function () {
   // ── Badge scanner ────────────────────────────────────────────────────────
   // The scanner is a keyboard: it types the badge id and presses Enter. Keep
   // focus pinned to the hidden input so a stray click can't swallow a scan.
-  function initBadgeScanner() {
+  //
+  // `onResult(data)`, if given, fires with the parsed SignInResponse after every
+  // successful fetch (not on a network error, which has no response to act on).
+  // The combined page uses it to decide the student/mentor board swap locally,
+  // from this browser's own scan — the pinned single-board pages have nothing to
+  // swap, so they call this with no argument.
+  function initBadgeScanner(onResult) {
     const input = document.getElementById('badge-input');
     const toast = document.getElementById('feedback-toast');
     const msgEl = document.getElementById('feedback-msg');
@@ -251,6 +259,7 @@ window.Kiosk = (function () {
         });
         const data = await resp.json();
         showFeedback(data.success, data.message);
+        if (onResult) onResult(data);
       } catch (err) {
         showFeedback(false, 'Connection error. Please try again.');
       }

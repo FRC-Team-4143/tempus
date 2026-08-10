@@ -1,9 +1,12 @@
 """The combined auto-swapping display at /kiosk.
 
 The swap itself is browser timing (a mentor scan holds the mentor board, a student
-scan snaps back) and stays out of pytest. What the *server* controls is testable and
-tested here: which template each URL serves, that the hold duration is rendered from
-config rather than hardcoded, and that the pinned views don't carry the controller.
+scan snaps back), local to the scanning browser — driven by that browser's own
+`/kiosk/signin` response, not the SSE broadcast — and stays out of pytest (server-side
+coverage of that response lives in test_kiosk_signin.py). What the *server* controls
+is testable and tested here: which template each URL serves, that the hold duration
+is rendered from config rather than hardcoded, that the SSE handlers only refresh
+data rather than swapping, and that the pinned views don't carry the controller.
 """
 import pytest
 
@@ -22,12 +25,36 @@ async def test_kiosk_serves_the_combined_display(paired_client):
 
 async def test_combined_display_subscribes_to_the_student_stream(paired_client):
     """That stream forwards *every* broadcast event including mentor_update, so one
-    connection drives both boards. Subscribing to the mentor stream instead would
-    silently lose student updates."""
+    connection keeps both boards' data current. Subscribing to the mentor stream
+    instead would silently lose student updates. (Data only — see
+    test_sse_handlers_only_refresh_data_not_swap for why the board *swap* doesn't
+    ride this stream.)"""
     resp = await paired_client.get("/kiosk")
     assert "/kiosk/student/stream" in resp.text
     assert "mentor_update" in resp.text
     assert "'/kiosk/mentor/stream'" not in resp.text
+
+
+async def test_sse_handlers_only_refresh_data_not_swap(paired_client):
+    """The board swap is local to the scanning browser (driven by its own
+    /kiosk/signin response — see test_badge_scanner_is_wired_to_a_local_result_callback),
+    not by this SSE stream. A broadcast with no associated display — the nightly
+    auto-sign-out, an admin edit, a Slack /gtfo — must refresh every open kiosk's
+    counts without swapping any of them."""
+    resp = await paired_client.get("/kiosk")
+    start = resp.text.index("connectSSE(")
+    end = resp.text.index(");", start)
+    handlers_src = resp.text[start:end]
+    assert "toStudent()" not in handlers_src
+    assert "holdMentorBoard()" not in handlers_src
+
+
+async def test_badge_scanner_is_wired_to_a_local_result_callback(paired_client):
+    """The combined display passes initBadgeScanner a callback so it can swap
+    itself locally from its own scan result — the pinned single-board pages have
+    nothing to swap and call it with no argument (see test_kiosk_pages.py)."""
+    resp = await paired_client.get("/kiosk")
+    assert "Kiosk.initBadgeScanner((data)" in resp.text
 
 
 async def test_hold_duration_comes_from_config(paired_client, monkeypatch):

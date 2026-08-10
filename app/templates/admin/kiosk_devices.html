@@ -144,25 +144,6 @@
   </div>
 </div>
 
-{% if revoked %}
-<div class="card">
-  <div class="card-body">
-    <h5 class="card-title">Revoked</h5>
-    <table class="table align-middle mb-0">
-      <thead><tr><th>Display</th><th>Paired</th><th>Revoked</th></tr></thead>
-      <tbody>
-        {% for d in revoked %}
-        <tr>
-          <td class="text-muted">{{ d.label or d.user_code }}</td>
-          <td class="small text-muted">{{ d.approved_at | localdt if d.approved_at else "—" }}</td>
-          <td class="small text-muted">{{ d.revoked_at | localdt }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% endif %}
 {% endblock %}
 
 {% block scripts %}
