@@ -28,6 +28,7 @@ from app.models import (
     AttendanceSession, AuditLog, Mentor, MentorSession, SessionStatus, Student, Subteam, Team, WeeklyRequirement,
 )
 from app.services import audit
+from app.services.requirements import resolve_requirement
 from app.services.sso import logout_url, make_authorize_url, sso_identity
 from app.utils import utc_to_local, today_local, local_to_utc
 
@@ -355,7 +356,7 @@ async def admin_requirements_list(request: Request, db: AsyncSession = Depends(g
     result = await db.execute(
         select(WeeklyRequirement)
         .options(selectinload(WeeklyRequirement.team))
-        .order_by(WeeklyRequirement.week_start.desc())
+        .order_by(WeeklyRequirement.id.desc())
     )
     requirements = result.scalars().all()
 
@@ -363,6 +364,18 @@ async def admin_requirements_list(request: Request, db: AsyncSession = Depends(g
     teams = teams_result.scalars().all()
 
     subteams = await _active_subteams(db)
+
+    # Live requirement for the current week, per team x subteam — for the summary boxes
+    this_monday = today_local() - timedelta(days=today_local().weekday())
+    live_requirements = [
+        {
+            "team": team,
+            "subteam": subteam,
+            "hours": await resolve_requirement(db, team.id, subteam.slug, this_monday),
+        }
+        for team in teams
+        for subteam in subteams
+    ]
 
     # Compute per-row "covers until" by grouping entries in each (team_id, subteam) scope
     from collections import defaultdict
@@ -385,6 +398,7 @@ async def admin_requirements_list(request: Request, db: AsyncSession = Depends(g
             "requirements": requirements,
             "teams": teams,
             "subteams": subteams,
+            "live_requirements": live_requirements,
             "covers_until": covers_until,
         },
     )
@@ -397,6 +411,7 @@ async def admin_requirements_create(
     subteam_slug: Optional[str] = Form(None),
     week_start: date = Form(...),
     required_hours: float = Form(...),
+    note: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     if redirect := _require_auth(request):
@@ -406,6 +421,7 @@ async def admin_requirements_create(
     week_monday = week_start - timedelta(days=week_start.weekday())
     parsed_slug = subteam_slug.strip() if subteam_slug and subteam_slug.strip() else None
     parsed_team_id = int(team_id) if team_id else None  # empty = all teams
+    parsed_note = note.strip() if note and note.strip() else None
 
     # Upsert: update if exists
     team_clause = (
@@ -426,20 +442,24 @@ async def admin_requirements_create(
     existing = existing_result.scalars().first()
     if existing:
         existing.required_hours = required_hours
+        existing.note = parsed_note
     else:
         db.add(
             WeeklyRequirement(
-                team_id=parsed_team_id, subteam_slug=parsed_slug, week_start=week_monday, required_hours=required_hours
+                team_id=parsed_team_id, subteam_slug=parsed_slug, week_start=week_monday,
+                required_hours=required_hours, note=parsed_note,
             )
         )
     await audit.record(
         db, request, "requirement.set",
         f"Set requirement {required_hours}h for team={parsed_team_id or 'all'} "
-        f"subteam={parsed_slug or 'all'} week {week_monday}",
+        f"subteam={parsed_slug or 'all'} week {week_monday}"
+        + (f' ("{parsed_note}")' if parsed_note else ""),
         entity_type="requirement",
         detail={"team_id": parsed_team_id,
                 "subteam_slug": parsed_slug,
-                "week_start": str(week_monday), "required_hours": required_hours},
+                "week_start": str(week_monday), "required_hours": required_hours,
+                "note": parsed_note},
     )
     await db.commit()
     return RedirectResponse("/admin/requirements", status_code=303)
@@ -463,9 +483,11 @@ async def admin_requirements_delete(
 
     team_label = f"team {req.team.number}" if req.team else "all teams"
     subteam_label = req.subteam_slug or "all subteams"
+    note_suffix = f' ("{req.note}")' if req.note else ""
     await audit.record(
         db, request, "requirement.delete",
-        f"Deleted requirement: {req.required_hours}h for {team_label}, {subteam_label}, week {req.week_start}",
+        f"Deleted requirement: {req.required_hours}h for {team_label}, {subteam_label}, "
+        f"week {req.week_start}{note_suffix}",
         entity_type="requirement", entity_id=req_id,
     )
     await db.execute(delete(WeeklyRequirement).where(WeeklyRequirement.id == req_id))

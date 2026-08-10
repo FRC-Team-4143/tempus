@@ -52,6 +52,8 @@ async def init_db() -> None:
         await conn.run_sync(_weekly_req_category_to_subteam)
         # Retire the local `is_lead` flag (lead status now comes from Legion groups)
         await conn.run_sync(_drop_is_lead_column)
+        # Add an optional free-text note/title to weekly requirements
+        await conn.run_sync(_add_weekly_requirement_note_column)
 
     await _seed_teams()
     await _seed_subteams()
@@ -205,6 +207,14 @@ def _weekly_req_category_to_subteam(conn) -> None:
         """
     ))
     conn.execute(text("DROP TABLE weekly_requirements_old"))
+
+
+def _add_weekly_requirement_note_column(conn) -> None:
+    """Add the optional free-text `note` label to weekly_requirements if missing."""
+    from sqlalchemy import inspect, text
+    columns = [c["name"] for c in inspect(conn).get_columns("weekly_requirements")]
+    if "note" not in columns:
+        conn.execute(text("ALTER TABLE weekly_requirements ADD COLUMN note VARCHAR(200)"))
 
 
 def _drop_slack_session_columns(conn) -> None:

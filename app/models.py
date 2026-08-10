@@ -141,6 +141,8 @@ class WeeklyRequirement(Base):
     subteam_slug: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     week_start: Mapped[date] = mapped_column(Date, nullable=False)  # always a Monday
     required_hours: Mapped[float] = mapped_column(Float, nullable=False, default=11.0)
+    # Free-text label for why this change was made (e.g. "Post-kickoff ramp-up")
+    note: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     team: Mapped[Optional["Team"]] = relationship("Team", back_populates="weekly_requirements")
 

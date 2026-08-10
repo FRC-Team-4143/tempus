@@ -15,6 +15,19 @@
   The most specific match wins: a team-specific entry overrides All Teams, and a subteam-specific entry overrides one with no subteam (default 11 hrs).
 </p>
 
+<div class="row g-3 mb-4">
+  {% for live in live_requirements %}
+  <div class="col-sm-6 col-lg-2">
+    <div class="card text-bg-primary h-100">
+      <div class="card-body">
+        <div class="fs-2 fw-bold">{{ live.hours }} <small class="fs-6 fw-normal">hrs</small></div>
+        <div class="small">{{ live.team.number }} {{ live.subteam.label }}</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
 <div class="card shadow-sm">
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -26,6 +39,7 @@
           <th>Effective From</th>
           <th>Covers</th>
           <th>Required Hours</th>
+          <th>Note</th>
           <th></th>
         </tr>
       </thead>
@@ -44,6 +58,7 @@
             {% endif %}
           </td>
           <td><strong>{{ r.required_hours }}</strong> hrs</td>
+          <td class="text-muted small">{{ r.note or '—' }}</td>
           <td>
             <form method="post" action="/admin/requirements/{{ r.id }}/delete" class="d-inline"
                   onsubmit="return confirm('Delete this requirement?')">
@@ -88,6 +103,10 @@
           <div class="mb-3">
             <label class="form-label">Required Hours</label>
             <input type="number" name="required_hours" class="form-control" step="0.5" min="0" value="11" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Note <small class="text-muted">(optional — why this change?)</small></label>
+            <input type="text" name="note" class="form-control" maxlength="200" placeholder="e.g. Post-kickoff ramp-up">
           </div>
         </div>
         <div class="modal-footer">
