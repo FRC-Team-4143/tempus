@@ -230,7 +230,7 @@ Legion's own home-page app launcher, not a link inside Tempus.
 
 ### Roster lookup
 
-- `/shop` — shows all currently signed-in students, grouped by team with elapsed time
+- `/shop` — shows all currently signed-in students and mentors, grouped by team and then by student/mentor, with elapsed time
 - `/shop 4143` or `/shop 4423` — filters to a single team
 
 ### Hours queries
