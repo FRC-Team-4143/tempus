@@ -80,7 +80,7 @@ All settings are read from a `.env` file in the working directory (or from envir
 | `auto_signout_time` | `AUTO_SIGNOUT_TIME` | `22:00` | Daily auto sign-out time in 24-hour `HH:MM` format |
 | `weekly_dm_day` | `WEEKLY_DM_DAY` | `6` | Day of week for weekly Slack DMs (0 = Monday … 6 = Sunday) |
 | `weekly_dm_time` | `WEEKLY_DM_TIME` | `21:00` | Time for weekly Slack DMs in 24-hour `HH:MM` format |
-| `signin_ip_whitelist` | `SIGNIN_IP_WHITELIST` | *(unrestricted)* | Comma-separated CIDR ranges allowed to submit sign-ins (e.g. `192.168.1.0/24`); leave blank to allow all |
+| `kiosk_mentor_hold_seconds` | `KIOSK_MENTOR_HOLD_SECONDS` | `120` | How long `/kiosk` holds on the mentor board after a mentor badge scan before returning to students |
 | `contributor_multiplier` | `CONTRIBUTOR_MULTIPLIER` | `1.0` | Hours multiplier for "Contributor" rated sessions |
 | `present_multiplier` | `PRESENT_MULTIPLIER` | `0.5` | Hours multiplier for "Present" rated sessions |
 | `distraction_multiplier` | `DISTRACTION_MULTIPLIER` | `0.0` | Hours multiplier for "Distraction" rated sessions |
@@ -183,13 +183,14 @@ and Tempus mirrors it read-only.
 
 ## Kiosk
 
-The kiosk page (`/kiosk`) is designed for a dedicated touchscreen display. It shows currently signed-in students grouped by team with elapsed sign-in time and auto-refreshes via Server-Sent Events — no polling required.
+The kiosk page (`/kiosk`) is designed for a dedicated display whose only input is a QR scanner. It shows currently signed-in students grouped by team with elapsed sign-in time and auto-refreshes via Server-Sent Events — no polling required.
 
 - **Sign-in:** scan a QR badge — the scanner acts as a keyboard and submits the student's tracker UID to `POST /kiosk/signin`
 - **Self sign-out:** scanning the same badge again signs the student out (minimum 60 seconds must have elapsed to prevent accidental double-scans)
 - **Default sign-out status:** self sign-outs are recorded as **Contributor** (full hours); a mentor can adjust this later with `/edit`
+- **Mentor board swap:** since the display has no mouse, a *mentor* badge scan swaps `/kiosk` to the mentor board for `KIOSK_MENTOR_HOLD_SECONDS`; any student scan snaps it straight back. Pinned single-board views live at `/kiosk/student` and `/kiosk/mentor`.
 - **Demo mode:** `/kiosk/demo` renders a realistic preview with fake data — useful for layout testing
-- **IP whitelist:** set `SIGNIN_IP_WHITELIST` to restrict which network addresses can submit sign-ins (the kiosk device's subnet, for example)
+- **Device pairing:** the boards are gated per-device, not per-network. Open the pairing window in **Admin → Kiosk Devices**, load `/kiosk` on the display, and approve the code it shows. A paired display stays trusted until revoked, so it keeps working at a competition venue; an unpaired browser only ever sees the pairing screen.
 
 ---
 

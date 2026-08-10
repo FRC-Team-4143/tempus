@@ -1,25 +1,33 @@
 """
-Kiosk routes — sign-in page, badge POST, SSE stream, and leaderboard stats.
+Kiosk routes — display boards, badge POST, SSE streams, leaderboard stats, and
+the device-pairing flow that gates all of it (see `services/kiosk_device.py`).
+
+`/kiosk` is the combined auto-swapping display the shop kiosk points at; the two
+pinned boards live at `/kiosk/student` and `/kiosk/mentor`. Everything under
+`/kiosk/*` is a paired-display surface except `/kiosk/demo` (fake names only) and
+`/kiosk/pair/status` (the pairing poll).
 """
-import ipaddress
 import json
 from collections import defaultdict
 from datetime import date
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models import AttendanceSession, MentorSession, Mentor, Student, Team
+from app.models import (
+    AttendanceSession, KioskDeviceStatus, MentorSession, Mentor, Student, Team,
+)
 from app.schemas import SignInRequest, SignInResponse
+from app.services import kiosk_device
 from app.services.attendance import (
     sign_in, get_signed_in_students,
-    mentor_sign_in, get_signed_in_mentors, mentor_sign_out_all_open,
+    mentor_sign_in, get_signed_in_mentors,
 )
 from app.services.broadcaster import broadcaster
 from app.utils import utc_to_local, today_local, format_elapsed, current_week_bounds
@@ -31,29 +39,69 @@ templates.env.filters["localdt"] = (
 )
 
 
-def _is_allowed_ip(request: Request) -> bool:
-    """Return True if IP whitelisting is disabled or the client IP is in an allowed CIDR."""
-    whitelist_str = settings.signin_ip_whitelist.strip()
-    if not whitelist_str:
-        return True
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    try:
-        addr = ipaddress.ip_address(client_ip)
-        for cidr in whitelist_str.split(","):
-            if addr in ipaddress.ip_network(cidr.strip(), strict=False):
-                return True
-    except ValueError:
-        pass
-    return False
+async def _is_paired(db: AsyncSession, request: Request) -> bool:
+    """True if this browser holds a cookie naming an *active* kiosk device."""
+    device = await kiosk_device.current_device(db, request)
+    if device is None or device.status != KioskDeviceStatus.active:
+        return False
+    await kiosk_device.touch(db, device, request)
+    return True
 
 
-def _require_onsite(request: Request) -> None:
-    """Route dependency gating the read-only display pages/APIs (kiosk + mentor board)
-    to the same `signin_ip_whitelist` CIDRs as sign-in itself — these pages show real
-    student/mentor names, so they shouldn't be reachable from off the shop's network.
-    Blank whitelist (the default) means unrestricted, same as `_is_allowed_ip`."""
-    if not _is_allowed_ip(request):
-        raise HTTPException(status_code=403, detail="Not available from this network.")
+async def _require_paired_device(
+    request: Request, db: AsyncSession = Depends(get_db)
+) -> None:
+    """Route dependency for the JSON/SSE board endpoints — 403 when unpaired.
+
+    The HTML board pages don't use this: they render the pairing page instead, so
+    an operator standing at the display sees what to do rather than a JSON error.
+    """
+    if not await _is_paired(db, request):
+        raise HTTPException(status_code=403, detail="This display is not paired.")
+
+
+async def _pairing_gate(
+    request: Request, db: AsyncSession, board_label: str
+) -> Optional[Response]:
+    """None if paired; otherwise the pairing page to return instead of the board.
+
+    Order matters. Reusing a live pending row first means a display that reloads (or
+    whose poll races an approval) never creates a second row — so the only rows that
+    exist are genuine first-time requests. Everything after that is abuse control:
+    pairing is closed by default, and even while open it is throttled per-IP and
+    capped, because these pages are necessarily reachable by anyone.
+    """
+    if await _is_paired(db, request):
+        return None
+
+    def _page(**ctx) -> Response:
+        return templates.TemplateResponse(
+            "kiosk_pair.html",
+            {"request": request, "board_label": board_label, **ctx},
+        )
+
+    device = await kiosk_device.current_device(db, request)
+    if device is not None and device.status == KioskDeviceStatus.pending:
+        return _page(user_code=device.user_code)
+
+    if await kiosk_device.pairing_open_until(db) is None:
+        return _page(user_code=None, reason="closed")
+
+    # Commit the prune on its own so it sticks even when the checks below bail
+    # out — otherwise a throttled request would roll back the cleanup it just did.
+    await kiosk_device.prune_pending(db)
+    await db.commit()
+
+    if not kiosk_device.rate_limit_ok(kiosk_device.client_ip(request)):
+        return _page(user_code=None, reason="throttled")
+    if await kiosk_device.pending_count(db) >= kiosk_device.MAX_PENDING:
+        return _page(user_code=None, reason="throttled")
+
+    device = await kiosk_device.create_pending(db, request)
+    await db.commit()
+    response = _page(user_code=device.user_code)
+    kiosk_device.issue_cookie(response, device.device_id)
+    return response
 
 
 def _format_sessions(sessions) -> dict:
@@ -74,8 +122,36 @@ def _format_sessions(sessions) -> dict:
     return by_team
 
 
-@router.get("/kiosk", response_class=HTMLResponse, dependencies=[Depends(_require_onsite)])
+@router.get("/kiosk", response_class=HTMLResponse)
 async def kiosk_page(request: Request, db: AsyncSession = Depends(get_db)):
+    """The combined auto-swapping display — what the shop kiosk points at.
+
+    The hardware has no mouse or keyboard, only a QR scanner, so the mentor board
+    can't be reached by clicking. Instead a mentor badge scan swaps this display to
+    the mentor board for `kiosk_mentor_hold_seconds`, and any student scan snaps it
+    straight back. Both boards render here; the swap is client-side.
+    """
+    if page := await _pairing_gate(request, db, "Kiosk"):
+        return page
+    sessions = await get_signed_in_students(db)
+    mentor_sessions = await get_signed_in_mentors(db)
+    return templates.TemplateResponse(
+        "kiosk_combined.html",
+        {
+            "request": request,
+            "by_team": _format_sessions(sessions),
+            "teams": [4143, 4423],
+            "signed_in": _format_mentor_sessions(mentor_sessions),
+            "mentor_hold_seconds": settings.kiosk_mentor_hold_seconds,
+        },
+    )
+
+
+@router.get("/kiosk/student", response_class=HTMLResponse)
+async def kiosk_student_board(request: Request, db: AsyncSession = Depends(get_db)):
+    """The student board, pinned — for a dedicated second screen, or laptop debugging."""
+    if page := await _pairing_gate(request, db, "Student Board"):
+        return page
     sessions = await get_signed_in_students(db)
     by_team = _format_sessions(sessions)
     return templates.TemplateResponse(
@@ -86,6 +162,14 @@ async def kiosk_page(request: Request, db: AsyncSession = Depends(get_db)):
             "teams": [4143, 4423],
         },
     )
+
+
+@router.get("/kiosk/pair/status")
+async def kiosk_pair_status(request: Request, db: AsyncSession = Depends(get_db)):
+    """Poll target for the pairing page. Deliberately read-only — it never creates a
+    row, so a display polling every 3s can't be an amplification vector."""
+    device = await kiosk_device.current_device(db, request)
+    return {"status": device.status.value if device else "unknown"}
 
 
 @router.get("/kiosk/demo", response_class=HTMLResponse)
@@ -163,8 +247,10 @@ async def kiosk_demo(request: Request):
 async def kiosk_signin(
     body: SignInRequest, request: Request, db: AsyncSession = Depends(get_db)
 ):
-    if not _is_allowed_ip(request):
-        return SignInResponse(success=False, message="Sign-in not allowed from this location.")
+    # Soft 200 rather than a 403: the kiosk shows `message` in its toast, so an
+    # unpaired display tells the student what's wrong instead of failing silently.
+    if not await _is_paired(db, request):
+        return SignInResponse(success=False, message="This display is not paired.")
 
     success, message, student = await sign_in(db, body.name.strip())
     if success:
@@ -185,7 +271,7 @@ async def kiosk_signin(
     return SignInResponse(success=success, message=message)
 
 
-@router.get("/kiosk/data", dependencies=[Depends(_require_onsite)])
+@router.get("/kiosk/student/data", dependencies=[Depends(_require_paired_device)])
 async def kiosk_data(db: AsyncSession = Depends(get_db)):
     """JSON snapshot of currently signed-in students, grouped by team number."""
     sessions = await get_signed_in_students(db)
@@ -196,7 +282,7 @@ async def kiosk_data(db: AsyncSession = Depends(get_db)):
     return by_team
 
 
-@router.get("/kiosk/stats", dependencies=[Depends(_require_onsite)])
+@router.get("/kiosk/student/stats", dependencies=[Depends(_require_paired_device)])
 async def kiosk_stats(db: AsyncSession = Depends(get_db)):
     """Return leaderboard stats for the kiosk stats panel."""
 
@@ -331,7 +417,7 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.get("/kiosk/stream", dependencies=[Depends(_require_onsite)])
+@router.get("/kiosk/student/stream", dependencies=[Depends(_require_paired_device)])
 async def kiosk_stream():
     """Server-Sent Events endpoint — pushes 'update' events to all connected kiosks."""
 
@@ -365,8 +451,12 @@ def _format_mentor_sessions(sessions) -> list[dict]:
     return result
 
 
-@router.get("/mentor", response_class=HTMLResponse, dependencies=[Depends(_require_onsite)])
+@router.get("/kiosk/mentor", response_class=HTMLResponse)
 async def mentor_board(request: Request, db: AsyncSession = Depends(get_db)):
+    """The mentor board, pinned. `/kiosk` swaps to this view on its own; this route
+    is for a screen dedicated to it."""
+    if page := await _pairing_gate(request, db, "Mentor Board"):
+        return page
     sessions = await get_signed_in_mentors(db)
     signed_in = _format_mentor_sessions(sessions)
     return templates.TemplateResponse("mentor.html", {
@@ -375,13 +465,20 @@ async def mentor_board(request: Request, db: AsyncSession = Depends(get_db)):
     })
 
 
-@router.get("/mentor/data", dependencies=[Depends(_require_onsite)])
+@router.get("/mentor", include_in_schema=False)
+async def mentor_board_legacy():
+    """Pre-restructure URL. Redirects unconditionally — the pairing check happens at
+    the destination, so this alias can't drift from the real gate."""
+    return RedirectResponse("/kiosk/mentor", status_code=302)
+
+
+@router.get("/kiosk/mentor/data", dependencies=[Depends(_require_paired_device)])
 async def mentor_data(db: AsyncSession = Depends(get_db)):
     sessions = await get_signed_in_mentors(db)
     return {"signed_in": _format_mentor_sessions(sessions)}
 
 
-@router.get("/mentor/stats", dependencies=[Depends(_require_onsite)])
+@router.get("/kiosk/mentor/stats", dependencies=[Depends(_require_paired_device)])
 async def mentor_stats(db: AsyncSession = Depends(get_db)):
     """Return mentor leaderboard: all-time, this week, longest session, longest streak."""
     week_start_utc, _ = current_week_bounds()
@@ -468,7 +565,7 @@ async def mentor_stats(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.get("/mentor/stream", dependencies=[Depends(_require_onsite)])
+@router.get("/kiosk/mentor/stream", dependencies=[Depends(_require_paired_device)])
 async def mentor_stream():
     """SSE endpoint — pushes 'mentor_update' events to connected mentor boards."""
 

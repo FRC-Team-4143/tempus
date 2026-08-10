@@ -1,0 +1,58 @@
+{# Student board markup. Included by kiosk.html (pinned) and kiosk_combined.html.
+   Parts are addressed by data- attributes scoped to the board root, not global
+   ids, so this can share a document with the mentor board on the combined page.
+   Context: teams, by_team, and optionally demo. #}
+<div class="container-fluid px-3 pt-3">
+  <div class="row g-3">
+    {% for team_number in teams %}
+    <div class="col-4">
+      <div class="kiosk-panel">
+        <div class="kiosk-panel-header">
+          <span>Team {{ team_number }}</span>
+          <span class="badge bg-secondary" data-count="{{ team_number }}">
+            {{ (by_team.get(team_number, [])|length) }}
+          </span>
+        </div>
+        <div data-list="{{ team_number }}" class="scroll-list">
+          {% set students = by_team.get(team_number, []) %}
+          {% if students %}
+            {% for s in students %}
+            <div class="person-row">
+              <span class="person-name">{{ s.name }}</span>
+              <span class="person-meta">{{ s.sign_in_time }} &nbsp;·&nbsp; {{ s.elapsed }}</span>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No one signed in yet</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="col-4">
+      <div class="kiosk-panel">
+        <div class="kiosk-panel-header">
+          <span><i class="bi bi-trophy me-1"></i>Leaderboard</span>
+        </div>
+        <div data-stats-content class="scroll-list">
+          <div class="empty-state">Loading…</div>
+        </div>
+        <div class="stats-footer">
+          <div class="stats-footer-cell">
+            <div class="stats-footer-label">Team 4143</div>
+            <div class="stats-footer-value" data-footer="4143">—</div>
+          </div>
+          <div class="stats-footer-cell">
+            <div class="stats-footer-label">Team 4423</div>
+            <div class="stats-footer-value" data-footer="4423">—</div>
+          </div>
+          <div class="stats-footer-cell">
+            <div class="stats-footer-label">Combined</div>
+            <div class="stats-footer-value" data-footer="combined">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

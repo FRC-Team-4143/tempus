@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Pair this display — Tempus{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/kiosk.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; height: 100vh; }
+  .pair-card {
+    background: #111111;
+    border: 1px solid #2a1a1a;
+    border-radius: 10px;
+    padding: 3rem 4rem;
+    text-align: center;
+    max-width: 46rem;
+  }
+  .pair-card h1 { color: #cc2200; font-size: 2rem; margin-bottom: .25rem; }
+  .pair-board { color: #888; letter-spacing: .18em; text-transform: uppercase;
+                font-size: .8rem; margin-bottom: 2rem; }
+  .pair-code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 5.5rem;
+    font-weight: 700;
+    letter-spacing: .12em;
+    color: #e05540;
+    margin: 1.5rem 0;
+    line-height: 1;
+  }
+  .pair-steps { color: #ffffff; font-size: 1.15rem; line-height: 1.9; }
+  .pair-steps .where { color: #e05540; font-weight: 600; }
+  .pair-note { color: #888; font-size: .9rem; margin-top: 2rem; }
+  .pair-inert { color: #ffffff; font-size: 1.5rem; line-height: 1.7; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="pair-card">
+  <h1>Tempus</h1>
+  <div class="pair-board">{{ board_label }}</div>
+
+  {% if user_code %}
+    <div class="pair-steps">This display needs to be paired before it can show the board.</div>
+    <div class="pair-code">{{ user_code }}</div>
+    <div class="pair-steps">
+      Approve it in Tempus &rarr; <span class="where">Admin &rarr; Kiosk Devices</span>
+    </div>
+    <div class="pair-note">
+      This screen updates on its own once an admin approves the code above.
+    </div>
+  {% else %}
+    <div class="pair-inert">
+      This display isn&rsquo;t paired.<br>
+      {% if reason == "throttled" %}
+        Too many pairing requests right now &mdash; try again in a few minutes.
+      {% else %}
+        Ask an admin to open pairing in
+        <span class="where">Admin &rarr; Kiosk Devices</span>.
+      {% endif %}
+    </div>
+    <div class="pair-note">
+      A code will appear here automatically once pairing is open.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // The display has no keyboard, so it has to notice a state change on its own.
+{% if user_code %}
+  // Holding a code: poll the cheap read-only status endpoint every 3s. Reload on
+  // 'active' (approved), and also on 'unknown'/'revoked' — the row was denied or
+  // pruned, so the code on screen is stale and we need a fresh one.
+  setInterval(async () => {
+    try {
+      const resp = await fetch('/kiosk/pair/status');
+      const { status } = await resp.json();
+      if (status !== 'pending') location.reload();
+    } catch (_) { /* offline — next tick retries */ }
+  }, 3000);
+{% else %}
+  // Inert: there's no pending row to poll, so the only way to notice that an admin
+  // opened the window is to re-request the page. Cheap while closed — the gate
+  // returns this same page without touching the DB or the rate limiter.
+  setInterval(() => location.reload(), 30000);
+{% endif %}
+</script>
+{% endblock %}

@@ -5,6 +5,7 @@ Every test runs against a fresh in-memory SQLite database. We use a StaticPool s
 the single in-memory connection is shared across the session (in-memory DBs are
 otherwise per-connection and would appear empty).
 """
+import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -121,3 +122,50 @@ async def authed_client(client):
 
     client.cookies.set(SSO_COOKIE, make_sso_cookie())
     return client
+
+
+async def pair_device(db, client, *, label="Test Display"):
+    """Approve a kiosk device and put its signed cookie on `client`.
+
+    Mints the cookie with the app's own signer rather than walking the pairing
+    flow, so tests that only need "a paired display" don't re-test enrollment.
+    """
+    from datetime import datetime
+    from itsdangerous import URLSafeTimedSerializer
+    from app.config import settings
+    from app.models import KioskDevice, KioskDeviceStatus
+    from app.services.kiosk_device import KIOSK_COOKIE
+
+    device = KioskDevice(
+        device_id="testdevice0001",
+        user_code="MARS-TEST",
+        label=label,
+        status=KioskDeviceStatus.active,
+        created_at=datetime.utcnow(),
+        approved_at=datetime.utcnow(),
+        approved_by="Test Admin",
+    )
+    db.add(device)
+    await db.commit()
+
+    signer = URLSafeTimedSerializer(settings.sso_secret, salt="tempus-kiosk-device")
+    client.cookies.set(KIOSK_COOKIE, signer.dumps({"did": device.device_id}))
+    return device
+
+
+@pytest_asyncio.fixture
+async def paired_client(client, db):
+    """An httpx client carrying a cookie for an *approved* kiosk display."""
+    await pair_device(db, client)
+    return client
+
+
+@pytest.fixture(autouse=True)
+def _reset_kiosk_rate_limit():
+    """The pairing throttle is a module-global dict, so it would otherwise leak
+    request counts between tests."""
+    from app.services.kiosk_device import reset_rate_limit
+
+    reset_rate_limit()
+    yield
+    reset_rate_limit()

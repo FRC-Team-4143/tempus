@@ -50,10 +50,12 @@ async def test_signed_out_shows_identify_with_signin_link(client):
     assert "Sign in with Legion" in resp.text
 
 
-async def test_signed_out_offers_kiosk_as_an_alternative(client):
+async def test_signed_out_does_not_link_to_the_kiosk(client):
+    """The kiosk boards are paired-display-only, so sending a signed-out visitor
+    there would just dead-end them on a pairing prompt."""
     resp = await client.get("/me")
     assert resp.status_code == 200
-    assert 'href="/kiosk"' in resp.text
+    assert 'href="/kiosk"' not in resp.text
 
 
 async def test_signed_in_no_matching_record_shows_not_synced(client):
@@ -61,8 +63,6 @@ async def test_signed_in_no_matching_record_shows_not_synced(client):
     resp = await client.get("/me")
     assert resp.status_code == 200
     assert "don't have an active student or mentor record" in resp.text
-    # Already signed into Legion here — the kiosk link is only offered when signed
-    # out entirely, not when signed in but not yet synced to a local record.
     assert 'href="/kiosk"' not in resp.text
 
 

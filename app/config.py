@@ -41,7 +41,9 @@ class Settings(BaseSettings):
     weekly_dm_day: int = 6   # 0=Mon ... 6=Sun
     weekly_dm_time: str = "21:00"  # HH:MM 24h local time
 
-    signin_ip_whitelist: str = ""  # comma-separated CIDRs, blank = no restriction
+    # How long the combined kiosk display holds on the mentor board after a mentor
+    # badge scan before returning to students. Any student scan cuts it short.
+    kiosk_mentor_hold_seconds: int = 120
 
     timezone: str = "America/New_York"
 

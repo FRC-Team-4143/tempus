@@ -15,7 +15,7 @@ from app.routers import admin
 _MUTABLE = [
     "contributor_multiplier", "present_multiplier", "distraction_multiplier",
     "auto_signout_time", "weekly_dm_day", "weekly_dm_time",
-    "backup_time", "backup_keep", "timezone", "signin_ip_whitelist",
+    "backup_time", "backup_keep", "timezone", "kiosk_mentor_hold_seconds",
     "slack_announce_channel", "updates_enabled", "roast_enabled",
 ]
 
@@ -41,7 +41,7 @@ def _form(**overrides):
         "backup_time": settings.backup_time,
         "backup_keep": settings.backup_keep,
         "timezone": settings.timezone,
-        "signin_ip_whitelist": settings.signin_ip_whitelist,
+        "kiosk_mentor_hold_seconds": settings.kiosk_mentor_hold_seconds,
         "slack_announce_channel": settings.slack_announce_channel,
         "leaderboard_since": "",
     }

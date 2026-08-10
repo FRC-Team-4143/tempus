@@ -105,11 +105,14 @@
 
   <h5 class="mb-3">Access</h5>
   <div class="mb-4 row align-items-center">
-    <label class="col-sm-5 col-form-label">Sign-in IP whitelist</label>
+    <label class="col-sm-5 col-form-label">Mentor board hold (seconds)</label>
     <div class="col-sm-7">
-      <input type="text" name="signin_ip_whitelist" class="form-control"
-             value="{{ signin_ip_whitelist }}" placeholder="e.g. 192.168.1.0/24,127.0.0.1">
-      <div class="form-text">Comma-separated CIDR ranges allowed to submit sign-ins. Blank = allow all.</div>
+      <input type="number" name="kiosk_mentor_hold_seconds" class="form-control"
+             value="{{ kiosk_mentor_hold_seconds }}" min="5" max="3600">
+      <div class="form-text">
+        How long the kiosk shows the mentor board after a mentor badge scan before
+        returning to students. Any student scan cuts it short.
+      </div>
     </div>
   </div>
 
