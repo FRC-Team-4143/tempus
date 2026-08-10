@@ -101,6 +101,26 @@ async def test_json_routes_serve_when_paired(paired_client, path):
     assert resp.status_code == 200
 
 
+async def test_stream_routes_disable_proxy_buffering():
+    """The app sits behind an nginx reverse proxy (see README), which buffers
+    proxied responses by default — silently delaying every SSE push (including
+    mentor_update, the swap trigger for the combined kiosk display) until the
+    buffer fills or the connection closes. Without `X-Accel-Buffering: no`, the
+    kiosk display can look like it's simply not reacting to badge scans.
+
+    Called directly rather than through a client: the generator body never runs
+    until the ASGI server starts pulling from it, so this only inspects the
+    StreamingResponse's headers without opening the (infinite) stream — which,
+    per this module's own docstring, would hang an in-process test client.
+    """
+    from app.routers.kiosk import kiosk_stream, mentor_stream
+
+    for make_response in (kiosk_stream, mentor_stream):
+        resp = await make_response()
+        assert resp.headers["x-accel-buffering"] == "no"
+        assert resp.headers["cache-control"] == "no-cache"
+
+
 async def test_one_pairing_grants_both_boards(paired_client):
     """A display is paired once, not once per board."""
     assert (await paired_client.get("/kiosk/student")).status_code == 200
