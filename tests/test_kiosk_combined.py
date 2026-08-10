@@ -17,7 +17,7 @@ async def test_kiosk_serves_the_combined_display(paired_client):
     # a navigation, so the display never reloads mid-shift.
     assert 'id="student-board"' in resp.text
     assert 'id="mentor-board"' in resp.text
-    assert 'id="swap-banner"' in resp.text
+    assert 'id="swap-ring"' in resp.text
 
 
 async def test_combined_display_subscribes_to_the_student_stream(paired_client):
@@ -63,7 +63,7 @@ async def test_pinned_views_carry_one_board_and_no_swap(
     assert expect_board in resp.text
     assert reject_board not in resp.text
     assert "HOLD_MS" not in resp.text
-    assert 'id="swap-banner"' not in resp.text
+    assert 'id="swap-ring"' not in resp.text
 
 
 @pytest.mark.parametrize("path", ["/kiosk", "/kiosk/student", "/kiosk/mentor"])
