@@ -38,6 +38,13 @@ templates.env.filters["localdt"] = (
     lambda dt, fmt="%m/%d %I:%M %p": utc_to_local(dt).strftime(fmt) if dt else ""
 )
 
+# The app runs behind an nginx reverse proxy (see README), which buffers proxied
+# responses by default — silently delaying every SSE push (including mentor_update,
+# the swap trigger for the combined kiosk display) until the buffer fills or the
+# connection closes. `X-Accel-Buffering: no` is nginx's per-response opt-out;
+# `Cache-Control: no-cache` stops any other cache in the path from holding the stream.
+SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
 
 async def _is_paired(db: AsyncSession, request: Request) -> bool:
     """True if this browser holds a cookie naming an *active* kiosk device."""
@@ -432,7 +439,9 @@ async def kiosk_stream():
         finally:
             broadcaster.unsubscribe(q)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(), media_type="text/event-stream", headers=SSE_HEADERS
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -580,4 +589,6 @@ async def mentor_stream():
         finally:
             broadcaster.unsubscribe(q)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(), media_type="text/event-stream", headers=SSE_HEADERS
+    )
