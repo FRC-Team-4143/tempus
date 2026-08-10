@@ -355,7 +355,7 @@ async def admin_requirements_list(request: Request, db: AsyncSession = Depends(g
     result = await db.execute(
         select(WeeklyRequirement)
         .options(selectinload(WeeklyRequirement.team))
-        .order_by(WeeklyRequirement.week_start.desc())
+        .order_by(WeeklyRequirement.id.desc())
     )
     requirements = result.scalars().all()
 
