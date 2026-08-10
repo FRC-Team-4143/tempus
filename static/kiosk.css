@@ -21,6 +21,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: relative; /* anchors the combined display's countdown ring, dead-center */
 }
 .kiosk-header h1 {
   font-size: 2rem;
@@ -175,18 +176,34 @@ body {
    attribute needs this explicitly — otherwise `el.hidden = true` does nothing. */
 .board[hidden] { display: none !important; }
 
-/* Countdown ring in the header — a reverse progress circle showing how long
-   until the mentor board returns to students. Lives in the header row rather
-   than a separate strip, so it never changes the panels' available height.
-   No explicit `display` is set here, so the default `[hidden] { display: none }`
-   from the UA stylesheet applies without needing the `!important` override above. */
+/* Countdown ring, centered on the header itself — a reverse progress circle
+   plus a two-word label, showing how long until the mentor board returns to
+   students. Absolutely positioned so it's dead-center regardless of how wide
+   the title or clock text is, and adds no width to either flex side. Lives in
+   the header rather than a separate strip, so it never changes the panels'
+   available height.
+
+   This sets an author-level `display`, which beats the UA stylesheet's
+   `[hidden] { display: none }` — see the `.board[hidden]` note above — so it
+   needs the same explicit override to actually hide. */
 .swap-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.swap-ring[hidden] { display: none !important; }
+
+.ring-circle {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
 }
-.swap-ring svg {
+.ring-circle svg {
   width: 100%;
   height: 100%;
   transform: rotate(-90deg); /* start the drain at 12 o'clock, not 3 o'clock */
@@ -209,7 +226,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   font-weight: 700;
   color: #e05540;
+}
+.ring-label {
+  font-size: 0.7rem;
+  color: #888;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }

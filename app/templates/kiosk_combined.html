@@ -20,8 +20,12 @@
     <h1><i>Tempus</i></h1>
     <span style="font-size:0.75rem;color:#888;letter-spacing:0.05em"><i>tempus fugit</i> — time flies</span>
   </div>
-  <div style="display:flex;align-items:center;gap:20px">
-    <div id="swap-ring" class="swap-ring" hidden title="Returning to the student board">
+
+  <!-- Centered on the header itself (not between title and clock), via absolute
+       positioning — so it stays dead-center regardless of how wide the title or
+       clock text happens to be, and adds no width to either flex side. -->
+  <div id="swap-ring" class="swap-ring" hidden>
+    <div class="ring-circle">
       <svg viewBox="0 0 40 40">
         <circle class="ring-track" cx="20" cy="20" r="17"></circle>
         <circle id="ring-progress" class="ring-progress" cx="20" cy="20" r="17"
@@ -29,8 +33,10 @@
       </svg>
       <span id="ring-seconds" class="ring-seconds"></span>
     </div>
-    <div id="clock"></div>
+    <span class="ring-label">back to students</span>
   </div>
+
+  <div id="clock"></div>
 </header>
 
 <div id="student-board" class="board">
