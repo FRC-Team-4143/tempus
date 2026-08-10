@@ -18,6 +18,12 @@ class SessionStatus(str, enum.Enum):
     distraction = "distraction"
 
 
+class KioskDeviceStatus(str, enum.Enum):
+    pending = "pending"      # requested pairing, waiting on an admin
+    active = "active"        # approved — may view the boards
+    revoked = "revoked"      # was approved, since turned off
+
+
 class AppSetting(Base):
     """Small key/value store for runtime-configurable app settings.
 
@@ -183,6 +189,40 @@ class AuditLog(Base):
     entity_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     summary: Mapped[str] = mapped_column(String(500), nullable=False)
     detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON
+
+
+class KioskDevice(Base):
+    """A browser trusted to display the kiosk boards.
+
+    Replaces the old `signin_ip_whitelist` CIDR gate: trust is bound to a device
+    (a signed `tempus_kiosk` cookie carrying `device_id`) rather than to a network,
+    so a display keeps working at a competition venue and a student's phone on the
+    shop wifi does not.
+
+    Enrollment is the smart-TV device flow — the display shows `user_code`, an admin
+    matches it against the screen in front of them and approves. The cookie is signed
+    but never authoritative: every gated request re-reads `status` here, so a revoke
+    takes effect on the next request.
+    """
+    __tablename__ = "kiosk_devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Random opaque id carried (signed) in the cookie.
+    device_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    # Short human-readable code shown on the display during pairing.
+    user_code: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
+    label: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    status: Mapped[KioskDeviceStatus] = mapped_column(
+        SAEnum(KioskDeviceStatus), nullable=False, default=KioskDeviceStatus.pending
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)  # naive UTC
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    last_seen_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
 
 class MentorSession(Base):

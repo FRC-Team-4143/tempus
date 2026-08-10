@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{# The combined auto-swapping display (/kiosk) — what the shop kiosk points at.
+   The hardware's only input is a QR scanner acting as a keyboard: no mouse, no
+   navigation. So the mentor board can't be reached by clicking, and a badge scan
+   drives the view instead. Both boards render here; only one is visible.
+
+   No cross-links in the header on purpose — they'd be unclickable, and the swap
+   is the answer to "how do I see the other board". #}
+
+{% block title %}Shop Kiosk — Tempus{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/kiosk.css">
+{% endblock %}
+
+{% block body %}
+<header class="kiosk-header">
+  <div style="display:flex;align-items:baseline;gap:14px">
+    <h1><i>Tempus</i></h1>
+    <span style="font-size:0.75rem;color:#888;letter-spacing:0.05em"><i>tempus fugit</i> — time flies</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:24px">
+    <div id="clock"></div>
+  </div>
+</header>
+
+<div id="swap-banner" class="swap-banner" hidden>
+  <span><i class="bi bi-person-badge me-1"></i> Mentor Board</span>
+  <div class="swap-progress"><div id="swap-progress-bar" class="swap-progress-bar"></div></div>
+  <span>back to students in <span id="swap-countdown">—</span></span>
+</div>
+
+<div id="student-board" class="board">
+  {% include "_board_student.html" %}
+</div>
+
+<div id="mentor-board" class="board" hidden>
+  {% include "_board_mentor.html" %}
+</div>
+
+<input id="badge-input" type="text" autocomplete="off" autofocus>
+
+<div id="feedback-toast" class="alert alert-dismissible shadow-lg" role="alert">
+  <span id="feedback-msg"></span>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/kiosk-boards.js"></script>
+<script>
+  const HOLD_MS = {{ mentor_hold_seconds }} * 1000;
+
+  const studentEl = document.getElementById('student-board');
+  const mentorEl  = document.getElementById('mentor-board');
+  const bannerEl  = document.getElementById('swap-banner');
+  const barEl     = document.getElementById('swap-progress-bar');
+  const countEl   = document.getElementById('swap-countdown');
+
+  const student = Kiosk.studentBoard(studentEl);
+  const mentor  = Kiosk.mentorBoard(mentorEl, { initialCount: {{ signed_in|length }} });
+
+  let showing = 'student';
+  let holdTimer = null;
+  let countdownTimer = null;
+
+  function show(which) {
+    if (showing === which) return;
+    showing = which;
+    const [inEl, outEl] = which === 'mentor' ? [mentorEl, studentEl] : [studentEl, mentorEl];
+    outEl.classList.add('fading');
+    setTimeout(() => {
+      outEl.hidden = true;
+      outEl.classList.remove('fading');
+      inEl.hidden = false;
+      inEl.classList.add('fading');
+      // Next frame, so the browser paints opacity:0 before transitioning to 1.
+      requestAnimationFrame(() => inEl.classList.remove('fading'));
+      // Lists were display:none while hidden, so scroll metrics were meaningless.
+      Kiosk.initScrollers(inEl);
+    }, 300);
+  }
+
+  // The banner occupies vertical space the panels' height calc doesn't know
+  // about, so tell the stylesheet when it's up — otherwise the panels overflow
+  // and `body { overflow: hidden }` clips their bottoms.
+  function setChrome(px) {
+    document.documentElement.style.setProperty('--kiosk-chrome', px + 'px');
+  }
+
+  function stopCountdown() {
+    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+    bannerEl.hidden = true;
+    setChrome(130);
+  }
+
+  function startCountdown() {
+    stopCountdown();
+    let left = Math.round(HOLD_MS / 1000);
+    const total = left;
+    bannerEl.hidden = false;
+    setChrome(130 + bannerEl.offsetHeight);
+    const render = () => {
+      const m = Math.floor(left / 60), s = left % 60;
+      countEl.textContent = m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`;
+      barEl.style.width = `${(left / total) * 100}%`;
+    };
+    render();
+    countdownTimer = setInterval(() => { left -= 1; if (left >= 0) render(); }, 1000);
+  }
+
+  // Snap back to students and cancel any hold. Called unconditionally on every
+  // student event — that is the "any student scan brings it back" requirement.
+  function toStudent() {
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+    stopCountdown();
+    show('student');
+  }
+
+  async function onMentorEvent() {
+    await mentor.refresh();
+    mentor.refreshStats();
+    // Never swap to an empty board. This also handles the last mentor badging
+    // out (same event as badging in) and the 22:00 auto-sign-out, which
+    // broadcasts mentor_update once everyone is already signed out.
+    if (mentor.isEmpty()) { toStudent(); return; }
+    show('mentor');
+    if (holdTimer) clearTimeout(holdTimer);   // re-arm rather than stack
+    holdTimer = setTimeout(toStudent, HOLD_MS);
+    startCountdown();
+  }
+
+  Kiosk.startClock();
+  Kiosk.initBadgeScanner();
+  student.refreshStats();
+  mentor.refreshStats();
+  Kiosk.initScrollers(studentEl);
+
+  // The student stream forwards *every* broadcast event, including mentor_update,
+  // so one connection drives both boards.
+  Kiosk.connectSSE('/kiosk/student/stream', {
+    update: () => { student.refresh(); student.refreshStats(); toStudent(); },
+    mentor_update: () => { student.refresh(); onMentorEvent(); },
+  });
+
+  setInterval(() => { student.refresh(); mentor.refresh(); }, 60000);
+  setInterval(() => { student.refreshStats(); mentor.refreshStats(); }, 60000);
+</script>
+{% endblock %}

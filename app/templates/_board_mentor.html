@@ -1,0 +1,39 @@
+{# Mentor board markup. Included by mentor.html (pinned) and kiosk_combined.html.
+   Same data- attribute convention as _board_student.html. Context: signed_in. #}
+<div class="container-fluid px-3 pt-3">
+  <div class="row g-3">
+    <div class="col-6">
+      <div class="kiosk-panel">
+        <div class="kiosk-panel-header">
+          <span>Mentors</span>
+          <span class="badge bg-secondary" data-count="signed-in">{{ signed_in|length }}</span>
+        </div>
+        <div data-list="signed-in" class="scroll-list">
+          {% if signed_in %}
+            {% for m in signed_in %}
+            <div class="person-row">
+              <span class="person-name">{{ m.name }}</span>
+              <span class="person-meta">
+                {% if m.team %}Team {{ m.team }} &nbsp;·&nbsp; {% endif %}{{ m.elapsed }}
+              </span>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No mentors signed in yet</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6">
+      <div class="kiosk-panel">
+        <div class="kiosk-panel-header">
+          <span><i class="bi bi-trophy me-1"></i>Leaderboard</span>
+        </div>
+        <div data-stats-content class="scroll-list">
+          <div class="empty-state">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

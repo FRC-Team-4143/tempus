@@ -25,7 +25,8 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import get_db
 from app.models import (
-    AttendanceSession, AuditLog, Mentor, MentorSession, SessionStatus, Student, Subteam, Team, WeeklyRequirement,
+    AttendanceSession, AuditLog, KioskDevice, KioskDeviceStatus, Mentor, MentorSession,
+    SessionStatus, Student, Subteam, Team, WeeklyRequirement,
 )
 from app.services import audit
 from app.services.requirements import resolve_requirement
@@ -69,6 +70,7 @@ _SECTION_LABELS = [
     ("/admin/report", "Report"),
     ("/admin/audit", "Audit Log"),
     ("/admin/backup", "Backup"),
+    ("/admin/kiosk-devices", "Kiosk Devices"),
     ("/admin/settings", "Settings"),
     ("/admin", "Dashboard"),
 ]
@@ -1134,7 +1136,7 @@ def _settings_context() -> dict:
         "auto_signout_time": settings.auto_signout_time,
         "weekly_dm_day": settings.weekly_dm_day,
         "weekly_dm_time": settings.weekly_dm_time,
-        "signin_ip_whitelist": settings.signin_ip_whitelist,
+        "kiosk_mentor_hold_seconds": settings.kiosk_mentor_hold_seconds,
         "timezone": settings.timezone,
         "backup_time": settings.backup_time,
         "backup_keep": settings.backup_keep,
@@ -1232,7 +1234,7 @@ async def admin_settings_post(
     backup_time: str = Form(...),
     backup_keep: int = Form(...),
     timezone: str = Form(...),
-    signin_ip_whitelist: str = Form(""),
+    kiosk_mentor_hold_seconds: int = Form(120),
     slack_announce_channel: str = Form(""),
     updates_enabled: bool = Form(False),
     roast_enabled: bool = Form(False),
@@ -1298,10 +1300,11 @@ async def admin_settings_post(
             env_updates["TIMEZONE"] = tz
             settings.timezone = tz
 
-    wl = signin_ip_whitelist.strip()
-    if wl != settings.signin_ip_whitelist:
-        env_updates["SIGNIN_IP_WHITELIST"] = wl
-        settings.signin_ip_whitelist = wl
+    if not (5 <= kiosk_mentor_hold_seconds <= 3600):
+        errors.append("Mentor board hold must be between 5 and 3600 seconds.")
+    elif kiosk_mentor_hold_seconds != settings.kiosk_mentor_hold_seconds:
+        env_updates["KIOSK_MENTOR_HOLD_SECONDS"] = str(kiosk_mentor_hold_seconds)
+        settings.kiosk_mentor_hold_seconds = kiosk_mentor_hold_seconds
 
     ch = slack_announce_channel.strip()
     if ch != settings.slack_announce_channel:
@@ -1364,7 +1367,7 @@ async def admin_settings_post(
                 "backup_time": settings.backup_time,
                 "backup_keep": settings.backup_keep,
                 "timezone": settings.timezone,
-                "signin_ip_whitelist": settings.signin_ip_whitelist,
+                "kiosk_mentor_hold_seconds": settings.kiosk_mentor_hold_seconds,
                 "slack_announce_channel": settings.slack_announce_channel,
                 "updates_enabled": settings.updates_enabled,
                 "roast_enabled": settings.roast_enabled,
@@ -1407,6 +1410,152 @@ async def admin_leaderboard_reset(request: Request, db: AsyncSession = Depends(g
 # CSV roster import was removed — the roster is owned by Legion and pulled in via
 # services/legion_sync.py (see the /admin/roster "Sync now" action). Manage members in
 # Legion's /admin, not here.
+
+
+# ── Kiosk devices ──────────────────────────────────────────────────────────────
+#
+# Admin-only by omission: none of these paths appear in `_manager_allowed`, so a
+# manager gets the standard "No Access" page. Pairing is closed by default — the
+# window below is the only thing that lets a display enroll at all.
+
+@router.get("/kiosk-devices", response_class=HTMLResponse)
+async def admin_kiosk_devices(request: Request, db: AsyncSession = Depends(get_db)):
+    if redirect := _require_auth(request):
+        return redirect
+
+    from app.services import kiosk_device
+
+    # Opportunistic cleanup so the pending list can't accumulate abandoned rows.
+    await kiosk_device.prune_pending(db)
+    await db.commit()
+
+    open_until = await kiosk_device.pairing_open_until(db)
+    devices = (
+        await db.execute(select(KioskDevice).order_by(KioskDevice.id.desc()))
+    ).scalars().all()
+
+    return templates.TemplateResponse(
+        "admin/kiosk_devices.html",
+        {
+            "request": request,
+            "pending": [d for d in devices if d.status == KioskDeviceStatus.pending],
+            "paired": [d for d in devices if d.status == KioskDeviceStatus.active],
+            "revoked": [d for d in devices if d.status == KioskDeviceStatus.revoked],
+            "open_until": open_until,
+            "open_seconds_left": (
+                int((open_until - datetime.utcnow()).total_seconds()) if open_until else 0
+            ),
+            "window_minutes": kiosk_device.PAIRING_WINDOW_MINUTES,
+        },
+    )
+
+
+@router.post("/kiosk-devices/pair-window")
+async def admin_kiosk_pair_window(
+    request: Request, action: str = Form(...), db: AsyncSession = Depends(get_db)
+):
+    """Open or close the pairing window. Opening it is what makes enrollment possible
+    at all, so it is audited as carefully as an approval."""
+    if redirect := _require_auth(request):
+        return redirect
+
+    from app.services import kiosk_device
+
+    if action == "open":
+        until = await kiosk_device.open_pairing(db)
+        await audit.record(
+            db, request, "kiosk_device.pairing_open",
+            f"Opened kiosk pairing for {kiosk_device.PAIRING_WINDOW_MINUTES} minutes "
+            f"(until {utc_to_local(until):%I:%M %p})",
+            entity_type="kiosk_device",
+        )
+    else:
+        await kiosk_device.close_pairing(db)
+        await audit.record(
+            db, request, "kiosk_device.pairing_close", "Closed kiosk pairing",
+            entity_type="kiosk_device",
+        )
+    await db.commit()
+    return RedirectResponse("/admin/kiosk-devices", status_code=303)
+
+
+@router.post("/kiosk-devices/{device_id}/approve")
+async def admin_kiosk_device_approve(
+    device_id: int, request: Request,
+    label: str = Form(""), db: AsyncSession = Depends(get_db),
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    device = (
+        await db.execute(select(KioskDevice).where(KioskDevice.id == device_id))
+    ).scalars().first()
+    if device is None or device.status != KioskDeviceStatus.pending:
+        return RedirectResponse("/admin/kiosk-devices", status_code=303)
+
+    identity = sso_identity(request) or {}
+    device.status = KioskDeviceStatus.active
+    device.approved_at = datetime.utcnow()
+    device.approved_by = identity.get("name") or identity.get("username") or "unknown"
+    device.label = label.strip()[:80] or f"Display {device.user_code}"
+
+    await audit.record(
+        db, request, "kiosk_device.approve",
+        f"Paired kiosk display '{device.label}' (code {device.user_code})",
+        entity_type="kiosk_device", entity_id=device.id,
+        detail={"user_code": device.user_code, "created_ip": device.created_ip},
+    )
+    await db.commit()
+    return RedirectResponse("/admin/kiosk-devices", status_code=303)
+
+
+@router.post("/kiosk-devices/{device_id}/deny")
+async def admin_kiosk_device_deny(
+    device_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    if redirect := _require_auth(request):
+        return redirect
+
+    device = (
+        await db.execute(select(KioskDevice).where(KioskDevice.id == device_id))
+    ).scalars().first()
+    if device is None or device.status != KioskDeviceStatus.pending:
+        return RedirectResponse("/admin/kiosk-devices", status_code=303)
+
+    await audit.record(
+        db, request, "kiosk_device.deny",
+        f"Denied kiosk pairing request {device.user_code} from {device.created_ip}",
+        entity_type="kiosk_device", entity_id=device.id,
+    )
+    await db.delete(device)
+    await db.commit()
+    return RedirectResponse("/admin/kiosk-devices", status_code=303)
+
+
+@router.post("/kiosk-devices/{device_id}/revoke")
+async def admin_kiosk_device_revoke(
+    device_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    """Turn a paired display off. Takes effect on its next request — the cookie is
+    signed but never authoritative, so there is nothing to expire."""
+    if redirect := _require_auth(request):
+        return redirect
+
+    device = (
+        await db.execute(select(KioskDevice).where(KioskDevice.id == device_id))
+    ).scalars().first()
+    if device is None or device.status != KioskDeviceStatus.active:
+        return RedirectResponse("/admin/kiosk-devices", status_code=303)
+
+    device.status = KioskDeviceStatus.revoked
+    device.revoked_at = datetime.utcnow()
+    await audit.record(
+        db, request, "kiosk_device.revoke",
+        f"Revoked kiosk display '{device.label or device.user_code}'",
+        entity_type="kiosk_device", entity_id=device.id,
+    )
+    await db.commit()
+    return RedirectResponse("/admin/kiosk-devices", status_code=303)
 
 
 # ── Audit log ──────────────────────────────────────────────────────────────────

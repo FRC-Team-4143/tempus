@@ -1,0 +1,212 @@
+/* Shared styles for the kiosk display pages: the combined auto-swapping board
+   (/kiosk) and the two pinned views (/kiosk/student, /kiosk/mentor), plus the
+   pairing screen. Kiosk palette only — no Bootstrap component styling here.
+
+   Palette: #0a0a0a page · #111111 panel · #1a0f0f panel header · #2a1a1a border
+            #1e1010 row rule · #8b0000 header rule · #cc2200 accent · #e05540 value */
+
+body {
+  background: #0a0a0a;
+  color: #ffffff;
+  font-family: 'Segoe UI', sans-serif;
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+.kiosk-header {
+  background: #111111;
+  border-bottom: 2px solid #8b0000;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.kiosk-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #cc2200;
+  margin: 0;
+}
+#clock {
+  font-size: 1.9rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+.kiosk-nav { display: flex; gap: 18px; }
+.kiosk-nav a {
+  color: #888;
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  transition: color 0.15s;
+}
+.kiosk-nav a:hover { color: #cc2200; }
+
+/* ── Panels (student teams, mentor list, leaderboard) ─────────────────────── */
+/* Height of everything above the panels (header + padding). The combined display
+   raises this while its countdown banner is up, so the panels shrink to fit
+   instead of being clipped by `body { overflow: hidden }`. */
+:root { --kiosk-chrome: 130px; }
+
+.kiosk-panel {
+  background: #111111;
+  border: 1px solid #2a1a1a;
+  border-radius: 10px;
+  height: calc(100vh - var(--kiosk-chrome));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.kiosk-panel-header {
+  font-size: 1.6rem;
+  font-weight: 700;
+  padding: 16px 24px;
+  border-bottom: 1px solid #2a1a1a;
+  background: #1a0f0f;
+  border-radius: 10px 10px 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  color: #cc2200;
+}
+
+/* ── Person rows (students and mentors share the shape) ───────────────────── */
+.person-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 24px;
+  border-bottom: 1px solid #1e1010;
+  font-size: 1.3rem;
+}
+.person-row:last-child { border-bottom: none; }
+.person-name { font-weight: 600; color: #ffffff; }
+.person-meta { color: #ffffff; font-size: 1.1rem; }
+
+.empty-state {
+  text-align: center;
+  color: #ffffff;
+  padding: 40px 20px;
+  font-size: 1.2rem;
+}
+
+/* Scrollbars hidden — this is a wall display, the lists auto-scroll themselves. */
+.scroll-list::-webkit-scrollbar { display: none; }
+.scroll-list { -ms-overflow-style: none; scrollbar-width: none; overflow-y: hidden; flex: 1; }
+
+/* ── Leaderboard ──────────────────────────────────────────────────────────── */
+.stats-section-header {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffff;
+  padding: 12px 18px 6px;
+  border-bottom: 1px solid #2a1a1a;
+  background: #1a0f0f;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stats-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 18px;
+  border-bottom: 1px solid #1e1010;
+  font-size: 1.15rem;
+}
+.stats-row:last-child { border-bottom: none; }
+.stats-rank { font-size: 1rem; width: 22px; flex-shrink: 0; }
+.stats-name { flex: 1; padding: 0 10px; font-weight: 500; color: #ffffff; }
+.stats-value { color: #e05540; font-weight: 700; font-size: 1.05rem; }
+.stats-empty { color: #ffffff; padding: 8px 18px; font-size: 1rem; }
+
+/* Team totals footer (student board only) */
+.stats-footer {
+  display: flex;
+  border-top: 1px solid #2a1a1a;
+  background: #1a0f0f;
+  border-radius: 0 0 10px 10px;
+  flex-shrink: 0;
+}
+.stats-footer-cell {
+  flex: 1;
+  text-align: center;
+  padding: 10px 8px;
+  border-right: 1px solid #2a1a1a;
+}
+.stats-footer-cell:last-child { border-right: none; }
+.stats-footer-label {
+  font-size: 0.75rem;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.stats-footer-value { font-size: 1.1rem; font-weight: 700; color: #e05540; }
+
+/* ── Badge scanner + toast ────────────────────────────────────────────────── */
+#badge-input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  border: none;
+  top: 0; left: 0;
+}
+#feedback-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 320px;
+  z-index: 9999;
+  display: none;
+}
+
+/* ── Board swap (combined display only) ───────────────────────────────────── */
+/* Both boards live in the document at once; only one is visible. Cross-fade
+   rather than a hard cut, since this is a large display in peripheral vision. */
+.board {
+  transition: opacity 0.3s ease;
+}
+.board.fading { opacity: 0; }
+
+/* An author-level `display` beats the UA stylesheet's `[hidden] { display: none }`,
+   so every element here that sets `display` and is toggled via the `hidden`
+   attribute needs this explicitly — otherwise `el.hidden = true` does nothing. */
+.board[hidden],
+.swap-banner[hidden] { display: none !important; }
+
+/* Strip explaining why the mentor board is up and when it goes away — the
+   display has no inputs, so it has to narrate its own state. */
+.swap-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #1a0f0f;
+  border-bottom: 1px solid #2a1a1a;
+  padding: 6px 24px;
+  font-size: 0.95rem;
+  color: #e05540;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.swap-progress {
+  flex: 1;
+  height: 4px;
+  background: #2a1a1a;
+  border-radius: 2px;
+  overflow: hidden;
+  max-width: 40%;
+}
+.swap-progress-bar {
+  height: 100%;
+  background: #cc2200;
+  width: 100%;
+  transition: width 1s linear;
+}

@@ -10,12 +10,6 @@
     <a class="btn btn-outline-light btn-sm" href="/kiosk/demo" target="_blank">
       <i class="bi bi-easel me-1"></i> Kiosk Demo
     </a>
-    <a class="btn btn-outline-light btn-sm" href="/kiosk" target="_blank">
-      <i class="bi bi-display me-1"></i> Live Kiosk
-    </a>
-    <a class="btn btn-outline-light btn-sm" href="/mentor" target="_blank">
-      <i class="bi bi-person-badge me-1"></i> Mentor Board
-    </a>
     {% if not_signed_in and session_role(request) != 'manager' %}
     <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#manualSigninModal">
       <i class="bi bi-person-plus me-1"></i> Manual Sign-In

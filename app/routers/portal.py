@@ -3,8 +3,10 @@ Personal portal — a signed-in member's own attendance page at `/me`. Open to a
 active student or mentor on the roster (matched by Legion's `member_code`), regardless
 of `/admin` group membership: shows recent sessions, a total-hours headline, and their
 own weekly report table. Mirrors Munus's student portal, but for both roles — unlike
-Munus, Tempus's kiosk (`/kiosk`, `/mentor`) is the actual public sign-in surface, so
-this page is purely informational (no sign-in/out actions live here).
+Munus, Tempus's kiosk (`/kiosk`, plus the pinned `/kiosk/student` and `/kiosk/mentor`)
+is the actual public sign-in surface, so this page is purely informational (no
+sign-in/out actions live here). The kiosk boards are paired-display-only, so nothing
+here links to them.
 """
 from datetime import date
 from typing import Optional
