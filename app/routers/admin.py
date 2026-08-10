@@ -28,6 +28,7 @@ from app.models import (
     AttendanceSession, AuditLog, Mentor, MentorSession, SessionStatus, Student, Subteam, Team, WeeklyRequirement,
 )
 from app.services import audit
+from app.services.requirements import resolve_requirement
 from app.services.sso import logout_url, make_authorize_url, sso_identity
 from app.utils import utc_to_local, today_local, local_to_utc
 
@@ -364,6 +365,18 @@ async def admin_requirements_list(request: Request, db: AsyncSession = Depends(g
 
     subteams = await _active_subteams(db)
 
+    # Live requirement for the current week, per team x subteam — for the summary boxes
+    this_monday = today_local() - timedelta(days=today_local().weekday())
+    live_requirements = [
+        {
+            "team": team,
+            "subteam": subteam,
+            "hours": await resolve_requirement(db, team.id, subteam.slug, this_monday),
+        }
+        for team in teams
+        for subteam in subteams
+    ]
+
     # Compute per-row "covers until" by grouping entries in each (team_id, subteam) scope
     from collections import defaultdict
     scope_entries: dict = defaultdict(list)
@@ -385,6 +398,7 @@ async def admin_requirements_list(request: Request, db: AsyncSession = Depends(g
             "requirements": requirements,
             "teams": teams,
             "subteams": subteams,
+            "live_requirements": live_requirements,
             "covers_until": covers_until,
         },
     )

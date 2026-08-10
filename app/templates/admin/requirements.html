@@ -15,6 +15,19 @@
   The most specific match wins: a team-specific entry overrides All Teams, and a subteam-specific entry overrides one with no subteam (default 11 hrs).
 </p>
 
+<div class="row g-3 mb-4">
+  {% for live in live_requirements %}
+  <div class="col-sm-6 col-lg-2">
+    <div class="card text-bg-primary h-100">
+      <div class="card-body">
+        <div class="fs-2 fw-bold">{{ live.hours }} <small class="fs-6 fw-normal">hrs</small></div>
+        <div class="small">{{ live.team.number }} {{ live.subteam.label }}</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
 <div class="card shadow-sm">
   <div class="card-body p-0">
     <div class="table-responsive">
