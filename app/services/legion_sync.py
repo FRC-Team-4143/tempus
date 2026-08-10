@@ -113,6 +113,25 @@ async def _find_local(db: AsyncSession, model, member: dict):
     )).scalars().first()
 
 
+async def _retire_stale_role(db: AsyncSession, other_model, member_code: str) -> None:
+    """Deactivate a leftover row for this member in the *other* role's table.
+
+    A member's role in Legion is exclusive (student xor mentor), but sync only ever
+    writes to the table matching their *current* role — so a member who changes role
+    (e.g. a student promoted to mentor) would otherwise keep their old row active
+    forever, since nothing ever revisits it. That stale active row shares the same
+    member_code, so badge sign-in matches it first (Student is checked before Mentor)
+    and silently treats the person as their old role. Retire it, don't delete it —
+    history stays intact.
+    """
+    row = (await db.execute(
+        select(other_model).where(other_model.member_code == member_code)
+    )).scalars().first()
+    if row is not None and row.is_active:
+        row.is_active = False
+        row.archived_at = row.archived_at or datetime.utcnow()
+
+
 async def _upsert_members(db: AsyncSession, members: list[dict]) -> dict:
     team_by_number = {
         t.number: t.id for t in (await db.execute(select(Team))).scalars().all()
@@ -122,6 +141,7 @@ async def _upsert_members(db: AsyncSession, members: list[dict]) -> dict:
     for m in members:
         is_student = m["role"] == "student"
         model = Student if is_student else Mentor
+        other_model = Mentor if is_student else Student
         team_id = team_by_number.get(m.get("team_number")) if m.get("team_number") else None
         subteam_slug = (m.get("subteam") or {}).get("slug")
 
@@ -130,6 +150,8 @@ async def _upsert_members(db: AsyncSession, members: list[dict]) -> dict:
             log.warning("Skipping student %s (%s): no team in Legion", m["name"], m["member_code"])
             counts["skipped"] += 1
             continue
+
+        await _retire_stale_role(db, other_model, m["member_code"])
 
         row = await _find_local(db, model, m)
         if row is None:

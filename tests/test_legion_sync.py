@@ -90,6 +90,27 @@ async def test_sync_skips_student_without_team(db, legion_api):
     assert "1 skipped" in summary
 
 
+async def test_sync_retires_stale_row_on_role_change(db, legion_api):
+    """A member promoted from student to mentor in Legion must not leave their old
+    Student row active — an active stale row shares the member_code, and sign-in
+    checks Student before Mentor, so it would silently treat a promoted mentor's
+    badge scan as a student sign-in (no swap to the mentor kiosk board)."""
+    await legion_sync.sync_roster(db)
+    student = (await db.execute(select(Student).where(Student.member_code == "stu00001"))).scalar_one()
+    assert student.is_active is True
+
+    legion_api["members"] = [dict(STUDENT, role="mentor"), MENTOR]
+    await legion_sync.sync_roster(db)
+
+    await db.refresh(student)
+    assert student.is_active is False
+    assert student.archived_at is not None
+
+    mentor = (await db.execute(select(Mentor).where(Mentor.member_code == "stu00001"))).scalar_one()
+    assert mentor.is_active is True
+    assert mentor.name == "Ada Student"
+
+
 async def test_sync_advances_watermark(db, legion_api):
     assert await get_setting(db, LEGION_LAST_SYNCED_KEY) is None
     await legion_sync.sync_roster(db)
