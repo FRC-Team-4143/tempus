@@ -24,7 +24,7 @@ from app.database import get_db
 from app.models import AttendanceSession, Mentor, MentorSession, SessionStatus, Student, Team
 from app.services import audit
 from app.services.app_settings import get_leaderboard_since, leaderboard_since_utc
-from app.services.attendance import update_session_status, get_signed_in_students, get_signed_in_mentors, sign_out_all_open
+from app.services.attendance import update_session_status, get_signed_in_students, get_signed_in_mentors, sign_out_all_open, mentor_sign_out_all_open
 from app.services.broadcaster import broadcaster
 from app.services.requirements import resolve_requirement
 from app.services.scheduler import _post_wall_of_shame
@@ -468,7 +468,8 @@ async def slack_command(
             media_type="text/plain",
         )
 
-    # ── /gtfo — mentor-only: sign every currently signed-in student out right now.
+    # ── /gtfo — mentor-only: sign every currently signed-in student *and mentor*
+    # out right now (including the caller themself, if they're still signed in).
     # Requires an *active* mentor — this is more consequential than /edit (which only
     # checks slack_user_id match), so an archived mentor's stale Slack link shouldn't
     # still be able to trigger a mass sign-out.
@@ -484,23 +485,32 @@ async def slack_command(
             )
 
         closed = await sign_out_all_open(db, status=SessionStatus.auto)
+        mentor_count = await mentor_sign_out_all_open(db)
         if closed:
             await broadcaster.broadcast("update")
+        if mentor_count:
+            await broadcaster.broadcast("mentor_update")
 
         await audit.record(
             db, request, "attendance.bulk_signout",
-            f"{mentor.name} signed out {len(closed)} student(s) via /gtfo",
+            f"{mentor.name} signed out {len(closed)} student(s) and {mentor_count} mentor(s) via /gtfo",
             entity_type="session",
             actor=mentor.name,
-            detail={"count": len(closed), "via": "slack"},
+            detail={"count": len(closed), "mentor_count": mentor_count, "via": "slack"},
         )
         await db.commit()
 
+        # Wall of Shame is student-only — mentors don't get roasted (see test_mentor_signout.py).
         await _post_wall_of_shame(closed)
 
-        if not closed:
-            return Response(content="No students were signed in.", media_type="text/plain")
-        return Response(content=f"✅ Signed out {len(closed)} student(s).", media_type="text/plain")
+        if not closed and not mentor_count:
+            return Response(content="No one was signed in.", media_type="text/plain")
+        parts = []
+        if closed:
+            parts.append(f"{len(closed)} student(s)")
+        if mentor_count:
+            parts.append(f"{mentor_count} mentor(s)")
+        return Response(content=f"✅ Signed out {' and '.join(parts)}.", media_type="text/plain")
 
     if command != "/edit":
         return Response(content="Unknown command.", media_type="text/plain")
