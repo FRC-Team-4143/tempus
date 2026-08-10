@@ -41,7 +41,7 @@ async def test_logout_bounces_to_legion(client):
     assert "/sso/logout" in resp.headers["location"]
 
 
-# ── tempus-manager tier: dashboard + report view only ──────────────────────────
+# ── tempus-manager tier: dashboard + report view + requirements editor only ────
 
 async def test_manager_can_reach_dashboard(client):
     client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-manager"]))
@@ -80,6 +80,47 @@ async def test_manager_is_denied_from_settings(client):
     resp = await client.get("/admin/settings", follow_redirects=False)
     assert resp.status_code == 403
     assert "Settings" in resp.text
+
+
+async def test_manager_can_reach_requirements(client):
+    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-manager"]))
+    resp = await client.get("/admin/requirements", follow_redirects=False)
+    assert resp.status_code == 200
+
+
+async def test_manager_can_create_requirement(client, db):
+    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-manager"]))
+    resp = await client.post(
+        "/admin/requirements",
+        data={"week_start": "2026-08-03", "required_hours": "6"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/admin/requirements"
+
+    from sqlalchemy import select
+    from app.models import WeeklyRequirement
+    result = await db.execute(select(WeeklyRequirement))
+    reqs = result.scalars().all()
+    assert len(reqs) == 1
+    assert reqs[0].required_hours == 6
+
+
+async def test_manager_can_delete_requirement(client, db):
+    from datetime import date
+    from app.models import WeeklyRequirement
+    req = WeeklyRequirement(team_id=None, subteam_slug=None, week_start=date(2026, 8, 3), required_hours=6)
+    db.add(req)
+    await db.commit()
+    await db.refresh(req)
+
+    client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-manager"]))
+    resp = await client.post(f"/admin/requirements/{req.id}/delete", follow_redirects=False)
+    assert resp.status_code == 303
+
+    from sqlalchemy import select
+    result = await db.execute(select(WeeklyRequirement))
+    assert result.scalars().all() == []
 
 
 async def test_manager_dashboard_hides_manual_signin(client, db, make_student):
