@@ -178,7 +178,12 @@
     const m = Math.floor(left / 60), s = left % 60;
     el.textContent = `${m}m ${String(s).padStart(2, '0')}s`;
   }, 1000);
-  setInterval(() => location.reload(), 10000);
+  // Skip a tick while the admin is mid-type in a label field — a full reload would
+  // otherwise wipe out unsaved text in the "Approve as" box every 10s.
+  setInterval(() => {
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+    location.reload();
+  }, 10000);
 </script>
 {% endif %}
 {% endblock %}
