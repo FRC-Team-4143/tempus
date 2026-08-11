@@ -71,7 +71,6 @@ async def _verify_slack_signature(request: Request) -> bytes:
 _STATUS_LABELS = {
     SessionStatus.contributor: "Contributor",
     SessionStatus.present: "Present",
-    SessionStatus.auto: "Auto",
     SessionStatus.distraction: "Distraction",
 }
 
@@ -484,7 +483,7 @@ async def slack_command(
                 media_type="text/plain",
             )
 
-        closed = await sign_out_all_open(db, status=SessionStatus.auto)
+        closed = await sign_out_all_open(db)
         mentor_count = await mentor_sign_out_all_open(db)
         if closed:
             await broadcaster.broadcast("update")

@@ -17,7 +17,6 @@ def _status_multiplier(status: SessionStatus) -> float:
     return {
         SessionStatus.contributor: settings.contributor_multiplier,
         SessionStatus.present: settings.present_multiplier,
-        SessionStatus.auto: settings.contributor_multiplier,  # auto = same as contributor
         SessionStatus.distraction: settings.distraction_multiplier,
     }.get(status, settings.contributor_multiplier)
 
@@ -80,10 +79,15 @@ async def sign_out(
     db: AsyncSession,
     session_id: int,
     status: SessionStatus,
+    auto_closed: bool = False,
 ) -> Optional[AttendanceSession]:
     """
     Sign out a session and compute hours_counted.
     Returns the updated session or None if not found / already signed out.
+
+    ``auto_closed`` marks that something other than the student's own badge scan
+    ended this session (e.g. an admin's force-signout button) — see the field's
+    docstring on the model.
     """
     result = await db.execute(
         select(AttendanceSession)
@@ -106,6 +110,7 @@ async def sign_out(
     session.sign_out_time = sign_out_time
     session.status = status
     session.hours_counted = hours_counted
+    session.auto_closed = auto_closed
     await db.commit()
     await db.refresh(session)
     return session
@@ -139,13 +144,16 @@ async def update_session_status(
 
 async def sign_out_all_open(
     db: AsyncSession,
-    status: SessionStatus = SessionStatus.auto,
+    status: SessionStatus = SessionStatus.contributor,
     effective_at: Optional[datetime] = None,
 ) -> list[AttendanceSession]:
     """
-    Sign out every open session (used by the auto sign-out scheduler).
-    Returns the list of sessions that were closed, with each session's student
-    (and team) eager-loaded so callers know who forgot to sign out.
+    Sign out every open session (used by the nightly auto sign-out job and /gtfo's
+    mass sign-out). Returns the list of sessions that were closed, with each
+    session's student (and team) eager-loaded so callers know who forgot to sign out.
+
+    Every session this closes is, by definition, one the student didn't end
+    themselves — so `auto_closed` is always set, regardless of `status`.
 
     If ``effective_at`` (naive UTC) is given, forgotten sessions are recorded as
     ending at that time instead of now — so a job that fires late doesn't inflate
@@ -166,6 +174,7 @@ async def sign_out_all_open(
         s.sign_out_time = sign_out
         s.status = status
         s.hours_counted = round(elapsed_hours * _status_multiplier(status), 4)
+        s.auto_closed = True
 
     await db.commit()
     return list(open_sessions)
@@ -233,7 +242,9 @@ async def mentor_sign_out_all_open(
 ) -> int:
     """Auto sign-out all open mentor sessions. Returns count closed.
 
-    ``effective_at`` behaves as in :func:`sign_out_all_open`.
+    ``effective_at`` behaves as in :func:`sign_out_all_open`. Every session this
+    closes is, by definition, one the mentor didn't end themselves, so
+    `auto_closed` is always set — see :func:`sign_out_all_open`.
     """
     result = await db.execute(
         select(MentorSession).where(MentorSession.sign_out_time.is_(None))
@@ -244,17 +255,21 @@ async def mentor_sign_out_all_open(
         sign_out = effective_at if (effective_at is not None and effective_at > s.sign_in_time) else now
         s.sign_out_time = sign_out
         s.hours_counted = round((sign_out - s.sign_in_time).total_seconds() / 3600.0, 4)
+        s.auto_closed = True
     await db.commit()
     return len(open_sessions)
 
 
 async def mentor_sign_out(
-    db: AsyncSession, session_id: int
+    db: AsyncSession, session_id: int, auto_closed: bool = False
 ) -> Optional[MentorSession]:
     """Sign out a single open mentor session and compute hours_counted.
 
     Mentor hours are counted in full (no status multiplier). Returns the
     updated session, or None if not found or already signed out.
+
+    ``auto_closed`` behaves as in :func:`sign_out` — true for an admin's
+    force-signout button, false for the mentor's own badge scan.
     """
     result = await db.execute(
         select(MentorSession).where(
@@ -269,6 +284,7 @@ async def mentor_sign_out(
     now = datetime.utcnow()
     session.sign_out_time = now
     session.hours_counted = round((now - session.sign_in_time).total_seconds() / 3600.0, 4)
+    session.auto_closed = auto_closed
     await db.commit()
     await db.refresh(session)
     return session

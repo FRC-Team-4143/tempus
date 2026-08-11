@@ -14,7 +14,6 @@ from app.database import Base
 class SessionStatus(str, enum.Enum):
     contributor = "contributor"
     present = "present"
-    auto = "auto"
     distraction = "distraction"
 
 
@@ -168,6 +167,11 @@ class AttendanceSession(Base):
     hours_counted: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     # Time the /checkout command was run; used as the sign-out time when the button is clicked
     checkout_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # True when something other than the student's own badge scan closed this session
+    # (the nightly auto sign-out, a mentor's force-signout button, or /gtfo) — replaces
+    # the old SessionStatus.auto marker, which conflated "how it ended" with "what kind
+    # of work it was". Never set by a manual status edit.
+    auto_closed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
 
     student: Mapped["Student"] = relationship("Student", back_populates="sessions")
 
@@ -234,5 +238,8 @@ class MentorSession(Base):
     sign_in_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     sign_out_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     hours_counted: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # See AttendanceSession.auto_closed — same meaning, mentors just never had a
+    # SessionStatus to begin with.
+    auto_closed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
 
     mentor: Mapped["Mentor"] = relationship("Mentor", back_populates="sessions")

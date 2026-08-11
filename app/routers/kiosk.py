@@ -227,18 +227,18 @@ async def kiosk_demo(request: Request):
         return entries
 
     demo_stats = {
-        "alltime": _pick3(all_names, lambda: f"{random.randint(10, 120)}.{random.randint(0,9)}h", lambda v: float(v[:-1])),
-        "week":    _pick3(all_names, lambda: f"{random.randint(2, 18)}.{random.randint(0,9)}h",  lambda v: float(v[:-1])),
-        "longest_session": _pick3(all_names, lambda: f"{random.randint(3, 10)}.{random.randint(0,9)}h", lambda v: float(v[:-1])),
+        "alltime": _pick3(all_names, lambda: f"{random.randint(10, 120)}.{random.randint(0,99):02d}h", lambda v: float(v[:-1])),
+        "week":    _pick3(all_names, lambda: f"{random.randint(2, 18)}.{random.randint(0,99):02d}h",  lambda v: float(v[:-1])),
+        "longest_session": _pick3(all_names, lambda: f"{random.randint(3, 10)}.{random.randint(0,99):02d}h", lambda v: float(v[:-1])),
         "streak":  _pick3(all_names, lambda: f"{random.randint(3, 21)}d", lambda v: int(v[:-1])),
         "team_totals": [
-            {"name": "Team 4143", "value": f"{random.randint(300, 600) + round(random.random(), 1):.1f}h"},
-            {"name": "Team 4423", "value": f"{random.randint(80, 200) + round(random.random(), 1):.1f}h"},
+            {"name": "Team 4143", "value": f"{random.randint(300, 600) + round(random.random(), 2):.2f}h"},
+            {"name": "Team 4423", "value": f"{random.randint(80, 200) + round(random.random(), 2):.2f}h"},
         ],
     }
     demo_stats["team_totals"].append({
         "name": "Combined",
-        "value": f"{sum(float(r['value'][:-1]) for r in demo_stats['team_totals']):.1f}h",
+        "value": f"{sum(float(r['value'][:-1]) for r in demo_stats['team_totals']):.2f}h",
     })
 
     by_team = {
@@ -324,7 +324,7 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
         .order_by(func.sum(AttendanceSession.hours_counted).desc())
         .limit(3)
     )
-    alltime = [{"name": r.name, "value": f"{r.total:.1f}h"} for r in alltime_result]
+    alltime = [{"name": r.name, "value": f"{r.total:.2f}h"} for r in alltime_result]
 
     # ── 2. This week top hours (Mon–Sun, CST) ─────────────────────────────────
     week_start_utc, _ = current_week_bounds()
@@ -340,7 +340,7 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
         .order_by(func.sum(AttendanceSession.hours_counted).desc())
         .limit(3)
     )
-    week = [{"name": r.name, "value": f"{r.total:.1f}h"} for r in week_result]
+    week = [{"name": r.name, "value": f"{r.total:.2f}h"} for r in week_result]
 
     # ── 3. Longest single session (since cutoff) ──────────────────────────────
     longest_q = (
@@ -357,7 +357,7 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
         .order_by(func.max(AttendanceSession.hours_counted).desc())
         .limit(3)
     )
-    longest = [{"name": r.name, "value": f"{r.max_h:.1f}h"} for r in longest_result]
+    longest = [{"name": r.name, "value": f"{r.max_h:.2f}h"} for r in longest_result]
 
     # ── 4. Longest streak (consecutive days with >= 1 h, since cutoff) ────────
     streak_q = (
@@ -420,9 +420,9 @@ async def kiosk_stats(db: AsyncSession = Depends(get_db)):
     t4143 = team_rows.get(4143, 0.0)
     t4423 = team_rows.get(4423, 0.0)
     team_totals = [
-        {"name": "Team 4143", "value": f"{t4143:.1f}h"},
-        {"name": "Team 4423", "value": f"{t4423:.1f}h"},
-        {"name": "Combined",  "value": f"{t4143 + t4423:.1f}h"},
+        {"name": "Team 4143", "value": f"{t4143:.2f}h"},
+        {"name": "Team 4423", "value": f"{t4423:.2f}h"},
+        {"name": "Combined",  "value": f"{t4143 + t4423:.2f}h"},
     ]
 
     return {
@@ -512,7 +512,7 @@ async def mentor_stats(db: AsyncSession = Depends(get_db)):
         .order_by(func.sum(MentorSession.hours_counted).desc())
         .limit(3)
     )
-    alltime = [{"name": r.name, "value": f"{r.total:.1f}h"} for r in alltime_rows]
+    alltime = [{"name": r.name, "value": f"{r.total:.2f}h"} for r in alltime_rows]
 
     # ── 2. This week top hours ────────────────────────────────────────────────
     week_rows = await db.execute(
@@ -526,7 +526,7 @@ async def mentor_stats(db: AsyncSession = Depends(get_db)):
         .order_by(func.sum(MentorSession.hours_counted).desc())
         .limit(3)
     )
-    week = [{"name": r.name, "value": f"{r.total:.1f}h"} for r in week_rows]
+    week = [{"name": r.name, "value": f"{r.total:.2f}h"} for r in week_rows]
 
     # ── 3. Longest single session ─────────────────────────────────────────────
     longest_rows = await db.execute(
@@ -537,7 +537,7 @@ async def mentor_stats(db: AsyncSession = Depends(get_db)):
         .order_by(func.max(MentorSession.hours_counted).desc())
         .limit(3)
     )
-    longest = [{"name": r.name, "value": f"{r.max_h:.1f}h"} for r in longest_rows]
+    longest = [{"name": r.name, "value": f"{r.max_h:.2f}h"} for r in longest_rows]
 
     # ── 4. Longest streak (consecutive days with >= 1 h) ──────────────────────
     streak_rows = (

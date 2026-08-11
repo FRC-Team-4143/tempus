@@ -33,6 +33,7 @@ async def test_mentor_sign_out_closes_and_counts_full_hours(db):
     assert result.sign_out_time is not None
     # Mentors get full elapsed hours (no status multiplier).
     assert result.hours_counted == pytest.approx(2.0, abs=0.05)
+    assert result.auto_closed is False  # default — caller didn't ask for the flag
 
 
 async def test_mentor_sign_out_ignores_already_closed(db):
@@ -69,3 +70,4 @@ async def test_force_signout_route_closes_open_mentor_session(db, authed_client)
     await db.refresh(sess)
     assert sess.sign_out_time is not None
     assert sess.hours_counted == pytest.approx(1.0, abs=0.05)
+    assert sess.auto_closed is True  # admin's force-signout button, not the mentor's own scan

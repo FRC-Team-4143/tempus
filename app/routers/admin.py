@@ -713,7 +713,7 @@ async def admin_sessions_new_form(request: Request, db: AsyncSession = Depends(g
             "request": request,
             "is_mentor": False,
             "people": students_result.scalars().all(),
-            "statuses": [s for s in SessionStatus if s != SessionStatus.auto],
+            "statuses": list(SessionStatus),
             "today": today_local().isoformat(),
         },
     )
@@ -796,7 +796,7 @@ async def admin_sessions_edit_form(
     return templates.TemplateResponse(
         "admin/session_edit.html",
         {"request": request, "s": session, "is_mentor": False,
-         "statuses": [s for s in SessionStatus if s != SessionStatus.auto]},
+         "statuses": list(SessionStatus)},
     )
 
 
@@ -909,7 +909,7 @@ async def admin_sessions_force_signout(
         return RedirectResponse("/admin/sessions", status_code=303)
 
     from app.services.attendance import sign_out
-    await sign_out(db, session_id, SessionStatus.auto)
+    await sign_out(db, session_id, SessionStatus.contributor, auto_closed=True)
 
     from app.services.broadcaster import broadcaster
     await broadcaster.broadcast("update")
@@ -944,7 +944,7 @@ async def admin_mentor_sessions_force_signout(
         return redirect
 
     from app.services.attendance import mentor_sign_out
-    session = await mentor_sign_out(db, session_id)
+    session = await mentor_sign_out(db, session_id, auto_closed=True)
     if session is None:
         return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
 

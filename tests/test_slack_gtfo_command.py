@@ -98,7 +98,8 @@ async def test_gtfo_signs_out_all_open_sessions(client, db, make_student, monkey
     db.expire_all()
     rows = (await db.execute(select(AttendanceSession))).scalars().all()
     assert all(r.sign_out_time is not None for r in rows)
-    assert all(r.status == SessionStatus.auto for r in rows)
+    assert all(r.status == SessionStatus.contributor for r in rows)
+    assert all(r.auto_closed for r in rows)  # forced close via /gtfo, not a self-checkout
 
     assert len(calls) == 1
     assert len(calls[0]) == 2
@@ -134,6 +135,7 @@ async def test_gtfo_also_signs_out_open_mentor_sessions(client, db, monkeypatch)
     rows = (await db.execute(select(MentorSession))).scalars().all()
     assert len(rows) == 2
     assert all(r.sign_out_time is not None for r in rows)
+    assert all(r.auto_closed for r in rows)  # forced close via /gtfo, not a self-checkout
 
     # Mentors don't get roasted — only the (empty) student list reaches the meme poster.
     assert len(calls) == 1

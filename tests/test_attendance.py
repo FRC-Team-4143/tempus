@@ -71,6 +71,7 @@ async def test_second_scan_after_60s_self_checks_out(db, make_student):
     from sqlalchemy import select
     sess = (await db.execute(select(AttendanceSession))).scalars().first()
     assert sess.status == SessionStatus.contributor
+    assert sess.auto_closed is False  # the student's own badge scan, not a forced close
     # 2 hours * contributor multiplier
     assert sess.hours_counted == pytest.approx(2.0 * settings.contributor_multiplier, abs=0.01)
 
@@ -81,7 +82,6 @@ async def test_second_scan_after_60s_self_checks_out(db, make_student):
         (SessionStatus.contributor, settings.contributor_multiplier),
         (SessionStatus.present, settings.present_multiplier),
         (SessionStatus.distraction, settings.distraction_multiplier),
-        (SessionStatus.auto, settings.contributor_multiplier),  # auto == contributor
     ],
 )
 async def test_sign_out_applies_status_multiplier(db, make_student, status, multiplier):
@@ -99,6 +99,38 @@ async def test_sign_out_applies_status_multiplier(db, make_student, status, mult
     assert result is not None
     assert result.status == status
     assert result.hours_counted == pytest.approx(4.0 * multiplier, abs=0.01)
+
+
+async def test_sign_out_auto_closed_defaults_false(db, make_student):
+    """A plain sign_out() call — e.g. the /checkout Slack flow — is the person
+    closing their own session, not a forced close."""
+    student = await make_student(code="badge001")
+    sess = AttendanceSession(
+        student_id=student.id,
+        sign_in_time=datetime.utcnow() - timedelta(hours=1),
+    )
+    db.add(sess)
+    await db.commit()
+    await db.refresh(sess)
+
+    result = await sign_out(db, sess.id, SessionStatus.contributor)
+
+    assert result.auto_closed is False
+
+
+async def test_sign_out_can_be_marked_auto_closed(db, make_student):
+    student = await make_student(code="badge001")
+    sess = AttendanceSession(
+        student_id=student.id,
+        sign_in_time=datetime.utcnow() - timedelta(hours=1),
+    )
+    db.add(sess)
+    await db.commit()
+    await db.refresh(sess)
+
+    result = await sign_out(db, sess.id, SessionStatus.contributor, auto_closed=True)
+
+    assert result.auto_closed is True
 
 
 async def test_distraction_counts_zero_hours(db, make_student):
@@ -166,6 +198,7 @@ async def test_sign_out_all_open_closes_everything(db, make_student):
 
     assert len(closed) == 2
     assert {c.student.name for c in closed} == {"A", "B"}
+    assert all(c.auto_closed for c in closed)  # forced close, not a self-checkout
     assert await get_open_session(db, s1.id) is None
     assert await get_open_session(db, s2.id) is None
 
@@ -182,7 +215,6 @@ async def test_sign_out_all_open_uses_effective_time(db, make_student):
 
     assert len(closed) == 1
     assert closed[0].sign_out_time == effective_at
-    # 4 hours * contributor multiplier (auto == contributor)
     assert closed[0].hours_counted == pytest.approx(4.0 * settings.contributor_multiplier, abs=0.01)
 
 

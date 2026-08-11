@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.models import AttendanceSession, Mentor, SessionStatus, Student
+from app.models import AttendanceSession, Mentor, Student
 from app.services.attendance import sign_out_all_open, mentor_sign_out_all_open
 from app.services.leads import lead_mentors_for_student
 from app.services.slack_client import send_dm, send_group_dm
@@ -59,7 +59,7 @@ async def job_auto_signout() -> None:
     async with AsyncSessionLocal() as db:
         hhmm = await get_auto_signout_effective_time(db)
         effective_at = effective_signout_utc(hhmm) if hhmm else None
-        closed = await sign_out_all_open(db, status=SessionStatus.auto, effective_at=effective_at)
+        closed = await sign_out_all_open(db, effective_at=effective_at)
         mentor_count = await mentor_sign_out_all_open(db, effective_at=effective_at)
     count = len(closed)
     if count:

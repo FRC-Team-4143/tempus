@@ -171,6 +171,7 @@ async def test_manager_can_force_signout_session(client, db, make_student):
 
     await db.refresh(session)
     assert session.sign_out_time is not None
+    assert session.auto_closed is True  # the manager's force-signout button, not a self-checkout
 
 
 async def test_manager_can_delete_session(client, db, make_student):

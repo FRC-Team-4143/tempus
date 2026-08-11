@@ -63,7 +63,17 @@
             {% for s in recent %}
             <tr>
               <td>{{ s.sign_in_time | localdt('%b %d, %I:%M %p') }}</td>
-              <td class="text-muted">{{ s.sign_out_time | localdt('%I:%M %p') if s.sign_out_time else 'In progress' }}</td>
+              <td class="text-muted">
+                {% if s.sign_out_time %}
+                  {{ s.sign_out_time | localdt('%I:%M %p') }}
+                  {% if s.auto_closed %}
+                  <i class="bi bi-robot ms-1"
+                     title="Automated or mentor-forced sign-out — not a self-checkout"></i>
+                  {% endif %}
+                {% else %}
+                  In progress
+                {% endif %}
+              </td>
               {% if kind == 'student' %}
               <td class="text-muted small">{{ s.status.value | capitalize if s.status else '—' }}</td>
               {% endif %}

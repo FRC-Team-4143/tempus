@@ -70,6 +70,11 @@ async def test_mentor_self_checkout_reports_is_mentor_true(paired_client, db):
     assert "Signed out" in data["message"]
     assert data["is_mentor"] is True
 
+    from sqlalchemy import select
+    db.expire_all()
+    row = (await db.execute(select(MentorSession))).scalars().one()
+    assert row.auto_closed is False  # the mentor's own badge scan, not a forced close
+
 
 async def test_unknown_badge_reports_success_false_and_is_mentor_false(paired_client):
     resp = await paired_client.post("/kiosk/signin", json={"name": "nobody"})

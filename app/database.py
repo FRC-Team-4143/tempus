@@ -54,6 +54,8 @@ async def init_db() -> None:
         await conn.run_sync(_drop_is_lead_column)
         # Add an optional free-text note/title to weekly requirements
         await conn.run_sync(_add_weekly_requirement_note_column)
+        # Retire SessionStatus.auto in favor of the auto_closed flag
+        await conn.run_sync(_add_auto_closed_columns)
 
     await _seed_teams()
     await _seed_subteams()
@@ -215,6 +217,24 @@ def _add_weekly_requirement_note_column(conn) -> None:
     columns = [c["name"] for c in inspect(conn).get_columns("weekly_requirements")]
     if "note" not in columns:
         conn.execute(text("ALTER TABLE weekly_requirements ADD COLUMN note VARCHAR(200)"))
+
+
+def _add_auto_closed_columns(conn) -> None:
+    """Add `auto_closed` to sessions and mentor_sessions, replacing the retired
+    SessionStatus.auto marker. Existing `status = 'auto'` rows are rewritten to
+    'contributor' (the multiplier auto always used) with auto_closed = 1, so
+    historical hours totals don't shift. mentor_sessions never had a status to
+    backfill from, so its existing rows just default to auto_closed = 0."""
+    from sqlalchemy import inspect, text
+    session_columns = [c["name"] for c in inspect(conn).get_columns("sessions")]
+    if "auto_closed" not in session_columns:
+        conn.execute(text("ALTER TABLE sessions ADD COLUMN auto_closed BOOLEAN NOT NULL DEFAULT 0"))
+        conn.execute(text(
+            "UPDATE sessions SET auto_closed = 1, status = 'contributor' WHERE status = 'auto'"
+        ))
+    mentor_columns = [c["name"] for c in inspect(conn).get_columns("mentor_sessions")]
+    if "auto_closed" not in mentor_columns:
+        conn.execute(text("ALTER TABLE mentor_sessions ADD COLUMN auto_closed BOOLEAN NOT NULL DEFAULT 0"))
 
 
 def _drop_slack_session_columns(conn) -> None:
