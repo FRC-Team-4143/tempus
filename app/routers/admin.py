@@ -134,6 +134,7 @@ def _session_role(request: Request) -> Optional[str]:
 templates.env.globals["session_role"] = _session_role
 templates.env.globals["session_identity"] = sso_identity
 templates.env.globals["legion_base_url"] = lambda: settings.legion_base_url
+templates.env.globals["manager_allowed"] = _manager_allowed
 
 
 async def _active_subteams(db: AsyncSession):
