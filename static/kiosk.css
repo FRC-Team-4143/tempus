@@ -214,12 +214,24 @@ body {
    .board-col-stack is a flex column, so its children already stretch to
    its full width same as Leaderboard above them. */
 .camera-panel { flex: 0 0 auto; }
+/* Row layout — frame on the left, status/hint stacked to its right — instead
+   of stacking everything centered under a small frame, which left the panel
+   mostly empty on both sides of a narrow video. Putting the text beside the
+   frame instead of below it lets the frame grow into the vertical space that
+   used to be spent on a third stacked row, so the panel's overall height
+   doesn't need to grow with it. */
 .camera-panel-body {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 14px;
-  padding: 18px 20px;
+  gap: 20px;
+  padding: 16px 20px;
+}
+.camera-panel-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
 }
 
 /* An author-level `display` beats the UA stylesheet's `[hidden] { display: none }`
@@ -250,12 +262,13 @@ body {
 .camera-frame {
   position: relative;       /* qr-scanner inserts its scan-region overlay as an
                                 absolutely positioned sibling of the <video> */
-  width: 200px;
-  height: 150px;
+  width: 280px;
+  height: 210px;
   background: #000000;
   border: 1px solid #2a1a1a;
   border-radius: 8px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 /* Collapses to hide the preview on demand (the toggle button above) or when
    the camera itself is off/broken — deliberately a wrapper around
@@ -266,9 +279,10 @@ body {
    an ancestor's height with overflow:hidden hides the same pixels without
    qr-scanner ever seeing its own video "go hidden" mid-scan. */
 .camera-frame-clip {
-  height: 150px;
+  height: 210px;
   overflow: hidden;
   transition: height 0.2s ease;
+  flex-shrink: 0;
 }
 #camera-hud[data-preview="hidden"] .camera-frame-clip,
 #camera-hud[data-state="off"] .camera-frame-clip {
@@ -309,7 +323,7 @@ body {
 .camera-panel-hint {
   font-size: 0.75rem;
   color: #888;
-  text-align: center;
+  text-align: left;
   line-height: 1.4;
   margin: 0;
 }
@@ -327,8 +341,8 @@ body {
    rather than being greyed out too. */
 .camera-panel-outline { border-style: dashed; }
 .camera-panel-placeholder {
-  width: 200px;
-  height: 150px;
+  width: 280px;
+  height: 210px;
   border: 1.5px dashed #444;
   border-radius: 8px;
   display: flex;
@@ -338,6 +352,7 @@ body {
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  flex-shrink: 0;
 }
 
 /* ── Board swap (combined display only) ───────────────────────────────────── */

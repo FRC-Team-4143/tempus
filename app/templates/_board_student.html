@@ -103,8 +103,10 @@
                 <video id="camera-video" muted playsinline></video>
               </div>
             </div>
-            <div id="camera-status" class="camera-status"></div>
-            <p class="camera-panel-hint">Show your phone's badge QR to sign in or out.</p>
+            <div class="camera-panel-info">
+              <div id="camera-status" class="camera-status"></div>
+              <p class="camera-panel-hint">Show your phone's badge QR to sign in or out.</p>
+            </div>
           </div>
         </div>
         {% elif demo %}
@@ -120,7 +122,9 @@
           </div>
           <div class="camera-panel-body">
             <div class="camera-panel-placeholder">Camera preview</div>
-            <p class="camera-panel-hint">Shown on the real kiosk display only.</p>
+            <div class="camera-panel-info">
+              <p class="camera-panel-hint">Shown on the real kiosk display only.</p>
+            </div>
           </div>
         </div>
         {% endif %}
