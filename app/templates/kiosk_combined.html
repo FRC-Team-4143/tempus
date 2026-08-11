@@ -1,17 +1,21 @@
 {% extends "base.html" %}
 
 {# The combined auto-swapping display (/kiosk) — what the shop kiosk points at.
-   The hardware's only input is a QR scanner acting as a keyboard: no mouse, no
-   navigation. So the mentor board can't be reached by clicking, and a badge scan
-   drives the view instead. Both boards render here; only one is visible.
+   The hardware has no mouse: input is either a handheld QR scanner acting as a
+   keyboard, or the kiosk webcam reading a badge off a student's phone screen
+   (the handheld unit alone can't — a QR on a backlit screen needs a camera, not
+   a keyboard wedge). So the mentor board can't be reached by clicking, and a
+   badge scan drives the view instead. Both boards render here; only one is
+   visible.
 
-   The swap is local to this browser — driven by initBadgeScanner's onResult
-   callback below, reading this browser's own /kiosk/signin response, not the SSE
-   broadcast. That broadcast also fires from sources with no display to swap at
-   all (Slack, the admin panel, the nightly auto-sign-out), so it's wired to
-   refresh board data only; letting it drive the swap would flip every open kiosk
-   in the building over whenever any of those fired, regardless of which (if any)
-   physical kiosk was actually scanned.
+   The swap is local to this browser — driven by onScan below, the shared
+   result callback both initBadgeScanner and initCameraScanner call with this
+   browser's own /kiosk/signin response, not the SSE broadcast. That broadcast
+   also fires from sources with no display to swap at all (Slack, the admin
+   panel, the nightly auto-sign-out), so it's wired to refresh board data only;
+   letting it drive the swap would flip every open kiosk in the building over
+   whenever any of those fired, regardless of which (if any) physical kiosk was
+   actually scanned.
 
    No cross-links in the header on purpose — they'd be unclickable, and the swap
    is the answer to "how do I see the other board". #}
@@ -60,9 +64,34 @@
 <div id="feedback-toast" class="alert alert-dismissible shadow-lg" role="alert">
   <span id="feedback-msg"></span>
 </div>
+
+<!-- Camera badge scanner HUD — a webcam on the kiosk PC, watching for QR badges
+     on students' phone screens (the handheld wedge scanner above can't read a
+     backlit screen). Fixed-position (see kiosk.css) so it adds no height to the
+     header or the flow — .kiosk-panel's calc(100vh - 130px) stays valid.
+     `hidden` goes here, never on the <video>: qr-scanner rewrites the video's
+     own display/visibility/opacity if it finds it hidden on construction.
+     data-kiosk-interactive exempts this subtree from initBadgeScanner's
+     refocus-on-click. -->
+<div id="camera-hud" data-kiosk-interactive hidden>
+  <div class="camera-frame">
+    <video id="camera-video" muted playsinline></video>
+  </div>
+  <div id="camera-status" class="camera-status"></div>
+</div>
 {% endblock %}
 
 {% block scripts %}
+<!-- nimiq/qr-scanner 1.4.2 (MIT) — vendored under /static/vendor/qr-scanner/,
+     see that directory's LICENSE. Deliberately the UMD build, not the ES module
+     one: a classic script defines window.QrScanner *before* the inline
+     controller below runs, whereas an ES-module script tag is deferred and
+     would execute after it. qr-scanner-worker.min.js must stay a sibling of
+     this file — the library reaches it with a dynamic
+     import('./qr-scanner-worker.min.js'), which resolves against this script's
+     own URL, not the page's. QrScanner.WORKER_PATH is a no-op in 1.4.x; there
+     is nothing to configure. -->
+<script src="/static/vendor/qr-scanner/qr-scanner.umd.min.js"></script>
 <script src="/static/kiosk-boards.js"></script>
 <script>
   const HOLD_MS = {{ mentor_hold_seconds }} * 1000;
@@ -121,9 +150,9 @@
   }
 
   // Snap back to students and cancel any hold. Called only from this browser's
-  // own badge-scan result (see the onResult wiring below) when the scan wasn't a
-  // mentor — never from the SSE 'update' handler, which fires for every open
-  // kiosk regardless of which one (if any) was actually scanned.
+  // own badge-scan result (see onScan below) when the scan wasn't a mentor —
+  // never from the SSE 'update' handler, which fires for every open kiosk
+  // regardless of which one (if any) was actually scanned.
   function toStudent() {
     if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
     stopCountdown();
@@ -142,22 +171,27 @@
     startCountdown();
   }
 
-  Kiosk.startClock();
-  // onResult drives the swap locally from this browser's own scan — see the
-  // module-level comment above for why the SSE broadcast doesn't.
-  Kiosk.initBadgeScanner((data) => {
+  // onScan drives the swap locally from this browser's own scan — see the
+  // module-level comment above for why the SSE broadcast doesn't. Both input
+  // paths (the handheld wedge scanner and the kiosk webcam) share it, so a
+  // mentor badge swaps the board the same way regardless of which one read it.
+  const onScan = (data) => {
     if (!data.success) return;
     if (data.is_mentor) { holdMentorBoard(); return; }
     student.refresh();
     student.refreshStats();
     toStudent();
-  });
+  };
+
+  Kiosk.startClock();
+  Kiosk.initBadgeScanner(onScan);
+  Kiosk.initCameraScanner(onScan);
   student.refreshStats();
   mentor.refreshStats();
   Kiosk.initScrollers(studentEl);
 
   // Data-refresh only now — every open kiosk keeps its counts current on any
-  // broadcast, but the board *swap* is local (see initBadgeScanner above).
+  // broadcast, but the board *swap* is local (see onScan above).
   Kiosk.connectSSE('/kiosk/student/stream', {
     update: () => { student.refresh(); student.refreshStats(); },
     mentor_update: () => { student.refresh(); mentor.refresh(); mentor.refreshStats(); },

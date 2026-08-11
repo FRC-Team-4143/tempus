@@ -163,6 +163,78 @@ body {
   display: none;
 }
 
+/* ── Camera badge scanner HUD (combined display only) ────────────────────────
+   Deliberately out of flow: .kiosk-panel's height is calc(100vh - 130px), a
+   hardcoded subtraction of the header, so anything that adds height to the
+   header or the body flow breaks panel sizing — the same constraint that made
+   the countdown ring position:absolute below. Bottom-left, so it stays clear
+   of #feedback-toast (bottom-center, min-width 320px) down to ~730px wide. */
+#camera-hud {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 9998;            /* under #feedback-toast's 9999 */
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+/* An author-level `display` beats the UA stylesheet's `[hidden] { display: none }`
+   — see the `.board[hidden]` note below — so this is required for
+   `hud.hidden = true/false` to do anything. */
+#camera-hud[hidden] { display: none !important; }
+
+.camera-frame {
+  position: relative;       /* qr-scanner inserts its scan-region overlay as an
+                                absolutely positioned sibling of the <video> */
+  width: 200px;
+  height: 150px;
+  background: #000000;
+  border: 1px solid #2a1a1a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+#camera-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* `contain`, not `cover`: the preview must show exactly the frame the scanner
+     is reading, or the highlighted scan region points at the wrong place. */
+  object-fit: contain;
+  /* Never position this with `transform` — qr-scanner writes
+     `transform: scaleX(±1)` inline on it once the stream starts, to mirror
+     the preview for a camera facing the student. */
+}
+/* Collapse the black rectangle when there is nothing to show. Safe to key off
+   [data-state]: qr-scanner only probes the video's computed style once, in a
+   requestAnimationFrame right after construction, which runs while the HUD is
+   still visible (see the template comment on #camera-hud). */
+#camera-hud[data-state="off"] .camera-frame { display: none; }
+
+.camera-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #888;
+}
+.camera-status::before {
+  content: '';
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #555;
+  flex-shrink: 0;
+}
+#camera-hud[data-state="on"]  .camera-status::before { background: #cc2200; }
+#camera-hud[data-state="off"] .camera-status { color: #e05540; }
+
+/* qr-scanner's default scan-region corner brackets are Nimiq yellow; match
+   the kiosk accent instead. */
+#camera-hud .scan-region-highlight-svg { stroke: #cc2200 !important; }
+
 /* ── Board swap (combined display only) ───────────────────────────────────── */
 /* Both boards live in the document at once; only one is visible. Cross-fade
    rather than a hard cut, since this is a large display in peripheral vision. */

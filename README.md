@@ -186,6 +186,7 @@ and Tempus mirrors it read-only.
 The kiosk page (`/kiosk`) is designed for a dedicated display whose only input is a QR scanner. It shows currently signed-in students grouped by team with elapsed sign-in time and auto-refreshes via Server-Sent Events — no polling required.
 
 - **Sign-in:** scan a QR badge — the scanner acts as a keyboard and submits the student's tracker UID to `POST /kiosk/signin`
+- **Camera scanning:** `/kiosk` also runs the kiosk PC's webcam as a hands-free second input, for badges shown on a phone screen rather than printed — the handheld scanner can't read a backlit display. It requires HTTPS (or `localhost`) since browsers block camera access on plain HTTP, and it falls back to the handheld scanner automatically if no camera is available or permission is denied.
 - **Self sign-out:** scanning the same badge again signs the student out (minimum 60 seconds must have elapsed to prevent accidental double-scans)
 - **Default sign-out status:** self sign-outs are recorded as **Contributor** (full hours); a mentor can adjust this later with `/edit`
 - **Mentor board swap:** since the display has no mouse, a *mentor* badge scan swaps `/kiosk` to the mentor board for `KIOSK_MENTOR_HOLD_SECONDS`; any student scan snaps it straight back. Pinned single-board views live at `/kiosk/student` and `/kiosk/mentor`.

@@ -6,9 +6,9 @@
  * ids, so both can coexist in one document on the combined page.
  *
  * Each board exposes refresh() and isEmpty(); the combined page's swap
- * controller is built on exactly those two, triggered by initBadgeScanner's
- * optional onResult callback (this browser's own scan) rather than by the SSE
- * events also handled below, which are data-refresh only.
+ * controller is built on exactly those two, triggered by initBadgeScanner's /
+ * initCameraScanner's optional onResult callback (this browser's own scan)
+ * rather than by the SSE events also handled below, which are data-refresh only.
  */
 window.Kiosk = (function () {
   'use strict';
@@ -218,56 +218,208 @@ window.Kiosk = (function () {
     });
   }
 
-  // ── Badge scanner ────────────────────────────────────────────────────────
-  // The scanner is a keyboard: it types the badge id and presses Enter. Keep
-  // focus pinned to the hidden input so a stray click can't swallow a scan.
+  // ── Badge submission (shared by the wedge scanner and the camera) ─────────
+  // Two input paths reach this: the hardware keyboard-wedge scanner (typed +
+  // Enter, see initBadgeScanner) and the kiosk webcam (see initCameraScanner).
+  // Both submit the same thing — the bare `member_code` string the QR encodes —
+  // to the same endpoint, and share one toast, so a student can't tell which
+  // path served them.
   //
   // `onResult(data)`, if given, fires with the parsed SignInResponse after every
   // successful fetch (not on a network error, which has no response to act on).
   // The combined page uses it to decide the student/mentor board swap locally,
   // from this browser's own scan — the pinned single-board pages have nothing to
-  // swap, so they call this with no argument.
-  function initBadgeScanner(onResult) {
-    const input = document.getElementById('badge-input');
+  // swap, so they call the initialisers with no argument.
+  let _toastTimer = null;
+  function showFeedback(success, msg) {
+    // Looked up per call rather than captured at init: the wedge and camera
+    // initialise independently, and either may be the first (or only) caller.
     const toast = document.getElementById('feedback-toast');
     const msgEl = document.getElementById('feedback-msg');
+    if (!toast || !msgEl) return;
+    toast.className = 'alert shadow-lg ' + (success ? 'alert-success' : 'alert-danger');
+    msgEl.textContent = msg;
+    toast.style.display = 'block';
+    if (_toastTimer) clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 4000);
+  }
+
+  async function submitBadge(code, onResult) {
+    try {
+      const resp = await fetch('/kiosk/signin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: code }),
+      });
+      const data = await resp.json();
+      showFeedback(data.success, data.message);
+      if (onResult) onResult(data);
+    } catch (err) {
+      showFeedback(false, 'Connection error. Please try again.');
+    }
+  }
+
+  // ── Wedge (keyboard) badge scanner ───────────────────────────────────────
+  // The handheld scanner is a keyboard: it types the badge id and presses Enter.
+  // Keep focus pinned to the hidden input so a stray click can't swallow a scan.
+  function initBadgeScanner(onResult) {
+    const input = document.getElementById('badge-input');
     if (!input) return;
 
-    document.addEventListener('click', () => input.focus());
-    document.addEventListener('keydown', () => input.focus());
+    // …except inside an element that opts out. The camera HUD marks itself
+    // data-kiosk-interactive so a control there isn't fought for focus by the
+    // very click that activated it.
+    const refocus = (e) => {
+      const t = e.target;
+      if (t instanceof Element && t.closest('[data-kiosk-interactive]')) return;
+      input.focus();
+    };
+    document.addEventListener('click', refocus);
+    document.addEventListener('keydown', refocus);
 
-    let toastTimer = null;
-    function showFeedback(success, msg) {
-      if (!toast) return;
-      toast.className = 'alert shadow-lg ' + (success ? 'alert-success' : 'alert-danger');
-      msgEl.textContent = msg;
-      toast.style.display = 'block';
-      if (toastTimer) clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 4000);
-    }
-
-    input.addEventListener('keydown', async (e) => {
+    input.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       const badgeId = input.value.trim();
       input.value = '';
       if (!badgeId) return;
-      try {
-        const resp = await fetch('/kiosk/signin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: badgeId }),
-        });
-        const data = await resp.json();
-        showFeedback(data.success, data.message);
-        if (onResult) onResult(data);
-      } catch (err) {
-        showFeedback(false, 'Connection error. Please try again.');
-      }
+      submitBadge(badgeId, onResult);
     });
+  }
+
+  // ── Camera badge scanner ─────────────────────────────────────────────────
+  // A webcam on the kiosk PC watching for QR badges on students' phone screens.
+  // Hands-free: there is no button, and no "aim and press". Coexists with the
+  // handheld wedge scanner above — both feed submitBadge().
+  //
+  // Library: nimiq/qr-scanner 1.4.2 (MIT), vendored under
+  // /static/vendor/qr-scanner/ — see that directory's LICENSE.
+
+  // A code counts again only after it has been *out of the camera's view* for
+  // this long. Not "N seconds since the last submit": the camera re-decodes the
+  // same badge every frame it is visible, so a fixed cooldown would fire again
+  // the moment it expired. With a badge propped in front of the lens that means
+  // sign-in → (60s server debounce) → sign-out → sign-in → …, manufacturing a
+  // fake session every minute. Refreshing the timestamp on *every* sighting
+  // makes the gate un-openable until the badge physically leaves, so one
+  // showing is exactly one action — and a sign-out is not followed by an
+  // instant re-sign-in, which sign_in()'s toggle would otherwise happily do.
+  const SCAN_DEBOUNCE_MS = 4000;
+
+  // 25 (the library default) is far more work than a kiosk needs and competes
+  // with the boards' requestAnimationFrame auto-scroll. A student holds a phone
+  // up for a second or more, so 5/s costs at most 200ms of latency.
+  const CAMERA_SCANS_PER_SECOND = 5;
+
+  // No camera, denied permission, or an unplugged webcam: retry quietly rather
+  // than requiring someone to reload a wall display.
+  const CAMERA_RETRY_MS = 60000;
+
+  // `onResult(data)` — same contract as initBadgeScanner. Returns the QrScanner
+  // instance, or null if the page has no camera markup (see below) or the
+  // vendored library failed to load.
+  function initCameraScanner(onResult) {
+    const hud    = document.getElementById('camera-hud');
+    const video  = document.getElementById('camera-video');
+    const status = document.getElementById('camera-status');
+    // No markup, no camera. This is how /kiosk/demo (ungated, no pairing) and
+    // /kiosk/mentor (no badge input at all) opt out — nothing to configure.
+    if (!hud || !video) return null;
+
+    const setState = (state, text) => {
+      hud.dataset.state = state;
+      if (status) status.textContent = text;
+    };
+
+    if (!window.QrScanner) {           // vendored script missing or blocked
+      hud.hidden = false;
+      setState('off', 'Scanner unavailable');
+      return null;
+    }
+
+    // decoded text -> ms timestamp of its most recent sighting
+    const lastSeen = new Map();
+
+    function onDecode(result) {
+      // returnDetailedScanResult gives { data, cornerPoints }; the QR encodes a
+      // bare 8-hex-char member_code, which goes to the server verbatim.
+      const code = String((result && result.data) || '').trim();
+      if (!code) return;
+      const now = Date.now();
+      const seenAt = lastSeen.get(code) || 0;
+      lastSeen.set(code, now);                       // refresh on EVERY frame
+      if (now - seenAt < SCAN_DEBOUNCE_MS) return;   // still in view / just left
+      if (lastSeen.size > 200) {                     // a display runs for weeks
+        for (const [c, t] of lastSeen) {
+          if (now - t > SCAN_DEBOUNCE_MS * 10) lastSeen.delete(c);
+        }
+      }
+      submitBadge(code, onResult);
+    }
+
+    // Reveal the HUD *before* constructing: QrScanner inspects the video's
+    // computed style on the next animation frame and, if it finds it hidden,
+    // force-overrides display/visibility and throws away its scan-region
+    // overlay. (This is also why `hidden` goes on #camera-hud, never on
+    // #camera-video itself.)
+    hud.hidden = false;
+    setState('starting', 'Starting camera…');
+
+    const scanner = new window.QrScanner(video, onDecode, {
+      returnDetailedScanResult: true,
+      maxScansPerSecond: CAMERA_SCANS_PER_SECOND,
+      highlightScanRegion: true,   // draws the target box inside the preview
+      onDecodeError: () => {},     // "No QR code found" fires every frame; the
+                                    // default handler would log for 12 hours
+    });
+
+    let retryTimer = null;
+    const retryLater = () => {
+      if (retryTimer) return;
+      retryTimer = setTimeout(() => { retryTimer = null; start(); }, CAMERA_RETRY_MS);
+    };
+
+    async function start() {
+      setState('starting', 'Starting camera…');
+      // getUserMedia does not exist off a secure origin — e.g. testing from a
+      // phone against http://<lan-ip>:8000. Terminal: retrying can't help.
+      if (!window.isSecureContext || !navigator.mediaDevices) {
+        setState('off', 'Camera needs HTTPS');
+        return;
+      }
+      // hasCamera() enumerates devices without prompting, so this separates
+      // "no webcam plugged in" from "permission denied" — start() itself throws
+      // the string 'Camera not found.' for both.
+      if (!(await window.QrScanner.hasCamera())) {
+        setState('off', 'No camera detected');
+        retryLater();
+        return;
+      }
+      try {
+        await scanner.start();
+        setState('on', 'Show your badge');
+        // A webcam unplugged mid-shift ends the track silently; without this the
+        // preview freezes on the last frame and looks alive.
+        const stream = video.srcObject;
+        if (stream && stream.getVideoTracks) {
+          const [track] = stream.getVideoTracks();
+          if (track) track.addEventListener('ended', () => {
+            setState('off', 'Camera disconnected');
+            retryLater();
+          });
+        }
+      } catch (err) {
+        setState('off', 'Camera blocked — use the handheld scanner');
+        retryLater();
+      }
+    }
+
+    start();
+    return scanner;
   }
 
   return {
     escHtml, startClock, startAutoScroll, initScrollers,
-    renderStats, connectSSE, studentBoard, mentorBoard, initBadgeScanner,
+    renderStats, connectSSE, studentBoard, mentorBoard,
+    initBadgeScanner, initCameraScanner,
   };
 })();

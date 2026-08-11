@@ -37,7 +37,7 @@ async def test_combined_display_subscribes_to_the_student_stream(paired_client):
 
 async def test_sse_handlers_only_refresh_data_not_swap(paired_client):
     """The board swap is local to the scanning browser (driven by its own
-    /kiosk/signin response — see test_badge_scanner_is_wired_to_a_local_result_callback),
+    /kiosk/signin response — see test_both_scanners_share_one_local_result_callback),
     not by this SSE stream. A broadcast with no associated display — the nightly
     auto-sign-out, an admin edit, a Slack /gtfo — must refresh every open kiosk's
     counts without swapping any of them."""
@@ -49,12 +49,15 @@ async def test_sse_handlers_only_refresh_data_not_swap(paired_client):
     assert "holdMentorBoard()" not in handlers_src
 
 
-async def test_badge_scanner_is_wired_to_a_local_result_callback(paired_client):
-    """The combined display passes initBadgeScanner a callback so it can swap
-    itself locally from its own scan result — the pinned single-board pages have
-    nothing to swap and call it with no argument (see test_kiosk_pages.py)."""
+async def test_both_scanners_share_one_local_result_callback(paired_client):
+    """The combined display swaps itself from its own scan result, and both input
+    paths — the handheld wedge scanner and the kiosk webcam — must drive that from
+    the *same* callback, or a camera scan could sign a mentor in without swapping
+    to the mentor board. The pinned single-board pages have nothing to swap and
+    call the initialisers with no argument (see test_kiosk_pages.py)."""
     resp = await paired_client.get("/kiosk")
-    assert "Kiosk.initBadgeScanner((data)" in resp.text
+    assert "Kiosk.initBadgeScanner(onScan)" in resp.text
+    assert "Kiosk.initCameraScanner(onScan)" in resp.text
 
 
 async def test_hold_duration_comes_from_config(paired_client, monkeypatch):
