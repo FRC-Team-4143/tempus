@@ -29,6 +29,7 @@ from app.models import (
     SessionStatus, Student, Subteam, Team, WeeklyRequirement,
 )
 from app.services import audit
+from app.services.badge import compute_badge_id, effective_code as _badge_effective_code
 from app.services.requirements import resolve_requirement
 from app.services.sso import logout_url, make_authorize_url, sso_identity
 from app.utils import utc_to_local, today_local, local_to_utc
@@ -135,6 +136,13 @@ templates.env.globals["session_role"] = _session_role
 templates.env.globals["session_identity"] = sso_identity
 templates.env.globals["legion_base_url"] = lambda: settings.legion_base_url
 templates.env.globals["manager_allowed"] = _manager_allowed
+
+
+def _badge_url(person) -> str:
+    return f"/badge/{compute_badge_id(_badge_effective_code(person))}"
+
+
+templates.env.globals["badge_url"] = _badge_url
 
 
 async def _active_subteams(db: AsyncSession):
@@ -1782,4 +1790,29 @@ async def admin_report_export(
         _generate(),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/report/students/{student_id}/sessions", response_class=HTMLResponse)
+async def admin_report_student_sessions(
+    student_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    """HTML fragment of one student's full attendance session history, most recent
+    first, for the Report screen's name-click modal. Fetched via JS, not navigated to
+    directly — a 404 here renders as an error fragment inside the modal."""
+    if redirect := _require_auth(request):
+        return redirect
+    student = await db.get(Student, student_id)
+    if not student:
+        return HTMLResponse('<div class="alert alert-danger mb-0">Student not found.</div>', status_code=404)
+    sessions = (
+        await db.execute(
+            select(AttendanceSession)
+            .where(AttendanceSession.student_id == student_id)
+            .order_by(AttendanceSession.sign_in_time.desc())
+        )
+    ).scalars().all()
+    return templates.TemplateResponse(
+        "admin/_student_sessions_fragment.html",
+        {"request": request, "student": student, "sessions": sessions},
     )
