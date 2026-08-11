@@ -305,10 +305,11 @@ window.Kiosk = (function () {
   // instant re-sign-in, which sign_in()'s toggle would otherwise happily do.
   const SCAN_DEBOUNCE_MS = 4000;
 
-  // 25 (the library default) is far more work than a kiosk needs and competes
-  // with the boards' requestAnimationFrame auto-scroll. A student holds a phone
-  // up for a second or more, so 5/s costs at most 200ms of latency.
-  const CAMERA_SCANS_PER_SECOND = 5;
+  // Field-tested: throttling below the library's own default (25) made pickup
+  // feel sluggish with a line of people moving through, and decoding happens in
+  // a Web Worker off the main thread, so it doesn't compete with the boards'
+  // requestAnimationFrame auto-scroll the way a main-thread cost would.
+  const CAMERA_SCANS_PER_SECOND = 25;
 
   // No camera, denied permission, or an unplugged webcam: retry quietly rather
   // than requiring someone to reload a wall display.
@@ -370,6 +371,27 @@ window.Kiosk = (function () {
       highlightScanRegion: true,   // draws the target box inside the preview
       onDecodeError: () => {},     // "No QR code found" fires every frame; the
                                     // default handler would log for 12 hours
+      // The library's own default scan region is a centered square of just 2/3
+      // of the shorter video dimension — field-tested and it made the camera
+      // feel unresponsive, since a badge held anywhere but dead-center was
+      // never even looked at. Scan nearly the full frame instead, with a small
+      // margin since a badge held right at the very edge is usually clipped
+      // anyway. Also raise the downscale target above the library's 400px
+      // default (but never upscale past the source) — scanning a bigger area
+      // at the same 400px budget would otherwise cost the resolution back.
+      calculateScanRegion: (video) => {
+        const width = Math.round(video.videoWidth * 0.9);
+        const height = Math.round(video.videoHeight * 0.9);
+        const scale = Math.min(1, 600 / Math.max(width, height));
+        return {
+          x: Math.round((video.videoWidth - width) / 2),
+          y: Math.round((video.videoHeight - height) / 2),
+          width,
+          height,
+          downScaledWidth: Math.round(width * scale),
+          downScaledHeight: Math.round(height * scale),
+        };
+      },
     });
 
     let retryTimer = null;
