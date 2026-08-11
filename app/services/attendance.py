@@ -1,7 +1,7 @@
 """
 Attendance business logic — sign in / sign out / hour calculation.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import or_, select
@@ -145,7 +145,7 @@ async def update_session_status(
 async def sign_out_all_open(
     db: AsyncSession,
     status: SessionStatus = SessionStatus.contributor,
-    effective_at: Optional[datetime] = None,
+    session_length: Optional[timedelta] = None,
 ) -> list[AttendanceSession]:
     """
     Sign out every open session (used by the nightly auto sign-out job and /gtfo's
@@ -155,10 +155,10 @@ async def sign_out_all_open(
     Every session this closes is, by definition, one the student didn't end
     themselves — so `auto_closed` is always set, regardless of `status`.
 
-    If ``effective_at`` (naive UTC) is given, forgotten sessions are recorded as
-    ending at that time instead of now — so a job that fires late doesn't inflate
-    hours. Sessions that signed in after ``effective_at`` fall back to now, so a
-    late arrival still gets credit for time actually present.
+    If ``session_length`` is given, each forgotten session is credited for that
+    fixed duration from its own sign_in_time (e.g. a 5-minute nominal session),
+    capped at now so a very recent sign-in never gets a future sign-out time.
+    Without it, sessions are closed at now.
     """
     result = await db.execute(
         select(AttendanceSession)
@@ -169,7 +169,7 @@ async def sign_out_all_open(
 
     for s in open_sessions:
         now = datetime.utcnow()
-        sign_out = effective_at if (effective_at is not None and effective_at > s.sign_in_time) else now
+        sign_out = min(s.sign_in_time + session_length, now) if session_length is not None else now
         elapsed_hours = (sign_out - s.sign_in_time).total_seconds() / 3600.0
         s.sign_out_time = sign_out
         s.status = status
@@ -238,11 +238,11 @@ async def mentor_sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optiona
 
 
 async def mentor_sign_out_all_open(
-    db: AsyncSession, effective_at: Optional[datetime] = None
+    db: AsyncSession, session_length: Optional[timedelta] = None
 ) -> int:
     """Auto sign-out all open mentor sessions. Returns count closed.
 
-    ``effective_at`` behaves as in :func:`sign_out_all_open`. Every session this
+    ``session_length`` behaves as in :func:`sign_out_all_open`. Every session this
     closes is, by definition, one the mentor didn't end themselves, so
     `auto_closed` is always set — see :func:`sign_out_all_open`.
     """
@@ -252,7 +252,7 @@ async def mentor_sign_out_all_open(
     open_sessions = result.scalars().all()
     for s in open_sessions:
         now = datetime.utcnow()
-        sign_out = effective_at if (effective_at is not None and effective_at > s.sign_in_time) else now
+        sign_out = min(s.sign_in_time + session_length, now) if session_length is not None else now
         s.sign_out_time = sign_out
         s.hours_counted = round((sign_out - s.sign_in_time).total_seconds() / 3600.0, 4)
         s.auto_closed = True

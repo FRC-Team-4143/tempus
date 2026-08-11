@@ -23,7 +23,7 @@ from app.config import settings
 from app.database import get_db
 from app.models import AttendanceSession, Mentor, MentorSession, SessionStatus, Student, Team
 from app.services import audit
-from app.services.app_settings import get_leaderboard_since, leaderboard_since_utc
+from app.services.app_settings import get_leaderboard_since, leaderboard_since_utc, get_auto_signout_session_minutes
 from app.services.attendance import update_session_status, get_signed_in_students, get_signed_in_mentors, sign_out_all_open, mentor_sign_out_all_open
 from app.services.broadcaster import broadcaster
 from app.services.requirements import resolve_requirement
@@ -483,8 +483,10 @@ async def slack_command(
                 media_type="text/plain",
             )
 
-        closed = await sign_out_all_open(db)
-        mentor_count = await mentor_sign_out_all_open(db)
+        minutes = await get_auto_signout_session_minutes(db)
+        session_length = timedelta(minutes=minutes)
+        closed = await sign_out_all_open(db, session_length=session_length)
+        mentor_count = await mentor_sign_out_all_open(db, session_length=session_length)
         if closed:
             await broadcaster.broadcast("update")
         if mentor_count:

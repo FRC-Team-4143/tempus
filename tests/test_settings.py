@@ -35,7 +35,7 @@ def _form(**overrides):
         "present_multiplier": settings.present_multiplier,
         "distraction_multiplier": settings.distraction_multiplier,
         "auto_signout_time": settings.auto_signout_time,
-        "auto_signout_effective": "",
+        "auto_signout_session_minutes": "",
         "weekly_dm_day": settings.weekly_dm_day,
         "weekly_dm_time": settings.weekly_dm_time,
         "backup_time": settings.backup_time,

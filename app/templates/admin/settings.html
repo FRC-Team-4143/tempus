@@ -29,24 +29,25 @@
 
   <h5 class="mb-3">Auto Sign-Out</h5>
   <p class="text-muted small">
-    The auto sign-out job closes any sessions left open (people who forgot to
-    sign out). <em>When it runs</em> and <em>what time it records</em> are
-    separate settings.
+    Closes any sessions left open (people who forgot to sign out) — either
+    automatically overnight, or immediately via <code>/gtfo</code>. Forgotten
+    sessions are credited a fixed number of minutes from their own sign-in
+    time, not the real elapsed time.
   </p>
   <div class="mb-3 row align-items-center">
     <label class="col-sm-5 col-form-label">Job runs at</label>
     <div class="col-sm-7">
       <input type="time" name="auto_signout_time" class="form-control"
              value="{{ auto_signout_time }}" required>
-      <div class="form-text">When the auto sign-out job fires.</div>
+      <div class="form-text">When the nightly auto sign-out job fires.</div>
     </div>
   </div>
   <div class="mb-4 row align-items-center">
-    <label class="col-sm-5 col-form-label">Record sign-out as</label>
+    <label class="col-sm-5 col-form-label">Session length (minutes)</label>
     <div class="col-sm-7">
-      <input type="time" name="auto_signout_effective" class="form-control"
-             value="{{ auto_signout_effective or '' }}">
-      <div class="form-text">Time forgotten sessions are recorded as ending. Blank = use the time the job runs.</div>
+      <input type="number" name="auto_signout_session_minutes" class="form-control"
+             min="1" value="{{ auto_signout_session_minutes }}">
+      <div class="form-text">Minutes credited to a forgotten session, counted from sign-in. Used by both the nightly job and <code>/gtfo</code>. Blank = default (5).</div>
     </div>
   </div>
 

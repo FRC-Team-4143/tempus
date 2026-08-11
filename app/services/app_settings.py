@@ -15,7 +15,8 @@ from app.models import AppSetting
 from app.utils import local_to_utc
 
 LEADERBOARD_SINCE_KEY = "leaderboard_since"
-AUTO_SIGNOUT_EFFECTIVE_KEY = "auto_signout_effective_time"
+AUTO_SIGNOUT_SESSION_MINUTES_KEY = "auto_signout_session_minutes"
+AUTO_SIGNOUT_SESSION_MINUTES_DEFAULT = 5
 LEGION_LAST_SYNCED_KEY = "legion_last_synced_at"
 
 
@@ -57,15 +58,21 @@ async def leaderboard_since_utc(db: AsyncSession) -> Optional[datetime]:
     return local_to_utc(datetime.combine(d, datetime.min.time()))
 
 
-async def get_auto_signout_effective_time(db: AsyncSession) -> Optional[str]:
-    """The HH:MM local time forgotten sessions are recorded as ending, or None.
-
-    None/blank means 'use the actual time the auto sign-out job runs'.
+async def get_auto_signout_session_minutes(db: AsyncSession) -> int:
+    """Minutes credited to a forgotten session (auto sign-out job and /gtfo),
+    counted from that session's own sign_in_time. Defaults to 5 when unset,
+    blank, or unparseable.
     """
-    raw = await get_setting(db, AUTO_SIGNOUT_EFFECTIVE_KEY)
-    return raw or None
+    raw = await get_setting(db, AUTO_SIGNOUT_SESSION_MINUTES_KEY)
+    if not raw:
+        return AUTO_SIGNOUT_SESSION_MINUTES_DEFAULT
+    try:
+        minutes = int(raw)
+    except ValueError:
+        return AUTO_SIGNOUT_SESSION_MINUTES_DEFAULT
+    return minutes if minutes > 0 else AUTO_SIGNOUT_SESSION_MINUTES_DEFAULT
 
 
-async def set_auto_signout_effective_time(db: AsyncSession, value: Optional[str]) -> None:
-    """Upsert the effective sign-out time. None/blank clears the override."""
-    await set_setting(db, AUTO_SIGNOUT_EFFECTIVE_KEY, value or None)
+async def set_auto_signout_session_minutes(db: AsyncSession, value: Optional[int]) -> None:
+    """Upsert the forgotten-session duration in minutes. None clears back to the default."""
+    await set_setting(db, AUTO_SIGNOUT_SESSION_MINUTES_KEY, str(value) if value else None)

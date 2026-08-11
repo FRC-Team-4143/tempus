@@ -1154,16 +1154,16 @@ async def admin_settings_get(request: Request, db: AsyncSession = Depends(get_db
     if redirect := _require_auth(request):
         return redirect
 
-    from app.services.app_settings import get_leaderboard_since, get_auto_signout_effective_time
+    from app.services.app_settings import get_leaderboard_since, get_auto_signout_session_minutes
     leaderboard_since = await get_leaderboard_since(db)
-    auto_signout_effective = await get_auto_signout_effective_time(db)
+    auto_signout_session_minutes = await get_auto_signout_session_minutes(db)
 
     return templates.TemplateResponse(
         "admin/settings.html",
         {
             "request": request,
             **_settings_context(),
-            "auto_signout_effective": auto_signout_effective,
+            "auto_signout_session_minutes": auto_signout_session_minutes,
             "leaderboard_since": leaderboard_since,
         },
     )
@@ -1228,7 +1228,7 @@ async def admin_settings_post(
     present_multiplier: float = Form(...),
     distraction_multiplier: float = Form(...),
     auto_signout_time: str = Form(...),
-    auto_signout_effective: str = Form(""),
+    auto_signout_session_minutes: str = Form(""),
     weekly_dm_day: int = Form(...),
     weekly_dm_time: str = Form(...),
     backup_time: str = Form(...),
@@ -1324,17 +1324,24 @@ async def admin_settings_post(
         from app.services.scheduler import reschedule_all
         reschedule_all(getattr(request.app.state, "scheduler", None))
 
-    # Effective sign-out time — HH:MM override, or blank to clear.
+    # Forgotten-session duration (minutes) — blank clears back to the default.
     from app.services.app_settings import (
         set_leaderboard_since, get_leaderboard_since,
-        set_auto_signout_effective_time, get_auto_signout_effective_time,
+        set_auto_signout_session_minutes, get_auto_signout_session_minutes,
     )
-    effective = auto_signout_effective.strip()
-    if effective and _HHMM_RE.match(effective):
-        await set_auto_signout_effective_time(db, effective)
-    elif not effective:
-        await set_auto_signout_effective_time(db, None)
-    current_effective = await get_auto_signout_effective_time(db)
+    minutes_raw = auto_signout_session_minutes.strip()
+    if minutes_raw:
+        try:
+            minutes_val = int(minutes_raw)
+        except ValueError:
+            minutes_val = None
+        if minutes_val is None or minutes_val <= 0:
+            errors.append("Auto sign-out session length must be a positive number of minutes.")
+        else:
+            await set_auto_signout_session_minutes(db, minutes_val)
+    else:
+        await set_auto_signout_session_minutes(db, None)
+    current_session_minutes = await get_auto_signout_session_minutes(db)
 
     parsed: Optional[date] = None
     if leaderboard_since.strip():
@@ -1350,7 +1357,7 @@ async def admin_settings_post(
         f"Updated multipliers (contributor={contributor_multiplier}, "
         f"present={present_multiplier}, distraction={distraction_multiplier}); "
         f"auto_signout_time={settings.auto_signout_time}; "
-        f"auto_signout_effective={current_effective or 'trigger time'}; "
+        f"auto_signout_session_minutes={current_session_minutes}; "
         f"weekly_dm={settings.weekly_dm_day}@{settings.weekly_dm_time}; "
         f"backup={settings.backup_time} keep={settings.backup_keep}; "
         f"timezone={settings.timezone}; updates_enabled={settings.updates_enabled}; "
@@ -1361,7 +1368,7 @@ async def admin_settings_post(
                 "present_multiplier": present_multiplier,
                 "distraction_multiplier": distraction_multiplier,
                 "auto_signout_time": settings.auto_signout_time,
-                "auto_signout_effective": current_effective,
+                "auto_signout_session_minutes": current_session_minutes,
                 "weekly_dm_day": settings.weekly_dm_day,
                 "weekly_dm_time": settings.weekly_dm_time,
                 "backup_time": settings.backup_time,
@@ -1380,7 +1387,7 @@ async def admin_settings_post(
         {
             "request": request,
             **_settings_context(),
-            "auto_signout_effective": current_effective,
+            "auto_signout_session_minutes": current_session_minutes,
             "leaderboard_since": current_since,
             "saved": not errors,
             "error": " ".join(errors) if errors else None,

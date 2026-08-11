@@ -203,34 +203,31 @@ async def test_sign_out_all_open_closes_everything(db, make_student):
     assert await get_open_session(db, s2.id) is None
 
 
-async def test_sign_out_all_open_uses_effective_time(db, make_student):
-    """A forgotten session is recorded as ending at effective_at, not now."""
+async def test_sign_out_all_open_uses_session_length(db, make_student):
+    """A forgotten session is credited session_length from its own sign-in, not now."""
     student = await make_student(code="badge001")
-    sign_in_time = datetime.utcnow() - timedelta(hours=6)  # e.g. 18:00
-    effective_at = sign_in_time + timedelta(hours=4)       # e.g. 22:00
+    sign_in_time = datetime.utcnow() - timedelta(hours=6)
     db.add(AttendanceSession(student_id=student.id, sign_in_time=sign_in_time))
     await db.commit()
 
-    closed = await sign_out_all_open(db, effective_at=effective_at)
+    closed = await sign_out_all_open(db, session_length=timedelta(minutes=5))
 
     assert len(closed) == 1
-    assert closed[0].sign_out_time == effective_at
-    assert closed[0].hours_counted == pytest.approx(4.0 * settings.contributor_multiplier, abs=0.01)
+    assert closed[0].sign_out_time == sign_in_time + timedelta(minutes=5)
+    assert closed[0].hours_counted == pytest.approx((5 / 60) * settings.contributor_multiplier, abs=0.001)
 
 
-async def test_sign_out_all_open_effective_before_signin_falls_back_to_now(db, make_student):
-    """A session that started after effective_at gets the actual run time instead."""
+async def test_sign_out_all_open_session_length_caps_at_now(db, make_student):
+    """A session signed in more recently than session_length caps at now, not the future."""
     student = await make_student(code="badge001")
-    sign_in_time = datetime.utcnow() - timedelta(minutes=30)  # signed in at 22:30
-    effective_at = sign_in_time - timedelta(minutes=30)       # effective 22:00 (before sign-in)
+    sign_in_time = datetime.utcnow() - timedelta(minutes=2)
     db.add(AttendanceSession(student_id=student.id, sign_in_time=sign_in_time))
     await db.commit()
 
     before = datetime.utcnow()
-    closed = await sign_out_all_open(db, effective_at=effective_at)
+    closed = await sign_out_all_open(db, session_length=timedelta(minutes=5))
     after = datetime.utcnow()
 
     assert len(closed) == 1
-    # Fell back to "now", not the earlier effective time.
+    # Capped at "now", not sign_in_time + 5min (which would be in the future).
     assert before <= closed[0].sign_out_time <= after
-    assert closed[0].hours_counted == pytest.approx(0.5 * settings.contributor_multiplier, abs=0.01)
