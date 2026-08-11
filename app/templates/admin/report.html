@@ -18,7 +18,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <h2>Weekly Requirement Report</h2>
   {% set qs = "date_from=" ~ filters.date_from ~ "&date_to=" ~ filters.date_to %}
   {% if filters.team_id %}{% set qs = qs ~ "&team_id=" ~ filters.team_id %}{% endif %}
@@ -76,12 +76,13 @@
 {% if not rows %}
 <div class="alert alert-secondary">No students match the selected filters.</div>
 {% else %}
-<div class="card shadow-sm">
-  <div class="card-header fw-semibold">
-    {{ rows|length }} student{{ 's' if rows|length != 1 else '' }} &middot; {{ week_starts|length }} week{{ 's' if week_starts|length != 1 else '' }}
+<div class="card">
+  <div class="card-header d-flex justify-content-between">
+    <span>{{ rows|length }} student{{ 's' if rows|length != 1 else '' }}</span>
+    <span class="text-muted">{{ week_starts|length }} week{{ 's' if week_starts|length != 1 else '' }}</span>
   </div>
   <div class="card-body p-0" style="overflow-x: auto;">
-    <table class="table table-sm mb-0 report-table">
+    <table class="table table-sm table-hover mb-0 report-table">
       <thead class="table-dark">
         <tr>
           <th class="col-student sortable" data-type="text">Student</th>
@@ -96,7 +97,11 @@
         {% for row in rows %}
         <tr>
           <td class="col-student" data-sort="{{ row.student.name }}">
-            {{ row.student.name }}
+            <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="modal"
+                    data-bs-target="#studentSessionsModal" data-student-id="{{ row.student.id }}"
+                    data-student-name="{{ row.student.name }}" data-badge-url="{{ badge_url(row.student) }}">
+              {{ row.student.name }}
+            </button>
             <br><small class="text-muted">Team {{ row.student.team.number if row.student.team else '—' }}{% if row.student.subteam_slug %} · {{ row.student.subteam_slug | capitalize }}{% endif %}</small>
           </td>
           {% for w in row.weeks %}
@@ -119,7 +124,55 @@
   </div>
 </div>
 
+<div class="modal fade" id="studentSessionsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="studentSessionsModalLabel">Sessions</h5>
+        <a href="#" id="studentSessionsBadgeLink" target="_blank" class="btn btn-sm btn-outline-info me-2">
+          <i class="bi bi-qr-code me-1"></i>QR Badge
+        </a>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted text-center py-4"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
+  (function () {
+    var LOADING_HTML = '<div class="text-muted text-center py-4"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>';
+    var modalEl = document.getElementById('studentSessionsModal');
+    var titleEl = document.getElementById('studentSessionsModalLabel');
+    var badgeLinkEl = document.getElementById('studentSessionsBadgeLink');
+    var bodyEl = modalEl.querySelector('.modal-body');
+
+    modalEl.addEventListener('show.bs.modal', function (event) {
+      var btn = event.relatedTarget;
+      var id = btn.dataset.studentId;
+      var name = btn.dataset.studentName;
+      titleEl.textContent = name + ' — Sessions';
+      badgeLinkEl.href = btn.dataset.badgeUrl;
+      bodyEl.innerHTML = LOADING_HTML;
+      fetch('/admin/report/students/' + id + '/sessions')
+        .then(function (r) {
+          if (!r.ok) { throw new Error('request failed'); }
+          return r.text();
+        })
+        .then(function (html) { bodyEl.innerHTML = html; })
+        .catch(function () {
+          bodyEl.innerHTML = '<div class="alert alert-danger mb-0">Couldn\'t load sessions. Try again.</div>';
+        });
+    });
+
+    modalEl.addEventListener('hidden.bs.modal', function () {
+      titleEl.textContent = 'Sessions';
+      bodyEl.innerHTML = LOADING_HTML;
+    });
+  })();
+
   // Click a column header to sort the table by that column; click again to reverse.
   document.querySelectorAll('.report-table th.sortable').forEach(function (th) {
     th.addEventListener('click', function () {
