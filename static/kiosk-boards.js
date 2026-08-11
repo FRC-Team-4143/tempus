@@ -253,55 +253,69 @@ window.Kiosk = (function () {
 
   // ── Scanner beep ─────────────────────────────────────────────────────────
   // Neither input path (webcam, keyboard-wedge) makes a sound on its own, so
-  // synthesize one with Web Audio rather than shipping audio files — three
-  // short tones, distinct enough that a mentor watching a line of students
-  // scan through can tell sign-ins from sign-outs from a bad read without
-  // looking up at the screen.
-  let _audioCtx = null;
-  function _audioContext() {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return null;
-    if (!_audioCtx) _audioCtx = new Ctx();
-    // A freshly-created context starts 'suspended' until a user gesture
-    // unlocks it; resume() is a cheap no-op once already running, so just
-    // try it every time rather than tracking unlock state separately.
-    if (_audioCtx.state === 'suspended') _audioCtx.resume();
-    return _audioCtx;
-  }
-  // Prime the context off the *first* click or keydown anywhere on the kiosk
-  // — including the wedge scanner's own Enter keystroke — so it's already
-  // unlocked well before a camera-triggered scan needs it, which has no
-  // user gesture of its own to ride in on.
-  document.addEventListener('pointerdown', _audioContext, { once: true });
-  document.addEventListener('keydown', _audioContext, { once: true });
-
-  // [frequency Hz, duration ms] notes played back-to-back with a short gap
-  // between them. Square wave, not sine — closer to a real scanner's buzz.
-  const BEEP_PATTERNS = {
-    in: [[880, 100]],               // one bright beep — accepted, arriving
-    out: [[660, 90], [440, 130]],   // two-tone descending — accepted, leaving
-    error: [[220, 220]],            // one low buzz — bad or duplicate read
+  // play one of three short WAV clips (static/sounds/) distinct enough that
+  // a mentor watching a line of students scan through can tell sign-ins from
+  // sign-outs from a bad read without looking up at the screen.
+  const BEEP_SOUNDS = {
+    in: new Audio('/static/sounds/in.wav'),
+    out: new Audio('/static/sounds/out.wav'),
+    error: new Audio('/static/sounds/error.wav'),
   };
+  // Easter eggs: on a plain accepted sign-in (never sign-out or error, so the
+  // functional meaning of the beep is never in question), occasionally swap
+  // the normal chime for one of these instead. Kept as filenames rather than
+  // Audio objects so EASTER_EGG_SOUNDS and _unlockBeeps below stay in sync.
+  const EASTER_EGG_FILES = [
+    'match_endgame', 'start', 'resume', 'shift_change',
+    'timeout_warning', 'warning_guitar', 'warning_sonar',
+  ];
+  const EASTER_EGG_SOUNDS = EASTER_EGG_FILES.map((name) => new Audio(`/static/sounds/${name}.wav`));
+  const EASTER_EGG_CHANCE = 1.0/50.0; // ~1 in 50 sign-ins
+
+  // This kiosk's first accepted sign-in of the day gets the match-warmup horn
+  // instead — a one-per-day fanfare, separate from the random pool above.
+  // "First" is tracked per browser (localStorage), not globally across every
+  // kiosk station, since there's no server round trip backing this — it's
+  // just whichever scan this screen happens to see first each day.
+  const MATCH_WARMUP_SOUND = new Audio('/static/sounds/match_warmup.wav');
+  const WARMUP_DATE_KEY = 'tempus_kiosk_warmup_date';
+  function _isFirstSignInToday() {
+    const today = new Date().toDateString();
+    try {
+      if (localStorage.getItem(WARMUP_DATE_KEY) === today) return false;
+      localStorage.setItem(WARMUP_DATE_KEY, today);
+      return true;
+    } catch (_) {
+      return false; // storage disabled (private browsing, etc.) — just skip the fanfare
+    }
+  }
+
+  // Autoplay policy blocks the *first* play() on some browsers until a user
+  // gesture has touched the page, so prime every clip off the first
+  // pointerdown or keydown anywhere on the kiosk — including the wedge
+  // scanner's own Enter keystroke — well before a camera-triggered scan
+  // needs one, which has no gesture of its own to ride in on.
+  function _unlockBeeps() {
+    Object.values(BEEP_SOUNDS).concat(EASTER_EGG_SOUNDS, [MATCH_WARMUP_SOUND]).forEach((a) => {
+      a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
+    });
+  }
+  document.addEventListener('pointerdown', _unlockBeeps, { once: true });
+  document.addEventListener('keydown', _unlockBeeps, { once: true });
 
   function playBeep(kind) {
-    const ctx = _audioContext();
-    const pattern = BEEP_PATTERNS[kind];
-    if (!ctx || !pattern) return;
-    let t = ctx.currentTime;
-    for (const [freq, ms] of pattern) {
-      const dur = ms / 1000;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'square';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.12, t);
-      // Ramp the tail down instead of a hard stop, which clicks/pops.
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + dur);
-      t += dur + 0.03;
+    let src = BEEP_SOUNDS[kind];
+    if (kind === 'in') {
+      if (_isFirstSignInToday()) {
+        src = MATCH_WARMUP_SOUND;
+      } else if (Math.random() < EASTER_EGG_CHANCE) {
+        src = EASTER_EGG_SOUNDS[Math.floor(Math.random() * EASTER_EGG_SOUNDS.length)];
+      }
     }
+    if (!src) return;
+    // Clone so a beep still playing from the previous scan doesn't get cut
+    // off by the next one.
+    src.cloneNode(true).play().catch(() => {});
   }
 
   async function submitBadge(code, onResult) {
