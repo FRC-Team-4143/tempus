@@ -1,5 +1,13 @@
 {# Mentor board markup. Included by mentor.html (pinned) and kiosk_combined.html.
-   Same data- attribute convention as _board_student.html. Context: signed_in. #}
+   Same data- attribute convention as _board_student.html. Context: signed_in.
+
+   [data-camera-slot] mirrors _board_student.html's — it's an empty landing
+   spot, not a second camera. The combined display's single, live #camera-hud
+   (video stream + qr-scanner instance) starts out in the student board and
+   only ever gets physically moved here when a mentor scan swaps the board
+   into view (see kiosk_combined.html's show()), never duplicated. On the
+   pinned /kiosk/mentor page nothing ever moves in, so this slot just stays
+   empty and Leaderboard keeps the whole column, same as before. #}
 <div class="container-fluid px-3 pt-3">
   <div class="row g-3">
     <div class="col-6">
@@ -26,12 +34,14 @@
     </div>
 
     <div class="col-6">
-      <div class="kiosk-panel">
-        <div class="kiosk-panel-header">
-          <span><i class="bi bi-trophy me-1"></i>Leaderboard</span>
-        </div>
-        <div data-stats-content class="scroll-list">
-          <div class="empty-state">Loading…</div>
+      <div class="board-col-stack" data-camera-slot>
+        <div class="kiosk-panel">
+          <div class="kiosk-panel-header">
+            <span><i class="bi bi-trophy me-1"></i>Leaderboard</span>
+          </div>
+          <div data-stats-content class="scroll-list stats-grid">
+            <div class="empty-state">Loading…</div>
+          </div>
         </div>
       </div>
     </div>

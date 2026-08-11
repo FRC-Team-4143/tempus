@@ -1,12 +1,34 @@
-{# Student board markup. Included by kiosk.html (pinned) and kiosk_combined.html.
-   Parts are addressed by data- attributes scoped to the board root, not global
-   ids, so this can share a document with the mentor board on the combined page.
-   Context: teams, by_team, and optionally demo, has_camera_hud. #}
+{# Student board markup. Included by kiosk.html (pinned /kiosk/student and
+   /kiosk/demo) and kiosk_combined.html. Parts are addressed by data-
+   attributes scoped to the board root, not global ids, so this can share a
+   document with the mentor board on the combined page. Context: teams,
+   by_team, and optionally demo, has_camera_hud.
+
+   The camera shares the Leaderboard's column, stacked below it, instead of
+   floating over a roster panel or claiming a 4th column of its own — both
+   earlier layouts either had to permanently shrink Team 4143's panel to
+   keep an overlaid HUD clear of it, or made the board feel four-wide when
+   the camera isn't really a peer of Team 4143/4423/Leaderboard. The
+   Leaderboard has spare vertical room (it's a short list), so it's a
+   natural host: .board-col-stack turns that column into its own small flex
+   column, giving Leaderboard the stretchy share and the camera panel just
+   what its content needs. `demo` renders a non-functional outline in the
+   same spot instead, so /kiosk/demo previews the real layout without ever
+   requesting camera access — only the combined display (kiosk_combined.html)
+   actually runs one (see kiosk.py's kiosk_page vs kiosk_demo).
+
+   #camera-hud is a single live element (one video stream, one qr-scanner
+   instance) — it's never duplicated onto the mentor board. When the
+   combined display swaps to show mentors instead, kiosk_combined.html's
+   show() physically relocates it into _board_mentor.html's own
+   [data-camera-slot] (an appendChild move, which doesn't interrupt an
+   already-running stream) so it keeps working and stays visible no matter
+   which board is up, then moves it back on the way to students. #}
 <div class="container-fluid px-3 pt-3">
-  <div class="row g-3">
+  <div class="row g-3 flex-nowrap">
     {% for team_number in teams %}
-    <div class="col-4">
-      <div class="kiosk-panel{% if has_camera_hud and loop.first %} kiosk-panel-reserve-camera{% endif %}">
+    <div class="col">
+      <div class="kiosk-panel">
         <div class="kiosk-panel-header">
           <span>Team {{ team_number }}</span>
           <span class="badge bg-secondary" data-count="{{ team_number }}">
@@ -30,28 +52,78 @@
     </div>
     {% endfor %}
 
-    <div class="col-4">
-      <div class="kiosk-panel">
-        <div class="kiosk-panel-header">
-          <span><i class="bi bi-trophy me-1"></i>Leaderboard</span>
-        </div>
-        <div data-stats-content class="scroll-list">
-          <div class="empty-state">Loading…</div>
-        </div>
-        <div class="stats-footer">
-          <div class="stats-footer-cell">
-            <div class="stats-footer-label">Team 4143</div>
-            <div class="stats-footer-value" data-footer="4143">—</div>
+    <div class="col">
+      <div class="board-col-stack" data-camera-slot>
+        <div class="kiosk-panel">
+          <div class="kiosk-panel-header">
+            <span><i class="bi bi-trophy me-1"></i>Leaderboard</span>
           </div>
-          <div class="stats-footer-cell">
-            <div class="stats-footer-label">Team 4423</div>
-            <div class="stats-footer-value" data-footer="4423">—</div>
+          <div data-stats-content class="scroll-list stats-grid">
+            <div class="empty-state">Loading…</div>
           </div>
-          <div class="stats-footer-cell">
-            <div class="stats-footer-label">Combined</div>
-            <div class="stats-footer-value" data-footer="combined">—</div>
+          <div class="stats-footer">
+            <div class="stats-footer-cell">
+              <div class="stats-footer-label">Team 4143</div>
+              <div class="stats-footer-value" data-footer="4143">—</div>
+            </div>
+            <div class="stats-footer-cell">
+              <div class="stats-footer-label">Team 4423</div>
+              <div class="stats-footer-value" data-footer="4423">—</div>
+            </div>
+            <div class="stats-footer-cell">
+              <div class="stats-footer-label">Combined</div>
+              <div class="stats-footer-value" data-footer="combined">—</div>
+            </div>
           </div>
         </div>
+
+        {% if has_camera_hud %}
+        <!-- The scanner itself is always on (Kiosk.initCameraScanner) — only
+             this visual preview toggles, via the button in this panel's own
+             header. Persisted in this browser's own localStorage, not a
+             server setting, so each physical kiosk remembers its own
+             preference (see Kiosk.initCameraPreviewToggle). `hidden` goes
+             here, never on the <video>: qr-scanner rewrites the video's own
+             display/visibility/opacity if it finds it hidden on construction
+             — see .camera-frame-clip in kiosk.css for how the preview toggle
+             avoids that trap too. data-kiosk-interactive exempts this whole
+             subtree, toggle button included, from initBadgeScanner's
+             refocus-on-click. -->
+        <div id="camera-hud" class="kiosk-panel camera-panel" data-kiosk-interactive hidden>
+          <div class="kiosk-panel-header">
+            <span>Scan Badge</span>
+            <button id="camera-preview-toggle" type="button" class="camera-preview-toggle"
+                    title="Hide camera preview" aria-pressed="false">
+              <i class="bi bi-camera-video"></i>
+            </button>
+          </div>
+          <div class="camera-panel-body">
+            <div class="camera-frame-clip">
+              <div class="camera-frame">
+                <video id="camera-video" muted playsinline></video>
+              </div>
+            </div>
+            <div id="camera-status" class="camera-status"></div>
+            <p class="camera-panel-hint">Show your phone's badge QR to sign in or out.</p>
+          </div>
+        </div>
+        {% elif demo %}
+        {# Non-functional stand-in so /kiosk/demo previews where the real
+           camera panel sits — deliberately a Jinja comment, not an HTML
+           one: an HTML comment here would still render into the response
+           and break test_demo_never_starts_a_camera's "never mentions the
+           scanner library" guarantee. Real scanning only ever happens via
+           the branch above. #}
+        <div class="kiosk-panel camera-panel camera-panel-outline">
+          <div class="kiosk-panel-header">
+            <span>Scan Badge</span>
+          </div>
+          <div class="camera-panel-body">
+            <div class="camera-panel-placeholder">Camera preview</div>
+            <p class="camera-panel-hint">Shown on the real kiosk display only.</p>
+          </div>
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>

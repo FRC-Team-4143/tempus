@@ -157,7 +157,6 @@ async def kiosk_page(request: Request, db: AsyncSession = Depends(get_db)):
             "teams": [4143, 4423],
             "signed_in": _format_mentor_sessions(mentor_sessions),
             "mentor_hold_seconds": settings.kiosk_mentor_hold_seconds,
-            "camera_scanner_enabled": settings.camera_scanner_enabled,
         },
     )
 

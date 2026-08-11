@@ -82,6 +82,11 @@ body {
 .person-name { font-weight: 600; color: #ffffff; }
 .person-meta { color: #ffffff; font-size: 1.1rem; }
 
+/* Team 4143/4423 are a plain equal third of the row regardless of whether
+   the camera panel exists — it shares the Leaderboard's column instead of
+   claiming one of its own (see .board-col-stack below), so their own
+   width/height never changes and they need no special-casing here. */
+
 .empty-state {
   text-align: center;
   color: #ffffff;
@@ -94,6 +99,19 @@ body {
 .scroll-list { -ms-overflow-style: none; scrollbar-width: none; overflow-y: hidden; flex: 1; }
 
 /* ── Leaderboard ──────────────────────────────────────────────────────────── */
+/* All-Time / This Week / Longest Session / Longest Streak as a 2x2 grid of
+   .stats-cell blocks (see renderStats in kiosk-boards.js) instead of one
+   long vertical stack — the single-column layout no longer fits without
+   scrolling now that Leaderboard shares its column with the camera panel
+   (.board-col-stack). Thin dividers instead of a gap, to spend as little
+   of the reclaimed space as possible: nth-child(odd) is the left column,
+   nth-child(-n+2) is the top row (there are always exactly 4 cells). */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.stats-cell:nth-child(odd) { border-right: 1px solid #2a1a1a; }
+.stats-cell:nth-child(-n+2) { border-bottom: 1px solid #2a1a1a; }
 .stats-section-header {
   font-size: 0.85rem;
   font-weight: 700;
@@ -163,41 +181,71 @@ body {
   display: none;
 }
 
-/* ── Camera badge scanner HUD (combined display only) ────────────────────────
-   Deliberately out of flow: .kiosk-panel's height is calc(100vh - 130px), a
-   hardcoded subtraction of the header, so anything that adds height to the
-   header or the body flow breaks panel sizing — the same constraint that made
-   the countdown ring position:absolute below. Bottom-left, so it stays clear
-   of #feedback-toast (bottom-center, min-width 320px) down to ~730px wide. */
-#camera-hud {
-  position: fixed;
-  bottom: 24px;
-  left: 24px;
-  z-index: 9998;            /* under #feedback-toast's 9999 */
-  width: 200px;
+/* ── Camera badge scanner panel (combined display + /kiosk/demo outline) ─────
+   Shares the Leaderboard's column, stacked below it (see _board_student.html's
+   .board-col-stack) rather than claiming a column of its own or floating
+   over a roster panel — a previous version overlaid it position:fixed over
+   the bottom-left corner and had to permanently shorten Team 4143's panel
+   to keep it clear. */
+.board-col-stack {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 1rem;              /* matches the row's own g-3 gap */
+  height: calc(100vh - 130px);
+}
+/* .kiosk-panel's own height: calc(100vh - 130px) assumes it's the only
+   thing in its column — inside the stack, Leaderboard and the camera panel
+   split that height instead, so both need it reset to auto and sized by
+   flex-basis below. min-height: 0 lets Leaderboard's .scroll-list actually
+   shrink to the space it's given rather than overflowing the stack — the
+   standard fix for a nested flex column ignoring its parent's constraint. */
+.board-col-stack .kiosk-panel { height: auto; min-height: 0; }
+.board-col-stack > .kiosk-panel:not(.camera-panel) { flex: 1; }
+/* Leaderboard has less height to work with when the camera panel is stacked
+   below it than when it's alone in the column (/kiosk/student, no camera) —
+   a modest trim keeps its header/rows comfortable in that smaller space.
+   Scoped to when a camera panel is actually present, via :has(), rather
+   than a template-level modifier class. */
+.board-col-stack:has(.camera-panel) .kiosk-panel-header { font-size: 1.4rem; padding: 14px 20px; }
+.board-col-stack:has(.camera-panel) .stats-row { padding: 8px 14px; font-size: 1.05rem; }
+/* #camera-hud carries .kiosk-panel too, so it inherits that class's
+   border/background/flex-column for free; only the panel-specific bits
+   (content-sized height, centered body) live here. No explicit width —
+   .board-col-stack is a flex column, so its children already stretch to
+   its full width same as Leaderboard above them. */
+.camera-panel { flex: 0 0 auto; }
+.camera-panel-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
 }
 
-/* The combined display's first team panel sits directly under #camera-hud
-   (bottom-left, fixed, revealed the moment the page loads — see
-   kiosk-boards.js initCameraScanner). Without this, a long enough roster
-   scrolls its last rows underneath the HUD instead of stopping short of it.
-   Shrink the whole panel (not just pad its .scroll-list) by the HUD's
-   footprint (150px frame + 6px gap + ~18px status line + 24px bottom
-   offset, rounded up) so the reserved room is dead page background below
-   the panel's own border, not blank space inside its scrollable content —
-   padding the list instead would make startAutoScroll's scrollHeight vs
-   clientHeight check think there's overflow to scroll through even when
-   only a couple students are signed in. Only applied via has_camera_hud
-   (kiosk_combined.html) — the pinned /kiosk/student view has no camera
-   markup, so its list keeps full height. */
-.kiosk-panel-reserve-camera { height: calc(100vh - 130px - 210px); }
 /* An author-level `display` beats the UA stylesheet's `[hidden] { display: none }`
    — see the `.board[hidden]` note below — so this is required for
    `hud.hidden = true/false` to do anything. */
 #camera-hud[hidden] { display: none !important; }
+
+/* Small icon button in the panel's own header (matches the "Team 4143" +
+   count badge / "Leaderboard" + icon pattern other panel headers use) —
+   see Kiosk.initCameraPreviewToggle. .active = preview currently hidden. */
+.camera-preview-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid #2a1a1a;
+  background: #111111;
+  color: #888;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.camera-preview-toggle:hover { color: #fff; border-color: #cc2200; }
+.camera-preview-toggle.active { color: #cc2200; border-color: #cc2200; }
 
 .camera-frame {
   position: relative;       /* qr-scanner inserts its scan-region overlay as an
@@ -208,6 +256,23 @@ body {
   border: 1px solid #2a1a1a;
   border-radius: 8px;
   overflow: hidden;
+}
+/* Collapses to hide the preview on demand (the toggle button above) or when
+   the camera itself is off/broken — deliberately a wrapper around
+   .camera-frame rather than touching .camera-frame's or #camera-video's own
+   display/visibility/opacity, since qr-scanner inspects exactly those
+   properties on the video (see the #camera-hud template comment) and would
+   discard its scan-region overlay if it ever caught them hidden. Collapsing
+   an ancestor's height with overflow:hidden hides the same pixels without
+   qr-scanner ever seeing its own video "go hidden" mid-scan. */
+.camera-frame-clip {
+  height: 150px;
+  overflow: hidden;
+  transition: height 0.2s ease;
+}
+#camera-hud[data-preview="hidden"] .camera-frame-clip,
+#camera-hud[data-state="off"] .camera-frame-clip {
+  height: 0;
 }
 #camera-video {
   display: block;
@@ -220,11 +285,6 @@ body {
      `transform: scaleX(±1)` inline on it once the stream starts, to mirror
      the preview for a camera facing the student. */
 }
-/* Collapse the black rectangle when there is nothing to show. Safe to key off
-   [data-state]: qr-scanner only probes the video's computed style once, in a
-   requestAnimationFrame right after construction, which runs while the HUD is
-   still visible (see the template comment on #camera-hud). */
-#camera-hud[data-state="off"] .camera-frame { display: none; }
 
 .camera-status {
   display: flex;
@@ -246,9 +306,39 @@ body {
 #camera-hud[data-state="on"]  .camera-status::before { background: #cc2200; }
 #camera-hud[data-state="off"] .camera-status { color: #e05540; }
 
+.camera-panel-hint {
+  font-size: 0.75rem;
+  color: #888;
+  text-align: center;
+  line-height: 1.4;
+  margin: 0;
+}
+
 /* qr-scanner's default scan-region corner brackets are Nimiq yellow; match
    the kiosk accent instead. */
 #camera-hud .scan-region-highlight-svg { stroke: #cc2200 !important; }
+
+/* Non-functional stand-in shown on /kiosk/demo only (see
+   _board_student.html's {% elif demo %} branch) — same footprint as the
+   real panel so the demo previews where it sits without ever touching
+   qr-scanner or requesting camera access. The dashed border and placeholder
+   box already read as "not real" on their own — the header keeps the same
+   accent color as every other panel's ("Team 4143", "Leaderboard", …)
+   rather than being greyed out too. */
+.camera-panel-outline { border-style: dashed; }
+.camera-panel-placeholder {
+  width: 200px;
+  height: 150px;
+  border: 1.5px dashed #444;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
 
 /* ── Board swap (combined display only) ───────────────────────────────────── */
 /* Both boards live in the document at once; only one is visible. Cross-fade

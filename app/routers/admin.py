@@ -1138,7 +1138,6 @@ def _settings_context() -> dict:
         "weekly_dm_day": settings.weekly_dm_day,
         "weekly_dm_time": settings.weekly_dm_time,
         "kiosk_mentor_hold_seconds": settings.kiosk_mentor_hold_seconds,
-        "camera_scanner_enabled": settings.camera_scanner_enabled,
         "timezone": settings.timezone,
         "backup_time": settings.backup_time,
         "backup_keep": settings.backup_keep,
@@ -1237,7 +1236,6 @@ async def admin_settings_post(
     backup_keep: int = Form(...),
     timezone: str = Form(...),
     kiosk_mentor_hold_seconds: int = Form(120),
-    camera_scanner_enabled: bool = Form(False),
     slack_announce_channel: str = Form(""),
     updates_enabled: bool = Form(False),
     roast_enabled: bool = Form(False),
@@ -1309,10 +1307,6 @@ async def admin_settings_post(
         env_updates["KIOSK_MENTOR_HOLD_SECONDS"] = str(kiosk_mentor_hold_seconds)
         settings.kiosk_mentor_hold_seconds = kiosk_mentor_hold_seconds
 
-    if camera_scanner_enabled != settings.camera_scanner_enabled:
-        env_updates["CAMERA_SCANNER_ENABLED"] = "true" if camera_scanner_enabled else "false"
-        settings.camera_scanner_enabled = camera_scanner_enabled
-
     ch = slack_announce_channel.strip()
     if ch != settings.slack_announce_channel:
         env_updates["SLACK_ANNOUNCE_CHANNEL"] = ch
@@ -1369,7 +1363,6 @@ async def admin_settings_post(
         f"backup={settings.backup_time} keep={settings.backup_keep}; "
         f"timezone={settings.timezone}; updates_enabled={settings.updates_enabled}; "
         f"roast_enabled={settings.roast_enabled}; "
-        f"camera_scanner_enabled={settings.camera_scanner_enabled}; "
         f"leaderboard_since={current_since or 'all-time'}",
         entity_type="settings",
         detail={"contributor_multiplier": contributor_multiplier,
@@ -1383,7 +1376,6 @@ async def admin_settings_post(
                 "backup_keep": settings.backup_keep,
                 "timezone": settings.timezone,
                 "kiosk_mentor_hold_seconds": settings.kiosk_mentor_hold_seconds,
-                "camera_scanner_enabled": settings.camera_scanner_enabled,
                 "slack_announce_channel": settings.slack_announce_channel,
                 "updates_enabled": settings.updates_enabled,
                 "roast_enabled": settings.roast_enabled,

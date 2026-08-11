@@ -93,6 +93,11 @@ window.Kiosk = (function () {
 
   function renderStats(container, data) {
     if (!container) return;
+    // Each category is one .stats-cell — a self-contained header+rows block
+    // — rather than flat siblings, so .stats-grid (kiosk.css) can lay the
+    // four of them out as a 2x2 grid instead of one long stack. Order here
+    // (alltime, week, longest_session, streak) auto-flows into top-left/
+    // top-right/bottom-left/bottom-right.
     container.innerHTML = STAT_SECTIONS.map(sec => {
       const rows = data[sec.key] || [];
       const rowsHtml = rows.length === 0
@@ -104,10 +109,12 @@ window.Kiosk = (function () {
               <span class="stats-value">${escHtml(r.value)}</span>
             </div>`).join('');
       return `
-        <div class="stats-section-header" style="color:${sec.color}">
-          <i class="bi ${sec.icon}"></i>${sec.label}
-        </div>
-        ${rowsHtml}`;
+        <div class="stats-cell">
+          <div class="stats-section-header" style="color:${sec.color}">
+            <i class="bi ${sec.icon}"></i>${sec.label}
+          </div>
+          ${rowsHtml}
+        </div>`;
     }).join('');
   }
 
@@ -494,9 +501,43 @@ window.Kiosk = (function () {
     return scanner;
   }
 
+  // ── Camera preview show/hide (kiosk-instance-local) ────────────────────────
+  // The scanner itself never stops — this only toggles the visual video feed,
+  // so a busy roster panel doesn't keep losing its bottom rows to a preview
+  // box no one happens to be aiming a phone at right now (see
+  // .kiosk-panel-reserve-camera / .camera-frame-clip in kiosk.css). Persisted
+  // in this browser's own localStorage rather than a server setting: the
+  // point is that each physical kiosk remembers its own preference — a shop
+  // with several displays might want the preview up on one and tucked away
+  // on another.
+  const CAMERA_PREVIEW_HIDDEN_KEY = 'tempus.kiosk.cameraPreviewHidden';
+
+  function initCameraPreviewToggle() {
+    const hud = document.getElementById('camera-hud');
+    const btn = document.getElementById('camera-preview-toggle');
+    if (!hud || !btn) return;
+    const icon = btn.querySelector('i');
+
+    const apply = (hide) => {
+      hud.dataset.preview = hide ? 'hidden' : 'shown';
+      btn.classList.toggle('active', hide);
+      btn.setAttribute('aria-pressed', String(hide));
+      btn.title = hide ? 'Show camera preview' : 'Hide camera preview';
+      if (icon) icon.className = hide ? 'bi bi-camera-video-off' : 'bi bi-camera-video';
+    };
+
+    apply(localStorage.getItem(CAMERA_PREVIEW_HIDDEN_KEY) === '1');
+
+    btn.addEventListener('click', () => {
+      const hide = hud.dataset.preview !== 'hidden';
+      localStorage.setItem(CAMERA_PREVIEW_HIDDEN_KEY, hide ? '1' : '0');
+      apply(hide);
+    });
+  }
+
   return {
     escHtml, startClock, startAutoScroll, initScrollers,
     renderStats, connectSSE, studentBoard, mentorBoard,
-    initBadgeScanner, initCameraScanner,
+    initBadgeScanner, initCameraScanner, initCameraPreviewToggle,
   };
 })();

@@ -49,15 +49,12 @@ async def test_sse_handlers_only_refresh_data_not_swap(paired_client):
     assert "holdMentorBoard()" not in handlers_src
 
 
-async def test_both_scanners_share_one_local_result_callback(paired_client, monkeypatch):
+async def test_both_scanners_share_one_local_result_callback(paired_client):
     """The combined display swaps itself from its own scan result, and both input
     paths — the handheld wedge scanner and the kiosk webcam — must drive that from
     the *same* callback, or a camera scan could sign a mentor in without swapping
     to the mentor board. The pinned single-board pages have nothing to swap and
-    call the initialisers with no argument (see test_kiosk_pages.py). Camera is
-    off by default (see test_kiosk_camera.py), so it has to be switched on here
-    to see initCameraScanner rendered at all."""
-    monkeypatch.setattr(settings, "camera_scanner_enabled", True)
+    call the initialisers with no argument (see test_kiosk_pages.py)."""
     resp = await paired_client.get("/kiosk")
     assert "Kiosk.initBadgeScanner(onScan)" in resp.text
     assert "Kiosk.initCameraScanner(onScan)" in resp.text
