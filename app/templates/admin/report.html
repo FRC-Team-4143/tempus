@@ -86,6 +86,8 @@
       <thead class="table-dark">
         <tr>
           <th class="col-student sortable" data-type="text">Student</th>
+          <th class="sortable" data-type="text">Team</th>
+          <th class="sortable" data-type="text">Subteam</th>
           {% for ws in week_starts %}
           <th class="text-center sortable" data-type="num">{{ ws.month }}/{{ ws.day }}</th>
           {% endfor %}
@@ -102,7 +104,12 @@
                     data-student-name="{{ row.student.name }}" data-badge-url="{{ badge_url(row.student) }}">
               {{ row.student.name }}
             </button>
-            <br><small class="text-muted">Team {{ row.student.team.number if row.student.team else '—' }}{% if row.student.subteam_slug %} · {{ row.student.subteam_slug | capitalize }}{% endif %}</small>
+          </td>
+          <td class="text-muted" data-sort="{{ row.student.team.number if row.student.team else '' }}">
+            {{ row.student.team.number if row.student.team else '—' }}
+          </td>
+          <td class="text-muted" data-sort="{{ row.student.subteam_slug or '' }}">
+            {{ row.student.subteam_slug | capitalize if row.student.subteam_slug else '—' }}
           </td>
           {% for w in row.weeks %}
           <td class="text-center {% if w.met %}week-met{% else %}week-miss{% endif %}{% if w.hours == 0 %} week-zero{% endif %}"
