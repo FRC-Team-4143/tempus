@@ -262,7 +262,7 @@ def test_preview_collapse_never_touches_the_video_or_frames_own_style():
     css = KIOSK_CSS.read_text()
     clip_start = css.index(".camera-frame-clip {")
     clip_rule = css[clip_start:css.index("}", clip_start)]
-    assert "height: 150px" in clip_rule
+    assert "height: 210px" in clip_rule
     collapse_start = css.index('[data-preview="hidden"] .camera-frame-clip')
     collapse_block = css[collapse_start:css.index("}", collapse_start)]
     assert 'data-state="off"] .camera-frame-clip' in collapse_block

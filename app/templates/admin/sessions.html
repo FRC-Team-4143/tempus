@@ -28,9 +28,10 @@
 </div>
 
 <!-- Filters -->
-<form method="get" class="row g-2 mb-3">
+<form method="get" class="row g-2 mb-3 align-items-end">
   <input type="hidden" name="person_type" value="{{ 'mentor' if is_mentor else 'student' }}">
   <div class="col-auto">
+    <label class="form-label small mb-1">{{ "Mentor" if is_mentor else "Student" }}</label>
     <select name="student_id" class="form-select form-select-sm">
       <option value="">All {{ "Mentors" if is_mentor else "Students" }}</option>
       {% for s in all_students %}
@@ -39,6 +40,7 @@
     </select>
   </div>
   <div class="col-auto">
+    <label class="form-label small mb-1">Team</label>
     <select name="team_id" class="form-select form-select-sm">
       <option value="">All Teams</option>
       {% for t in teams %}
@@ -47,6 +49,7 @@
     </select>
   </div>
   <div class="col-auto">
+    <label class="form-label small mb-1">Subteam</label>
     <select name="category" class="form-select form-select-sm">
       <option value="">All Subteams</option>
       {% for s in subteams %}
@@ -55,14 +58,17 @@
     </select>
   </div>
   <div class="col-auto">
+    <label class="form-label small mb-1">From</label>
     <input type="date" name="date_from" class="form-control form-control-sm"
-           value="{{ filters.date_from or '' }}" placeholder="From">
+           value="{{ filters.date_from or '' }}">
   </div>
   <div class="col-auto">
+    <label class="form-label small mb-1">To</label>
     <input type="date" name="date_to" class="form-control form-control-sm"
-           value="{{ filters.date_to or '' }}" placeholder="To">
+           value="{{ filters.date_to or '' }}">
   </div>
   <div class="col-auto">
+    <label class="form-label small mb-1 d-block">&nbsp;</label>
     <button type="submit" class="btn btn-sm btn-primary">Filter</button>
     <a href="/admin/sessions?person_type={{ 'mentor' if is_mentor else 'student' }}" class="btn btn-sm btn-outline-secondary">Clear</a>
   </div>
