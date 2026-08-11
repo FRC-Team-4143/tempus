@@ -52,6 +52,7 @@
 </header>
 
 <div id="student-board" class="board">
+  {% set has_camera_hud = camera_scanner_enabled %}
   {% include "_board_student.html" %}
 </div>
 
@@ -65,6 +66,7 @@
   <span id="feedback-msg"></span>
 </div>
 
+{% if camera_scanner_enabled %}
 <!-- Camera badge scanner HUD — a webcam on the kiosk PC, watching for QR badges
      on students' phone screens (the handheld wedge scanner above can't read a
      backlit screen). Fixed-position (see kiosk.css) so it adds no height to the
@@ -72,16 +74,19 @@
      `hidden` goes here, never on the <video>: qr-scanner rewrites the video's
      own display/visibility/opacity if it finds it hidden on construction.
      data-kiosk-interactive exempts this subtree from initBadgeScanner's
-     refocus-on-click. -->
+     refocus-on-click. Whole block gated on the admin-configurable
+     camera_scanner_enabled setting (off by default) — see /admin/settings. -->
 <div id="camera-hud" data-kiosk-interactive hidden>
   <div class="camera-frame">
     <video id="camera-video" muted playsinline></video>
   </div>
   <div id="camera-status" class="camera-status"></div>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
+{% if camera_scanner_enabled %}
 <!-- nimiq/qr-scanner 1.4.2 (MIT) — vendored under /static/vendor/qr-scanner/,
      see that directory's LICENSE. Deliberately the UMD build, not the ES module
      one: a classic script defines window.QrScanner *before* the inline
@@ -90,8 +95,11 @@
      this file — the library reaches it with a dynamic
      import('./qr-scanner-worker.min.js'), which resolves against this script's
      own URL, not the page's. QrScanner.WORKER_PATH is a no-op in 1.4.x; there
-     is nothing to configure. -->
+     is nothing to configure. Only loaded when camera_scanner_enabled — no
+     point shipping a vendored scanning library to kiosk hardware that has no
+     #camera-hud markup for it to attach to. -->
 <script src="/static/vendor/qr-scanner/qr-scanner.umd.min.js"></script>
+{% endif %}
 <script src="/static/kiosk-boards.js"></script>
 <script>
   const HOLD_MS = {{ mentor_hold_seconds }} * 1000;
@@ -185,7 +193,7 @@
 
   Kiosk.startClock();
   Kiosk.initBadgeScanner(onScan);
-  Kiosk.initCameraScanner(onScan);
+  {% if camera_scanner_enabled %}Kiosk.initCameraScanner(onScan);{% endif %}
   student.refreshStats();
   mentor.refreshStats();
   Kiosk.initScrollers(studentEl);

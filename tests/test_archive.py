@@ -9,7 +9,7 @@ from app.services.attendance import sign_in
 async def test_archived_student_cannot_sign_in(db, make_student):
     await make_student(code="badge001", is_active=False)
 
-    ok, msg, returned = await sign_in(db, "badge001")
+    ok, msg, returned, _ = await sign_in(db, "badge001")
 
     assert ok is False
     assert returned is None
@@ -18,7 +18,7 @@ async def test_archived_student_cannot_sign_in(db, make_student):
 async def test_active_student_can_still_sign_in(db, make_student):
     await make_student(code="badge001", is_active=True)
 
-    ok, _, returned = await sign_in(db, "badge001")
+    ok, _, returned, _ = await sign_in(db, "badge001")
 
     assert ok is True
     assert returned is not None

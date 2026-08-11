@@ -18,9 +18,10 @@ from app.services.attendance import (
 async def test_sign_in_creates_open_session(db, make_student):
     student = await make_student(code="badge001")
 
-    ok, msg, returned = await sign_in(db, "badge001")
+    ok, msg, returned, is_sign_out = await sign_in(db, "badge001")
 
     assert ok is True
+    assert is_sign_out is False
     assert returned.id == student.id
     open_session = await get_open_session(db, student.id)
     assert open_session is not None
@@ -30,10 +31,11 @@ async def test_sign_in_creates_open_session(db, make_student):
 async def test_unknown_badge_is_rejected(db, make_student):
     await make_student(code="badge001")
 
-    ok, msg, returned = await sign_in(db, "does-not-exist")
+    ok, msg, returned, is_sign_out = await sign_in(db, "does-not-exist")
 
     assert ok is False
     assert returned is None
+    assert is_sign_out is False
 
 
 async def test_second_scan_within_60s_is_debounced(db, make_student):
@@ -45,10 +47,11 @@ async def test_second_scan_within_60s_is_debounced(db, make_student):
     ))
     await db.commit()
 
-    ok, msg, returned = await sign_in(db, "badge001")
+    ok, msg, returned, is_sign_out = await sign_in(db, "badge001")
 
     assert ok is False
     assert "Duplicate" in msg
+    assert is_sign_out is False
     # Still exactly one, still open.
     open_session = await get_open_session(db, student.id)
     assert open_session is not None
@@ -63,10 +66,11 @@ async def test_second_scan_after_60s_self_checks_out(db, make_student):
     ))
     await db.commit()
 
-    ok, msg, returned = await sign_in(db, "badge001")
+    ok, msg, returned, is_sign_out = await sign_in(db, "badge001")
 
     assert ok is True
     assert "Signed out" in msg
+    assert is_sign_out is True
     assert await get_open_session(db, student.id) is None  # no open session remains
     from sqlalchemy import select
     sess = (await db.execute(select(AttendanceSession))).scalars().first()

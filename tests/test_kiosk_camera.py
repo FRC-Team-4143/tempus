@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pytest
 
+from app.config import settings
+
 VENDOR = Path("static/vendor/qr-scanner")
 BOARDS_JS = Path("static/kiosk-boards.js")
 KIOSK_CSS = Path("static/kiosk.css")
@@ -61,32 +63,37 @@ async def test_vendored_files_are_actually_served(client, name):
 
 # ── How the page loads it ────────────────────────────────────────────────────
 
-async def test_kiosk_loads_the_umd_build_as_a_classic_script(paired_client):
+async def test_kiosk_loads_the_umd_build_as_a_classic_script(paired_client, monkeypatch):
     """The ES-module build would be deferred and would run *after* the inline
     script that calls Kiosk.initCameraScanner(), so the UMD build — which
     defines window.QrScanner synchronously — is the one that must be
-    referenced."""
+    referenced. Requires camera_scanner_enabled (see the 'Degradation' section
+    below for the off-by-default behavior it's opted out of)."""
+    monkeypatch.setattr(settings, "camera_scanner_enabled", True)
     resp = await paired_client.get("/kiosk")
     assert "/static/vendor/qr-scanner/qr-scanner.umd.min.js" in resp.text
     assert 'type="module"' not in resp.text
 
 
-async def test_qr_scanner_loads_before_the_board_controller(paired_client):
+async def test_qr_scanner_loads_before_the_board_controller(paired_client, monkeypatch):
+    monkeypatch.setattr(settings, "camera_scanner_enabled", True)
     resp = await paired_client.get("/kiosk")
     assert resp.text.index("qr-scanner.umd.min.js") < resp.text.index("kiosk-boards.js")
 
 
-async def test_kiosk_carries_the_camera_hud(paired_client):
+async def test_kiosk_carries_the_camera_hud(paired_client, monkeypatch):
+    monkeypatch.setattr(settings, "camera_scanner_enabled", True)
     resp = await paired_client.get("/kiosk")
     assert 'id="camera-hud"' in resp.text
     assert 'id="camera-video"' in resp.text
 
 
-async def test_camera_hud_lives_outside_the_header(paired_client):
+async def test_camera_hud_lives_outside_the_header(paired_client, monkeypatch):
     """.kiosk-panel is sized `calc(100vh - 130px)` against a hardcoded header
     height, so anything added to the header resizes every panel — which is why
     the countdown ring is absolutely positioned. The HUD stays out of the
     header entirely and is position:fixed (see test_camera_hud_is_fixed)."""
+    monkeypatch.setattr(settings, "camera_scanner_enabled", True)
     resp = await paired_client.get("/kiosk")
     assert resp.text.index("</header>") < resp.text.index('id="camera-hud"')
 
@@ -128,6 +135,18 @@ def test_camera_scanner_is_exported():
 
 
 # ── Degradation ───────────────────────────────────────────────────────────────
+
+async def test_kiosk_has_no_camera_until_enabled(paired_client):
+    """camera_scanner_enabled defaults to False (see Settings) — a shop kiosk
+    that never opts in must never carry the vendored library, the HUD markup,
+    or the initCameraScanner() call, not just have the camera visually hidden.
+    Toggled on via /admin/settings; see test_settings.py for that round trip."""
+    assert settings.camera_scanner_enabled is False
+    resp = await paired_client.get("/kiosk")
+    assert "qr-scanner" not in resp.text
+    assert "camera-hud" not in resp.text
+    assert "initCameraScanner" not in resp.text
+
 
 async def test_demo_never_starts_a_camera(client):
     """/kiosk/demo is ungated — anyone on the internet can load it — so it must

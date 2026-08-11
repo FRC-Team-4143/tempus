@@ -1,12 +1,12 @@
 {# Student board markup. Included by kiosk.html (pinned) and kiosk_combined.html.
    Parts are addressed by data- attributes scoped to the board root, not global
    ids, so this can share a document with the mentor board on the combined page.
-   Context: teams, by_team, and optionally demo. #}
+   Context: teams, by_team, and optionally demo, has_camera_hud. #}
 <div class="container-fluid px-3 pt-3">
   <div class="row g-3">
     {% for team_number in teams %}
     <div class="col-4">
-      <div class="kiosk-panel">
+      <div class="kiosk-panel{% if has_camera_hud and loop.first %} kiosk-panel-reserve-camera{% endif %}">
         <div class="kiosk-panel-header">
           <span>Team {{ team_number }}</span>
           <span class="badge bg-secondary" data-count="{{ team_number }}">

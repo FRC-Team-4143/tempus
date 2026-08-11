@@ -179,6 +179,21 @@ body {
   flex-direction: column;
   gap: 6px;
 }
+
+/* The combined display's first team panel sits directly under #camera-hud
+   (bottom-left, fixed, revealed the moment the page loads — see
+   kiosk-boards.js initCameraScanner). Without this, a long enough roster
+   scrolls its last rows underneath the HUD instead of stopping short of it.
+   Shrink the whole panel (not just pad its .scroll-list) by the HUD's
+   footprint (150px frame + 6px gap + ~18px status line + 24px bottom
+   offset, rounded up) so the reserved room is dead page background below
+   the panel's own border, not blank space inside its scrollable content —
+   padding the list instead would make startAutoScroll's scrollHeight vs
+   clientHeight check think there's overflow to scroll through even when
+   only a couple students are signed in. Only applied via has_camera_hud
+   (kiosk_combined.html) — the pinned /kiosk/student view has no camera
+   markup, so its list keeps full height. */
+.kiosk-panel-reserve-camera { height: calc(100vh - 130px - 210px); }
 /* An author-level `display` beats the UA stylesheet's `[hidden] { display: none }`
    — see the `.board[hidden]` note below — so this is required for
    `hud.hidden = true/false` to do anything. */

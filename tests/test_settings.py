@@ -17,6 +17,7 @@ _MUTABLE = [
     "auto_signout_time", "weekly_dm_day", "weekly_dm_time",
     "backup_time", "backup_keep", "timezone", "kiosk_mentor_hold_seconds",
     "slack_announce_channel", "updates_enabled", "roast_enabled",
+    "camera_scanner_enabled",
 ]
 
 
@@ -63,6 +64,7 @@ async def test_settings_post_writes_env_and_updates_singleton(
     settings.timezone = "America/New_York"
     settings.slack_announce_channel = ""
     settings.roast_enabled = False
+    settings.camera_scanner_enabled = False
 
     resp = await authed_client.post("/admin/settings", data=_form(
         weekly_dm_time="20:15",
@@ -71,6 +73,7 @@ async def test_settings_post_writes_env_and_updates_singleton(
         slack_announce_channel="C0DEADBEEF",
         roast_enabled="true",
         updates_enabled="true",
+        camera_scanner_enabled="true",
     ))
 
     assert resp.status_code == 200
@@ -82,6 +85,7 @@ async def test_settings_post_writes_env_and_updates_singleton(
     assert settings.timezone == "America/Denver"
     assert settings.slack_announce_channel == "C0DEADBEEF"
     assert settings.roast_enabled is True
+    assert settings.camera_scanner_enabled is True
 
     # Persisted to .env for the next restart.
     written = env_file.read_text()
@@ -90,6 +94,7 @@ async def test_settings_post_writes_env_and_updates_singleton(
     assert "TIMEZONE=America/Denver" in written
     assert "SLACK_ANNOUNCE_CHANNEL=C0DEADBEEF" in written
     assert "ROAST_ENABLED=true" in written
+    assert "CAMERA_SCANNER_ENABLED=true" in written
 
 
 async def test_settings_post_cannot_inject_env_lines(

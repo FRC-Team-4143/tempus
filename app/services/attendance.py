@@ -32,11 +32,13 @@ async def get_open_session(db: AsyncSession, student_id: int) -> Optional[Attend
     return result.scalars().first()
 
 
-async def sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optional[Student]]:
+async def sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optional[Student], bool]:
     """
     Look up a student by the QR-badge UID — Legion `member_code`, or the legacy
     `student_code` for badges minted before the Legion cutover.
-    Returns (success, message, student).
+    Returns (success, message, student, is_sign_out) — the last flag distinguishes
+    which side of the toggle a successful scan landed on (kiosk beep, SignInResponse);
+    always False on failure.
     """
     result = await db.execute(
         select(Student)
@@ -49,14 +51,14 @@ async def sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optional[Stude
     student = result.scalars().first()
 
     if not student:
-        return False, f"Badge not recognized. Please see a mentor.", None
+        return False, f"Badge not recognized. Please see a mentor.", None, False
 
     open_session = await get_open_session(db, student.id)
     if open_session:
         elapsed_seconds = (datetime.utcnow() - open_session.sign_in_time).total_seconds()
         if elapsed_seconds < 60:
             # Debounce: QR scanner fired twice in quick succession — ignore
-            return False, f"Duplicate scan ignored — {student.name} is still signed in.", None
+            return False, f"Duplicate scan ignored — {student.name} is still signed in.", None, False
         # Self-checkout: sign them out with auto status
         now = datetime.utcnow()
         elapsed_hours = (now - open_session.sign_in_time).total_seconds() / 3600.0
@@ -64,7 +66,7 @@ async def sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optional[Stude
         open_session.status = SessionStatus.contributor
         open_session.hours_counted = round(elapsed_hours * _status_multiplier(SessionStatus.contributor), 4)
         await db.commit()
-        return True, f"Goodbye, {student.name}! Signed out.", student
+        return True, f"Goodbye, {student.name}! Signed out.", student, True
 
     session = AttendanceSession(
         student_id=student.id,
@@ -72,7 +74,7 @@ async def sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optional[Stude
     )
     db.add(session)
     await db.commit()
-    return True, f"Welcome, {student.name}!", student
+    return True, f"Welcome, {student.name}!", student, False
 
 
 async def sign_out(
@@ -197,9 +199,10 @@ async def get_signed_in_students(db: AsyncSession) -> list[AttendanceSession]:
 
 # ── Mentor sign-in/out ─────────────────────────────────────────────────────────
 
-async def mentor_sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optional[Mentor]]:
+async def mentor_sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optional[Mentor], bool]:
     """Sign in a mentor by their badge UID — Legion `member_code`, or the legacy
-    `mentor_code`. Returns (success, message, mentor)."""
+    `mentor_code`. Returns (success, message, mentor, is_sign_out) — see sign_in's
+    docstring for what the last flag means."""
     result = await db.execute(
         select(Mentor)
         .where(
@@ -209,7 +212,7 @@ async def mentor_sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optiona
     )
     mentor = result.scalars().first()
     if not mentor:
-        return False, f"Badge not recognized.", None
+        return False, f"Badge not recognized.", None, False
 
     # Check for open session — badging again toggles to sign-out
     open_result = await db.execute(
@@ -223,18 +226,18 @@ async def mentor_sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optiona
         elapsed_seconds = (datetime.utcnow() - open_session.sign_in_time).total_seconds()
         if elapsed_seconds < 60:
             # Debounce: QR scanner fired twice in quick succession — ignore
-            return False, f"Duplicate scan ignored — {mentor.name} is still signed in.", None
+            return False, f"Duplicate scan ignored — {mentor.name} is still signed in.", None, False
         # Self-checkout
         now = datetime.utcnow()
         open_session.sign_out_time = now
         open_session.hours_counted = round((now - open_session.sign_in_time).total_seconds() / 3600.0, 4)
         await db.commit()
-        return True, f"Goodbye, {mentor.name}! Signed out.", mentor
+        return True, f"Goodbye, {mentor.name}! Signed out.", mentor, True
 
     session = MentorSession(mentor_id=mentor.id, sign_in_time=datetime.utcnow())
     db.add(session)
     await db.commit()
-    return True, f"Welcome, {mentor.name}!", mentor
+    return True, f"Welcome, {mentor.name}!", mentor, False
 
 
 async def mentor_sign_out_all_open(

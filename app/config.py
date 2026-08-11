@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # badge scan before returning to students. Any student scan cuts it short.
     kiosk_mentor_hold_seconds: int = 120
 
+    # Webcam QR fallback for students scanning a badge off their phone (the
+    # handheld wedge scanner can't read a backlit screen). Off by default —
+    # admin opt-in per /admin/settings.
+    camera_scanner_enabled: bool = False
+
     timezone: str = "America/New_York"
 
     # Hours multipliers per session status (1.0 = full hours, 0.5 = 50%, 0.0 = none)

@@ -116,6 +116,17 @@
       </div>
     </div>
   </div>
+  <div class="mb-4 form-check">
+    <input type="checkbox" class="form-check-input" name="camera_scanner_enabled" id="camera_scanner_enabled"
+           value="true" {% if camera_scanner_enabled %}checked{% endif %}>
+    <label class="form-check-label" for="camera_scanner_enabled">Enable webcam badge scanner</label>
+    <div class="form-text">
+      Shows a camera preview in the bottom-left of the combined kiosk display
+      (<code>/kiosk</code>) so a student can scan a badge QR off their own phone
+      screen — a fallback for the handheld wedge scanner, which can't read a
+      backlit screen. Off by default.
+    </div>
+  </div>
 
   <h5 class="mb-3">Wall of Shame 😅</h5>
   <p class="text-muted small">

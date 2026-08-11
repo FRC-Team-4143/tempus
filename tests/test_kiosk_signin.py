@@ -1,8 +1,9 @@
 """Coverage for POST /kiosk/signin's JSON contract — specifically `is_mentor`,
 which the combined kiosk display (kiosk_combined.html) reads to decide whether
-*this* browser should swap to the mentor board. The swap itself is browser
-timing and stays out of pytest (see test_kiosk_combined.py); what belongs here
-is the server's half of that contract.
+*this* browser should swap to the mentor board, and `is_sign_out`, which
+kiosk-boards.js reads to pick which scanner beep to play. The swap and the
+beep are both browser-side and stay out of pytest (see test_kiosk_combined.py);
+what belongs here is the server's half of that contract.
 """
 from datetime import datetime, timedelta
 
@@ -18,6 +19,7 @@ async def test_student_signin_reports_is_mentor_false(paired_client, make_studen
     data = resp.json()
     assert data["success"] is True
     assert data["is_mentor"] is False
+    assert data["is_sign_out"] is False
     assert data["student_name"] == student.name
 
 
@@ -35,6 +37,7 @@ async def test_student_self_checkout_reports_is_mentor_false(paired_client, db, 
     assert data["success"] is True
     assert "Signed out" in data["message"]
     assert data["is_mentor"] is False
+    assert data["is_sign_out"] is True
 
 
 async def test_mentor_signin_reports_is_mentor_true(paired_client, db):
@@ -48,6 +51,7 @@ async def test_mentor_signin_reports_is_mentor_true(paired_client, db):
     data = resp.json()
     assert data["success"] is True
     assert data["is_mentor"] is True
+    assert data["is_sign_out"] is False
     # Mentors never appear on the student board's payload.
     assert data["student_name"] is None
 
@@ -69,6 +73,7 @@ async def test_mentor_self_checkout_reports_is_mentor_true(paired_client, db):
     assert data["success"] is True
     assert "Signed out" in data["message"]
     assert data["is_mentor"] is True
+    assert data["is_sign_out"] is True
 
     from sqlalchemy import select
     db.expire_all()

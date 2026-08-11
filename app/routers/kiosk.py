@@ -157,6 +157,7 @@ async def kiosk_page(request: Request, db: AsyncSession = Depends(get_db)):
             "teams": [4143, 4423],
             "signed_in": _format_mentor_sessions(mentor_sessions),
             "mentor_hold_seconds": settings.kiosk_mentor_hold_seconds,
+            "camera_scanner_enabled": settings.camera_scanner_enabled,
         },
     )
 
@@ -266,7 +267,7 @@ async def kiosk_signin(
     if not await _is_paired(db, request):
         return SignInResponse(success=False, message="This display is not paired.")
 
-    success, message, student = await sign_in(db, body.name.strip())
+    success, message, student, is_sign_out = await sign_in(db, body.name.strip())
     if success:
         await broadcaster.broadcast("update")
         return SignInResponse(
@@ -274,13 +275,14 @@ async def kiosk_signin(
             message=message,
             student_name=student.name if student else None,
             team_name=student.team.name if student else None,
+            is_sign_out=is_sign_out,
         )
 
     # If student not found, try mentor (silently — mentors don't appear on student board)
-    m_success, m_message, mentor = await mentor_sign_in(db, body.name.strip())
+    m_success, m_message, mentor, m_is_sign_out = await mentor_sign_in(db, body.name.strip())
     if m_success:
         await broadcaster.broadcast("mentor_update")
-        return SignInResponse(success=True, message=m_message, is_mentor=True)
+        return SignInResponse(success=True, message=m_message, is_mentor=True, is_sign_out=m_is_sign_out)
 
     # Use the mentor lookup's own outcome here, not the student lookup's stale
     # one above — a debounced duplicate mentor scan otherwise gets reported as

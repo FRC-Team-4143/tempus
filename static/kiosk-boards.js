@@ -244,6 +244,59 @@ window.Kiosk = (function () {
     _toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 4000);
   }
 
+  // ── Scanner beep ─────────────────────────────────────────────────────────
+  // Neither input path (webcam, keyboard-wedge) makes a sound on its own, so
+  // synthesize one with Web Audio rather than shipping audio files — three
+  // short tones, distinct enough that a mentor watching a line of students
+  // scan through can tell sign-ins from sign-outs from a bad read without
+  // looking up at the screen.
+  let _audioCtx = null;
+  function _audioContext() {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    if (!_audioCtx) _audioCtx = new Ctx();
+    // A freshly-created context starts 'suspended' until a user gesture
+    // unlocks it; resume() is a cheap no-op once already running, so just
+    // try it every time rather than tracking unlock state separately.
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
+    return _audioCtx;
+  }
+  // Prime the context off the *first* click or keydown anywhere on the kiosk
+  // — including the wedge scanner's own Enter keystroke — so it's already
+  // unlocked well before a camera-triggered scan needs it, which has no
+  // user gesture of its own to ride in on.
+  document.addEventListener('pointerdown', _audioContext, { once: true });
+  document.addEventListener('keydown', _audioContext, { once: true });
+
+  // [frequency Hz, duration ms] notes played back-to-back with a short gap
+  // between them. Square wave, not sine — closer to a real scanner's buzz.
+  const BEEP_PATTERNS = {
+    in: [[880, 100]],               // one bright beep — accepted, arriving
+    out: [[660, 90], [440, 130]],   // two-tone descending — accepted, leaving
+    error: [[220, 220]],            // one low buzz — bad or duplicate read
+  };
+
+  function playBeep(kind) {
+    const ctx = _audioContext();
+    const pattern = BEEP_PATTERNS[kind];
+    if (!ctx || !pattern) return;
+    let t = ctx.currentTime;
+    for (const [freq, ms] of pattern) {
+      const dur = ms / 1000;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.12, t);
+      // Ramp the tail down instead of a hard stop, which clicks/pops.
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + dur);
+      t += dur + 0.03;
+    }
+  }
+
   async function submitBadge(code, onResult) {
     try {
       const resp = await fetch('/kiosk/signin', {
@@ -253,9 +306,11 @@ window.Kiosk = (function () {
       });
       const data = await resp.json();
       showFeedback(data.success, data.message);
+      playBeep(!data.success ? 'error' : (data.is_sign_out ? 'out' : 'in'));
       if (onResult) onResult(data);
     } catch (err) {
       showFeedback(false, 'Connection error. Please try again.');
+      playBeep('error');
     }
   }
 

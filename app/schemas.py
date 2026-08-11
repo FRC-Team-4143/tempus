@@ -86,3 +86,7 @@ class SignInResponse(BaseModel):
     # kiosk_combined.html's onResult) — the swap is local to that browser now,
     # not driven by the SSE broadcast.
     is_mentor: bool = False
+    # Which side of the sign-in toggle this scan landed on — lets the kiosk
+    # play a different beep for arriving vs. leaving (see kiosk-boards.js
+    # playBeep). Meaningless when success is False.
+    is_sign_out: bool = False
