@@ -137,7 +137,7 @@
                     data-bs-toggle="modal" data-bs-target="#{{ 'mentor-signout-modal-' if s.session_type == 'mentor' else 'signout-modal-' }}{{ s.id }}">Sign Out</button>
             {% endif %}
             <a href="/admin/{{ 'mentor-sessions' if s.session_type == 'mentor' else 'sessions' }}/{{ s.id }}/edit" class="btn btn-sm btn-outline-secondary me-1">Edit</a>
-            <form method="post" action="/admin/{{ 'mentor-sessions' if s.session_type == 'mentor' else 'sessions' }}/{{ s.id }}/delete" class="d-inline"
+            <form method="post" action="/admin/{{ 'mentor-sessions' if s.session_type == 'mentor' else 'sessions' }}/{{ s.id }}/delete?{{ request.query_params }}" class="d-inline"
                   onsubmit="return confirm('Delete this session record?')">
               <button class="btn btn-sm btn-outline-danger">Del</button>
             </form>
@@ -166,7 +166,7 @@
                     data-bs-toggle="modal" data-bs-target="#mentor-signout-modal-{{ s.id }}">Sign Out</button>
             {% endif %}
             <a href="/admin/mentor-sessions/{{ s.id }}/edit" class="btn btn-sm btn-outline-secondary me-1">Edit</a>
-            <form method="post" action="/admin/mentor-sessions/{{ s.id }}/delete" class="d-inline"
+            <form method="post" action="/admin/mentor-sessions/{{ s.id }}/delete?{{ request.query_params }}" class="d-inline"
                   onsubmit="return confirm('Delete this session record?')">
               <button class="btn btn-sm btn-outline-danger">Del</button>
             </form>
@@ -202,7 +202,7 @@
                     data-bs-toggle="modal" data-bs-target="#signout-modal-{{ s.id }}">Sign Out</button>
             {% endif %}
             <a href="/admin/sessions/{{ s.id }}/edit" class="btn btn-sm btn-outline-secondary me-1">Edit</a>
-            <form method="post" action="/admin/sessions/{{ s.id }}/delete" class="d-inline"
+            <form method="post" action="/admin/sessions/{{ s.id }}/delete?{{ request.query_params }}" class="d-inline"
                   onsubmit="return confirm('Delete this session record?')">
               <button class="btn btn-sm btn-outline-danger">Del</button>
             </form>

@@ -960,6 +960,12 @@ async def admin_sessions_delete(
     if redirect := _require_auth(request):
         return redirect
 
+    # The form action carries the filter bar's own query string (see sessions.html)
+    # so deleting a row returns to whatever view — including an unfiltered "All" —
+    # the admin was actually looking at, instead of snapping back to defaults.
+    qs = request.url.query
+    redirect_url = f"/admin/sessions?{qs}" if qs else "/admin/sessions?person_type=student"
+
     result = await db.execute(
         select(AttendanceSession)
         .options(selectinload(AttendanceSession.student))
@@ -967,7 +973,7 @@ async def admin_sessions_delete(
     )
     session = result.scalar_one_or_none()
     if not session:
-        return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
+        return RedirectResponse(redirect_url, status_code=303)
 
     date_str = utc_to_local(session.sign_in_time).strftime("%b %d %I:%M %p")
     hours = f"{session.hours_counted:.2f}h" if session.hours_counted is not None else "open, no hours"
@@ -978,7 +984,7 @@ async def admin_sessions_delete(
     )
     await db.execute(delete(AttendanceSession).where(AttendanceSession.id == session_id))
     await db.commit()
-    return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
+    return RedirectResponse(redirect_url, status_code=303)
 
 
 @router.post("/sessions/{session_id}/force-signout")
@@ -1129,6 +1135,11 @@ async def admin_mentor_sessions_delete(
     if redirect := _require_auth(request):
         return redirect
 
+    # See admin_sessions_delete — same filter-preserving redirect, mirrored here
+    # for the mentor board.
+    qs = request.url.query
+    redirect_url = f"/admin/sessions?{qs}" if qs else "/admin/sessions?person_type=mentor"
+
     result = await db.execute(
         select(MentorSession)
         .options(selectinload(MentorSession.mentor))
@@ -1136,7 +1147,7 @@ async def admin_mentor_sessions_delete(
     )
     session = result.scalar_one_or_none()
     if not session:
-        return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+        return RedirectResponse(redirect_url, status_code=303)
 
     date_str = utc_to_local(session.sign_in_time).strftime("%b %d %I:%M %p")
     hours = f"{session.hours_counted:.2f}h" if session.hours_counted is not None else "open, no hours"
@@ -1147,7 +1158,7 @@ async def admin_mentor_sessions_delete(
     )
     await db.execute(delete(MentorSession).where(MentorSession.id == session_id))
     await db.commit()
-    return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+    return RedirectResponse(redirect_url, status_code=303)
 
 
 # ── Settings ───────────────────────────────────────────────────────────────────
