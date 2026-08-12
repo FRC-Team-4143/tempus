@@ -287,8 +287,16 @@ window.Kiosk = (function () {
   // scanner's own Enter keystroke — well before a camera-triggered scan
   // needs one, which has no gesture of its own to ride in on.
   function _unlockBeeps() {
+    // Muted for the round trip: play() resolving and the pause() that follows
+    // are normally close enough together to be an inaudible blip, but a
+    // keydown can be F11, whose fullscreen transition is heavy enough to
+    // delay that pause — muting means a stretched-out gap still can't be
+    // heard instead of playing all clips at once.
     Object.values(BEEP_SOUNDS).concat(EASTER_EGG_SOUNDS, [MATCH_WARMUP_SOUND]).forEach((a) => {
-      a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
+      const vol = a.volume;
+      a.volume = 0;
+      const restore = () => { a.pause(); a.currentTime = 0; a.volume = vol; };
+      a.play().then(restore).catch(restore);
     });
   }
   document.addEventListener('pointerdown', _unlockBeeps, { once: true });
