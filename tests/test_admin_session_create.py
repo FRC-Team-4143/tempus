@@ -31,7 +31,7 @@ async def test_create_student_session_same_day(authed_client, db, make_student):
         follow_redirects=False,
     )
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/admin/sessions"
+    assert resp.headers["location"] == "/admin/sessions?person_type=student"
 
     result = await db.execute(select(AttendanceSession).where(AttendanceSession.student_id == student.id))
     sessions = result.scalars().all()

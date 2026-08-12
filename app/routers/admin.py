@@ -520,7 +520,7 @@ async def admin_sessions_list(
     request: Request,
     db: AsyncSession = Depends(get_db),
     page: int = 1,
-    person_type: Optional[str] = "student",
+    person_type: Optional[str] = "all",
     student_id: Optional[str] = None,
     team_id: Optional[str] = None,
     category: Optional[str] = None,
@@ -530,11 +530,27 @@ async def admin_sessions_list(
     if redirect := _require_auth(request):
         return redirect
 
-    is_mentor = (person_type or "student").strip().lower() == "mentor"
+    mode = (person_type or "all").strip().lower()
+    if mode not in ("student", "mentor", "all"):
+        mode = "all"
+    is_mentor = mode == "mentor"
 
-    # Sanitize integer params — empty string from blank form select becomes None
-    sid = int(student_id) if student_id and student_id.strip().isdigit() else None
-    mid = sid if is_mentor else None
+    # Sanitize integer params — empty string from blank form select becomes None.
+    # In "all" mode the person filter is prefixed ("student-<id>" / "mentor-<id>")
+    # to disambiguate the two id spaces; the student/mentor tabs still send a bare int.
+    sel_type, sel_id = None, None
+    if student_id and "-" in student_id:
+        sel_type, _, raw_id = student_id.partition("-")
+        sel_id = int(raw_id) if raw_id.isdigit() else None
+    elif student_id and student_id.strip().isdigit():
+        sel_id = int(student_id)
+
+    if mode == "all":
+        sid = sel_id if sel_type == "student" else None
+        mid = sel_id if sel_type == "mentor" else None
+    else:
+        sid = sel_id if not is_mentor else None
+        mid = sel_id if is_mentor else None
     tid = int(team_id) if team_id and team_id.strip().isdigit() else None
     cat_str = category.strip() if category and category.strip() else None
     cat = cat_str  # subteam slug (free-form, sourced from Legion)
@@ -549,60 +565,93 @@ async def admin_sessions_list(
 
     PAGE_SIZE = 50
 
-    if is_mentor:
-        query = (
+    def _mentor_query():
+        q = (
             select(MentorSession)
             .options(selectinload(MentorSession.mentor).selectinload(Mentor.team))
             .order_by(MentorSession.sign_in_time.desc())
         )
         if mid:
-            query = query.where(MentorSession.mentor_id == mid)
+            q = q.where(MentorSession.mentor_id == mid)
         if tid or cat:
-            query = query.join(Mentor)
+            q = q.join(Mentor)
             if tid:
-                query = query.where(Mentor.team_id == tid)
+                q = q.where(Mentor.team_id == tid)
             if cat:
-                query = query.where(Mentor.subteam_slug == cat)
+                q = q.where(Mentor.subteam_slug == cat)
         if d_from:
-            query = query.where(
+            q = q.where(
                 MentorSession.sign_in_time >= local_to_utc(datetime.combine(d_from, datetime.min.time()))
             )
         if d_to:
-            query = query.where(
+            q = q.where(
                 MentorSession.sign_in_time <= local_to_utc(datetime.combine(d_to, datetime.max.time()))
             )
-        total_result = await db.execute(select(func.count()).select_from(query.subquery()))
-        total = total_result.scalar() or 0
-        sessions_result = await db.execute(query.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE))
-        sessions = sessions_result.scalars().all()
-        all_students = (await db.execute(select(Mentor).order_by(Mentor.name))).scalars().all()
-    else:
-        query = (
+        return q
+
+    def _student_query():
+        q = (
             select(AttendanceSession)
             .options(selectinload(AttendanceSession.student).selectinload(Student.team))
             .order_by(AttendanceSession.sign_in_time.desc())
         )
         if sid:
-            query = query.where(AttendanceSession.student_id == sid)
+            q = q.where(AttendanceSession.student_id == sid)
         if tid or cat:
-            query = query.join(Student)
+            q = q.join(Student)
             if tid:
-                query = query.where(Student.team_id == tid)
+                q = q.where(Student.team_id == tid)
             if cat:
-                query = query.where(Student.subteam_slug == cat)
+                q = q.where(Student.subteam_slug == cat)
         if d_from:
-            query = query.where(
+            q = q.where(
                 AttendanceSession.sign_in_time >= local_to_utc(datetime.combine(d_from, datetime.min.time()))
             )
         if d_to:
-            query = query.where(
+            q = q.where(
                 AttendanceSession.sign_in_time <= local_to_utc(datetime.combine(d_to, datetime.max.time()))
             )
+        return q
+
+    roster_students, roster_mentors = [], []
+
+    if mode == "mentor":
+        query = _mentor_query()
         total_result = await db.execute(select(func.count()).select_from(query.subquery()))
         total = total_result.scalar() or 0
         sessions_result = await db.execute(query.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE))
         sessions = sessions_result.scalars().all()
-        all_students = (await db.execute(select(Student).order_by(Student.name))).scalars().all()
+        roster_mentors = (await db.execute(select(Mentor).order_by(Mentor.name))).scalars().all()
+    elif mode == "student":
+        query = _student_query()
+        total_result = await db.execute(select(func.count()).select_from(query.subquery()))
+        total = total_result.scalar() or 0
+        sessions_result = await db.execute(query.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE))
+        sessions = sessions_result.scalars().all()
+        roster_students = (await db.execute(select(Student).order_by(Student.name))).scalars().all()
+    else:
+        # "all" merges two separate tables — no single SQL query spans both, so pull
+        # every filtered row from each (small-team scale) and merge-sort in Python.
+        student_sessions = (await db.execute(_student_query())).scalars().all()
+        mentor_sessions = (await db.execute(_mentor_query())).scalars().all()
+        for s in student_sessions:
+            s.session_type = "student"
+        for m in mentor_sessions:
+            m.session_type = "mentor"
+        combined = sorted(
+            [*student_sessions, *mentor_sessions], key=lambda s: s.sign_in_time, reverse=True
+        )
+        total = len(combined)
+        sessions = combined[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
+        roster_students = (await db.execute(select(Student).order_by(Student.name))).scalars().all()
+        roster_mentors = (await db.execute(select(Mentor).order_by(Mentor.name))).scalars().all()
+
+    if mode == "all":
+        student_id_display = (
+            f"student-{sid}" if sid else (f"mentor-{mid}" if mid else None)
+        )
+    else:
+        student_id_display = mid if is_mentor else sid
 
     teams_result = await db.execute(select(Team).order_by(Team.number))
     teams = teams_result.scalars().all()
@@ -612,17 +661,19 @@ async def admin_sessions_list(
         {
             "request": request,
             "sessions": sessions,
+            "mode": mode,
             "is_mentor": is_mentor,
             "page": page,
             "total": total,
             "page_size": PAGE_SIZE,
             "total_pages": max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE),
-            "all_students": all_students,
+            "roster_students": roster_students,
+            "roster_mentors": roster_mentors,
             "teams": teams,
             "subteams": await _active_subteams(db),
             "filters": {
-                "person_type": "mentor" if is_mentor else "student",
-                "student_id": mid if is_mentor else sid,
+                "person_type": mode,
+                "student_id": student_id_display,
                 "team_id": tid,
                 "category": cat,
                 "date_from": d_from,
@@ -783,7 +834,7 @@ async def admin_sessions_new(
         },
     )
     await db.commit()
-    return RedirectResponse("/admin/sessions", status_code=303)
+    return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
 
 
 @router.get("/sessions/{session_id}/edit")
@@ -800,7 +851,7 @@ async def admin_sessions_edit_form(
     )
     session = result.scalar_one_or_none()
     if not session:
-        return RedirectResponse("/admin/sessions", status_code=303)
+        return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
 
     return templates.TemplateResponse(
         "admin/session_edit.html",
@@ -828,7 +879,7 @@ async def admin_sessions_edit(
     )
     session = result.scalar_one_or_none()
     if not session:
-        return RedirectResponse("/admin/sessions", status_code=303)
+        return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
 
     before = {
         "sign_in_time": str(session.sign_in_time),
@@ -867,7 +918,7 @@ async def admin_sessions_edit(
         detail={"before": before, "after": after},
     )
     await db.commit()
-    return RedirectResponse("/admin/sessions", status_code=303)
+    return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
 
 
 @router.post("/sessions/{session_id}/delete")
@@ -884,7 +935,7 @@ async def admin_sessions_delete(
     )
     session = result.scalar_one_or_none()
     if not session:
-        return RedirectResponse("/admin/sessions", status_code=303)
+        return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
 
     date_str = utc_to_local(session.sign_in_time).strftime("%b %d %I:%M %p")
     hours = f"{session.hours_counted:.2f}h" if session.hours_counted is not None else "open, no hours"
@@ -895,7 +946,7 @@ async def admin_sessions_delete(
     )
     await db.execute(delete(AttendanceSession).where(AttendanceSession.id == session_id))
     await db.commit()
-    return RedirectResponse("/admin/sessions", status_code=303)
+    return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
 
 
 @router.post("/sessions/{session_id}/force-signout")
@@ -915,7 +966,7 @@ async def admin_sessions_force_signout(
     )
     att = result.scalar_one_or_none()
     if not att or att.sign_out_time is not None:
-        return RedirectResponse("/admin/sessions", status_code=303)
+        return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
 
     from app.services.attendance import sign_out
     await sign_out(db, session_id, SessionStatus.contributor, auto_closed=True)
@@ -940,7 +991,7 @@ async def admin_sessions_force_signout(
         except Exception as e:
             log.error("Force sign-out meme failed for %s: %s", first_name, e)
 
-    return RedirectResponse("/admin/sessions", status_code=303)
+    return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
 
 
 @router.post("/mentor-sessions/{session_id}/force-signout")
