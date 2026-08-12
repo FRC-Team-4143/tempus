@@ -1,5 +1,6 @@
-"""Tests for manually logging a full (forgotten) session from /admin/sessions/new
-and /admin/mentor-sessions/new."""
+"""Tests for manually logging a full (forgotten) session for a student or mentor
+via the combined "New Session" modal on /admin/sessions, posted to
+/admin/sessions/new."""
 import json
 
 from sqlalchemy import select
@@ -9,11 +10,16 @@ from app.services.sso import SSO_COOKIE
 from tests.conftest import make_sso_cookie
 
 
-async def test_new_student_session_form_renders(authed_client, make_student):
+async def test_new_session_modal_lists_students_and_mentors(authed_client, db, make_student):
     await make_student()
-    resp = await authed_client.get("/admin/sessions/new")
+    db.add(Mentor(name="Coach Ray", member_code="mnt00099", slack_user_id="Umnt00099", is_active=True))
+    await db.commit()
+
+    resp = await authed_client.get("/admin/sessions")
     assert resp.status_code == 200
+    assert 'id="new-session-modal"' in resp.text
     assert "Ada Lovelace" in resp.text
+    assert "Coach Ray" in resp.text
 
 
 async def test_create_student_session_same_day(authed_client, db, make_student):
@@ -22,7 +28,7 @@ async def test_create_student_session_same_day(authed_client, db, make_student):
     resp = await authed_client.post(
         "/admin/sessions/new",
         data={
-            "person_id": student.id,
+            "person_id": f"student-{student.id}",
             "session_date": "2026-08-10",
             "start_time": "09:00",
             "end_time": "12:00",
@@ -31,7 +37,7 @@ async def test_create_student_session_same_day(authed_client, db, make_student):
         follow_redirects=False,
     )
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/admin/sessions?person_type=student"
+    assert resp.headers["location"] == "/admin/sessions?person_type=all"
 
     result = await db.execute(select(AttendanceSession).where(AttendanceSession.student_id == student.id))
     sessions = result.scalars().all()
@@ -54,7 +60,7 @@ async def test_create_student_session_past_midnight(authed_client, db, make_stud
     resp = await authed_client.post(
         "/admin/sessions/new",
         data={
-            "person_id": student.id,
+            "person_id": f"student-{student.id}",
             "session_date": "2026-08-10",
             "start_time": "22:00",
             "end_time": "01:00",
@@ -77,9 +83,9 @@ async def test_create_mentor_session(authed_client, db):
     await db.refresh(mentor)
 
     resp = await authed_client.post(
-        "/admin/mentor-sessions/new",
+        "/admin/sessions/new",
         data={
-            "person_id": mentor.id,
+            "person_id": f"mentor-{mentor.id}",
             "session_date": "2026-08-10",
             "start_time": "09:00",
             "end_time": "11:30",
@@ -87,7 +93,7 @@ async def test_create_mentor_session(authed_client, db):
         follow_redirects=False,
     )
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/admin/sessions?person_type=mentor"
+    assert resp.headers["location"] == "/admin/sessions?person_type=all"
 
     result = await db.execute(select(MentorSession).where(MentorSession.mentor_id == mentor.id))
     sessions = result.scalars().all()
@@ -107,7 +113,7 @@ async def test_manager_can_create_session(client, db, make_student):
     resp = await client.post(
         "/admin/sessions/new",
         data={
-            "person_id": student.id,
+            "person_id": f"student-{student.id}",
             "session_date": "2026-08-10",
             "start_time": "09:00",
             "end_time": "10:00",
