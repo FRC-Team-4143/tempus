@@ -31,9 +31,7 @@
 {% block scripts %}
 <script src="/static/kiosk-boards.js"></script>
 <script>
-  const board = Kiosk.mentorBoard(document.getElementById('mentor-board'), {
-    initialCount: {{ signed_in|length }},
-  });
+  const board = Kiosk.mentorBoard(document.getElementById('mentor-board'));
 
   Kiosk.startClock();
   board.refreshStats();

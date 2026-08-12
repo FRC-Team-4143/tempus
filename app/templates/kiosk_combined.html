@@ -90,7 +90,7 @@
   const RING_CIRC  = 106.81;  // 2*pi*r for the ring's r=17, matches the SVG markup
 
   const student = Kiosk.studentBoard(studentEl);
-  const mentor  = Kiosk.mentorBoard(mentorEl, { initialCount: {{ signed_in|length }} });
+  const mentor  = Kiosk.mentorBoard(mentorEl);
 
   let showing = 'student';
   let holdTimer = null;
@@ -156,10 +156,12 @@
 
   // Holds the mentor board for HOLD_MS. Called only from this browser's own
   // badge-scan result, never from SSE — see the module-level comment above.
+  // Shown the same way whether the scan was a sign-in or a sign-out (even one
+  // that empties the board — _board_mentor.html's empty state confirms the
+  // sign-out happened) so every mentor scan gets the same lingering behavior.
   async function holdMentorBoard() {
     await mentor.refresh();
     mentor.refreshStats();
-    if (mentor.isEmpty()) { toStudent(); return; }   // never swap to an empty board
     show('mentor');
     if (holdTimer) clearTimeout(holdTimer);   // re-arm rather than stack
     holdTimer = setTimeout(toStudent, HOLD_MS);

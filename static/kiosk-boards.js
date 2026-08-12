@@ -5,10 +5,10 @@
  * element and address their parts through data- attributes rather than global
  * ids, so both can coexist in one document on the combined page.
  *
- * Each board exposes refresh() and isEmpty(); the combined page's swap
- * controller is built on exactly those two, triggered by initBadgeScanner's /
- * initCameraScanner's optional onResult callback (this browser's own scan)
- * rather than by the SSE events also handled below, which are data-refresh only.
+ * Each board exposes refresh(); the combined page's swap controller is built
+ * on top of it, triggered by initBadgeScanner's / initCameraScanner's optional
+ * onResult callback (this browser's own scan) rather than by the SSE events
+ * also handled below, which are data-refresh only.
  */
 window.Kiosk = (function () {
   'use strict';
@@ -143,8 +143,6 @@ window.Kiosk = (function () {
   function makeBoard(root, spec) {
     return {
       root,
-      count: spec.initialCount || 0,
-      isEmpty() { return this.count === 0; },
       async refresh() {
         if (!this.root) return;
         try { await spec.refresh.call(this); } catch (_) { /* next tick retries */ }
@@ -159,15 +157,12 @@ window.Kiosk = (function () {
   function studentBoard(root, options) {
     const opts = options || {};
     return makeBoard(root, {
-      initialCount: opts.initialCount,
       async refresh() {
         const data = await (await fetch('/kiosk/student/data')).json();
-        let total = 0;
         for (const [teamNum, students] of Object.entries(data)) {
           const listEl = this.root.querySelector(`[data-list="${teamNum}"]`);
           const countEl = this.root.querySelector(`[data-count="${teamNum}"]`);
           if (!listEl) continue;               // e.g. the 403 body's "detail" key
-          total += students.length;
           if (countEl) countEl.textContent = students.length;
           listEl.innerHTML = students.length === 0
             ? '<div class="empty-state">No one signed in yet</div>'
@@ -178,7 +173,6 @@ window.Kiosk = (function () {
                 </div>`).join('');
           startAutoScroll(listEl);
         }
-        this.count = total;
       },
       async refreshStats() {
         const data = opts.demoStats || await (await fetch('/kiosk/student/stats')).json();
@@ -195,14 +189,11 @@ window.Kiosk = (function () {
     });
   }
 
-  function mentorBoard(root, options) {
-    const opts = options || {};
+  function mentorBoard(root) {
     return makeBoard(root, {
-      initialCount: opts.initialCount,
       async refresh() {
         const data = await (await fetch('/kiosk/mentor/data')).json();
         const mentors = data.signed_in || [];
-        this.count = mentors.length;
         const listEl = this.root.querySelector('[data-list="signed-in"]');
         const countEl = this.root.querySelector('[data-count="signed-in"]');
         if (countEl) countEl.textContent = mentors.length;
