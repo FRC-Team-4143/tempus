@@ -515,6 +515,24 @@ async def admin_requirements_delete(
 
 # ── Sessions ───────────────────────────────────────────────────────────────────
 
+def _parse_person_selector(value: Optional[str]) -> tuple[Optional[str], Optional[int]]:
+    """Parse a person-selector value into (type, id).
+
+    Accepts a combined-roster selector like 'student-12' / 'mentor-7' (type is
+    'student'/'mentor'), or a bare id string like '12' (type is None) for contexts
+    that already know the type from elsewhere (the student/mentor tab filters).
+    Returns (None, None) if blank or malformed.
+    """
+    if not value:
+        return None, None
+    if "-" in value:
+        sel_type, _, raw_id = value.partition("-")
+        return (sel_type, int(raw_id)) if raw_id.isdigit() else (None, None)
+    if value.strip().isdigit():
+        return None, int(value)
+    return None, None
+
+
 @router.get("/sessions", response_class=HTMLResponse)
 async def admin_sessions_list(
     request: Request,
@@ -538,12 +556,7 @@ async def admin_sessions_list(
     # Sanitize integer params — empty string from blank form select becomes None.
     # In "all" mode the person filter is prefixed ("student-<id>" / "mentor-<id>")
     # to disambiguate the two id spaces; the student/mentor tabs still send a bare int.
-    sel_type, sel_id = None, None
-    if student_id and "-" in student_id:
-        sel_type, _, raw_id = student_id.partition("-")
-        sel_id = int(raw_id) if raw_id.isdigit() else None
-    elif student_id and student_id.strip().isdigit():
-        sel_id = int(student_id)
+    sel_type, sel_id = _parse_person_selector(student_id)
 
     if mode == "all":
         sid = sel_id if sel_type == "student" else None
@@ -671,6 +684,8 @@ async def admin_sessions_list(
             "roster_mentors": roster_mentors,
             "teams": teams,
             "subteams": await _active_subteams(db),
+            "statuses": list(SessionStatus),
+            "today": today_local().isoformat(),
             "filters": {
                 "person_type": mode,
                 "student_id": student_id_display,
@@ -759,82 +774,99 @@ async def admin_sessions_export(
     )
 
 
-@router.get("/sessions/new", response_class=HTMLResponse)
-async def admin_sessions_new_form(request: Request, db: AsyncSession = Depends(get_db)):
-    if redirect := _require_auth(request):
-        return redirect
-
-    students_result = await db.execute(
-        select(Student).where(Student.is_active.is_(True)).order_by(Student.name)
-    )
-    return templates.TemplateResponse(
-        "admin/session_new.html",
-        {
-            "request": request,
-            "is_mentor": False,
-            "people": students_result.scalars().all(),
-            "statuses": list(SessionStatus),
-            "today": today_local().isoformat(),
-        },
-    )
-
-
 @router.post("/sessions/new")
 async def admin_sessions_new(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    person_id: int = Form(...),
+    person_id: str = Form(...),
     session_date: date = Form(...),
     start_time: str = Form(...),
     end_time: str = Form(...),
     status: str = Form("contributor"),
 ):
+    """Log a forgotten session for a student or mentor, picked from the combined
+    roster dropdown in the "New Session" modal on /admin/sessions. `person_id` is
+    a "student-<id>"/"mentor-<id>" selector (see _parse_person_selector)."""
     if redirect := _require_auth(request):
         return redirect
 
-    result = await db.execute(select(Student).where(Student.id == person_id))
-    student = result.scalar_one_or_none()
-    if not student:
-        return RedirectResponse("/admin/sessions/new", status_code=303)
+    sel_type, sel_id = _parse_person_selector(person_id)
 
     start = datetime.combine(session_date, datetime.strptime(start_time, "%H:%M").time())
     end = datetime.combine(session_date, datetime.strptime(end_time, "%H:%M").time())
     if end <= start:
         end += timedelta(days=1)  # ran past midnight
-
     sign_in_utc = local_to_utc(start)
     sign_out_utc = local_to_utc(end)
-    parsed_status = SessionStatus(status)
 
-    from app.services.attendance import _status_multiplier
-    elapsed_hours = (sign_out_utc - sign_in_utc).total_seconds() / 3600.0
-    hours_counted = round(elapsed_hours * _status_multiplier(parsed_status), 4)
+    if sel_type == "student":
+        result = await db.execute(select(Student).where(Student.id == sel_id))
+        student = result.scalar_one_or_none()
+        if not student:
+            return RedirectResponse("/admin/sessions?person_type=all", status_code=303)
 
-    session = AttendanceSession(
-        student_id=student.id,
-        sign_in_time=sign_in_utc,
-        sign_out_time=sign_out_utc,
-        status=parsed_status,
-        hours_counted=hours_counted,
-    )
-    db.add(session)
-    await db.flush()
+        parsed_status = SessionStatus(status)
+        from app.services.attendance import _status_multiplier
+        elapsed_hours = (sign_out_utc - sign_in_utc).total_seconds() / 3600.0
+        hours_counted = round(elapsed_hours * _status_multiplier(parsed_status), 4)
 
-    await audit.record(
-        db, request, "session.create",
-        f"admin logged a session for {student.name} ({start.strftime('%b %d %I:%M %p')} → "
-        f"{end.strftime('%I:%M %p')}, {parsed_status.value}, {hours_counted:.2f}h) via Admin",
-        entity_type="session", entity_id=session.id,
-        detail={
-            "student_id": student.id,
-            "sign_in_time": str(sign_in_utc),
-            "sign_out_time": str(sign_out_utc),
-            "status": parsed_status.value,
-            "hours_counted": hours_counted,
-        },
-    )
+        session = AttendanceSession(
+            student_id=student.id,
+            sign_in_time=sign_in_utc,
+            sign_out_time=sign_out_utc,
+            status=parsed_status,
+            hours_counted=hours_counted,
+        )
+        db.add(session)
+        await db.flush()
+
+        await audit.record(
+            db, request, "session.create",
+            f"admin logged a session for {student.name} ({start.strftime('%b %d %I:%M %p')} → "
+            f"{end.strftime('%I:%M %p')}, {parsed_status.value}, {hours_counted:.2f}h) via Admin",
+            entity_type="session", entity_id=session.id,
+            detail={
+                "student_id": student.id,
+                "sign_in_time": str(sign_in_utc),
+                "sign_out_time": str(sign_out_utc),
+                "status": parsed_status.value,
+                "hours_counted": hours_counted,
+            },
+        )
+    elif sel_type == "mentor":
+        result = await db.execute(select(Mentor).where(Mentor.id == sel_id))
+        mentor = result.scalar_one_or_none()
+        if not mentor:
+            return RedirectResponse("/admin/sessions?person_type=all", status_code=303)
+
+        hours_counted = round((sign_out_utc - sign_in_utc).total_seconds() / 3600.0, 4)
+
+        session = MentorSession(
+            mentor_id=mentor.id,
+            sign_in_time=sign_in_utc,
+            sign_out_time=sign_out_utc,
+            hours_counted=hours_counted,
+        )
+        db.add(session)
+        await db.flush()
+
+        await audit.record(
+            db, request, "mentor_session.create",
+            f"admin logged a mentor session for {mentor.name} ({start.strftime('%b %d %I:%M %p')} → "
+            f"{end.strftime('%I:%M %p')}, {hours_counted:.2f}h) via Admin",
+            entity_type="mentor_session", entity_id=session.id,
+            detail={
+                "mentor_id": mentor.id,
+                "sign_in_time": str(sign_in_utc),
+                "sign_out_time": str(sign_out_utc),
+                "hours_counted": hours_counted,
+            },
+        )
+    else:
+        return RedirectResponse("/admin/sessions?person_type=all", status_code=303)
+
     await db.commit()
-    return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
+    return RedirectResponse("/admin/sessions?person_type=all", status_code=303)
 
 
 @router.get("/sessions/{session_id}/edit")
@@ -1011,76 +1043,6 @@ async def admin_mentor_sessions_force_signout(
     from app.services.broadcaster import broadcaster
     await broadcaster.broadcast("mentor_update")
 
-    return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
-
-
-@router.get("/mentor-sessions/new", response_class=HTMLResponse)
-async def admin_mentor_sessions_new_form(request: Request, db: AsyncSession = Depends(get_db)):
-    if redirect := _require_auth(request):
-        return redirect
-
-    mentors_result = await db.execute(
-        select(Mentor).where(Mentor.is_active.is_(True)).order_by(Mentor.name)
-    )
-    return templates.TemplateResponse(
-        "admin/session_new.html",
-        {
-            "request": request,
-            "is_mentor": True,
-            "people": mentors_result.scalars().all(),
-            "today": today_local().isoformat(),
-        },
-    )
-
-
-@router.post("/mentor-sessions/new")
-async def admin_mentor_sessions_new(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    person_id: int = Form(...),
-    session_date: date = Form(...),
-    start_time: str = Form(...),
-    end_time: str = Form(...),
-):
-    if redirect := _require_auth(request):
-        return redirect
-
-    result = await db.execute(select(Mentor).where(Mentor.id == person_id))
-    mentor = result.scalar_one_or_none()
-    if not mentor:
-        return RedirectResponse("/admin/mentor-sessions/new", status_code=303)
-
-    start = datetime.combine(session_date, datetime.strptime(start_time, "%H:%M").time())
-    end = datetime.combine(session_date, datetime.strptime(end_time, "%H:%M").time())
-    if end <= start:
-        end += timedelta(days=1)  # ran past midnight
-
-    sign_in_utc = local_to_utc(start)
-    sign_out_utc = local_to_utc(end)
-    hours_counted = round((sign_out_utc - sign_in_utc).total_seconds() / 3600.0, 4)
-
-    session = MentorSession(
-        mentor_id=mentor.id,
-        sign_in_time=sign_in_utc,
-        sign_out_time=sign_out_utc,
-        hours_counted=hours_counted,
-    )
-    db.add(session)
-    await db.flush()
-
-    await audit.record(
-        db, request, "mentor_session.create",
-        f"admin logged a mentor session for {mentor.name} ({start.strftime('%b %d %I:%M %p')} → "
-        f"{end.strftime('%I:%M %p')}, {hours_counted:.2f}h) via Admin",
-        entity_type="mentor_session", entity_id=session.id,
-        detail={
-            "mentor_id": mentor.id,
-            "sign_in_time": str(sign_in_utc),
-            "sign_out_time": str(sign_out_utc),
-            "hours_counted": hours_counted,
-        },
-    )
-    await db.commit()
     return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
 
 

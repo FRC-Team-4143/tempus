@@ -9,16 +9,14 @@
     <button type="button" id="refresh-btn" class="btn btn-outline-secondary btn-sm" onclick="location.reload()">
       <i class="bi bi-arrow-clockwise me-1"></i> Refresh
     </button>
-    {% if mode != 'all' %}
-    <a href="/admin/{{ 'mentor-sessions' if is_mentor else 'sessions' }}/new" class="btn btn-success btn-sm">
+    <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#new-session-modal">
       <i class="bi bi-plus-lg me-1"></i> New Session
-    </a>
-    {% if not is_mentor %}
+    </button>
+    {% if mode != 'all' and not is_mentor %}
     <a href="/admin/sessions/export?{% if filters.student_id %}student_id={{ filters.student_id }}&{% endif %}{% if filters.team_id %}team_id={{ filters.team_id }}&{% endif %}{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.date_from %}date_from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}date_to={{ filters.date_to }}{% endif %}"
        class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-download me-1"></i> Export CSV
     </a>
-    {% endif %}
     {% endif %}
   </div>
 </div>
@@ -288,6 +286,66 @@
     {% endif %}
   {% endfor %}
 {% endif %}
+
+<div class="modal fade" id="new-session-modal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Log a Forgotten Session</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/admin/sessions/new">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Person</label>
+            <select name="person_id" class="form-select" id="new-session-person" required>
+              <option value="">— Select —</option>
+              <optgroup label="Students">
+                {% for s in roster_students if s.is_active %}
+                <option value="student-{{ s.id }}">{{ s.name }}</option>
+                {% endfor %}
+              </optgroup>
+              <optgroup label="Mentors">
+                {% for m in roster_mentors if m.is_active %}
+                <option value="mentor-{{ m.id }}">{{ m.name }}</option>
+                {% endfor %}
+              </optgroup>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Date</label>
+            <input type="date" name="session_date" class="form-control" value="{{ today }}" required>
+          </div>
+          <div class="row g-2">
+            <div class="col mb-3">
+              <label class="form-label">Start Time</label>
+              <input type="time" name="start_time" class="form-control" required>
+            </div>
+            <div class="col mb-3">
+              <label class="form-label">End Time</label>
+              <input type="time" name="end_time" class="form-control" required>
+            </div>
+          </div>
+          <p class="form-text text-muted mb-3">
+            If the end time is earlier than the start time, the session is assumed to run past midnight into the next day.
+          </p>
+          <div class="mb-3" id="new-session-status-field" style="display:none;">
+            <label class="form-label">Status</label>
+            <select name="status" class="form-select">
+              {% for st in statuses %}
+              <option value="{{ st.value }}" {% if st.value == 'contributor' %}selected{% endif %}>{{ st.value | capitalize }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success btn-sm">Create Session</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -301,5 +359,12 @@
     if (document.body.classList.contains('modal-open')) return;
     location.reload();
   }, 30000);
+
+  // The combined dropdown mixes students and mentors; only students have a status field.
+  const newSessionPerson = document.getElementById('new-session-person');
+  const newSessionStatus = document.getElementById('new-session-status-field');
+  newSessionPerson.addEventListener('change', () => {
+    newSessionStatus.style.display = newSessionPerson.value.startsWith('student-') ? '' : 'none';
+  });
 </script>
 {% endblock %}
