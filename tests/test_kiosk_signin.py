@@ -114,3 +114,19 @@ async def test_debounced_mentor_scan_reports_its_own_message(paired_client, db):
     data = resp.json()
     assert data["success"] is False
     assert "Duplicate scan ignored" in data["message"]
+
+
+async def test_debounced_student_scan_reports_its_own_message(paired_client, db, make_student):
+    """Mirror of the mentor regression above: a student badge that matched but got
+    debounced used to fall through to a mentor lookup for the same code (which
+    naturally finds no mentor) and surface *that* lookup's "Badge not recognized"
+    instead of the student lookup's own "Duplicate scan ignored"."""
+    student = await make_student(code="badge001")
+    db.add(AttendanceSession(student_id=student.id, sign_in_time=datetime.utcnow()))
+    await db.commit()
+
+    resp = await paired_client.post("/kiosk/signin", json={"name": "badge001"})
+
+    data = resp.json()
+    assert data["success"] is False
+    assert "Duplicate scan ignored" in data["message"]

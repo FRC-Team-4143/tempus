@@ -277,17 +277,19 @@ async def kiosk_signin(
             is_sign_out=is_sign_out,
         )
 
-    # If student not found, try mentor (silently — mentors don't appear on student board)
-    m_success, m_message, mentor, m_is_sign_out = await mentor_sign_in(db, body.name.strip())
-    if m_success:
-        await broadcaster.broadcast("mentor_update")
-        return SignInResponse(success=True, message=m_message, is_mentor=True, is_sign_out=m_is_sign_out)
+    # student is None only when the code matched no one — that's the only case
+    # worth trying a mentor lookup for (silently — mentors don't appear on the
+    # student board). A matched-but-failed student (e.g. a debounced duplicate
+    # scan) must report its own message below rather than getting a mentor
+    # lookup's "Badge not recognized" for a code that was never a mentor's.
+    if student is None:
+        m_success, m_message, mentor, m_is_sign_out = await mentor_sign_in(db, body.name.strip())
+        if m_success:
+            await broadcaster.broadcast("mentor_update")
+            return SignInResponse(success=True, message=m_message, is_mentor=True, is_sign_out=m_is_sign_out)
+        return SignInResponse(success=m_success, message=m_message)
 
-    # Use the mentor lookup's own outcome here, not the student lookup's stale
-    # one above — a debounced duplicate mentor scan otherwise gets reported as
-    # "Badge not recognized" (the student branch's message) instead of its own
-    # "Duplicate scan ignored".
-    return SignInResponse(success=m_success, message=m_message)
+    return SignInResponse(success=success, message=message)
 
 
 @router.get("/kiosk/student/data", dependencies=[Depends(_require_paired_device)])

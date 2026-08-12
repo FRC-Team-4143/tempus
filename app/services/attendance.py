@@ -57,8 +57,11 @@ async def sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optional[Stude
     if open_session:
         elapsed_seconds = (datetime.utcnow() - open_session.sign_in_time).total_seconds()
         if elapsed_seconds < 60:
-            # Debounce: QR scanner fired twice in quick succession — ignore
-            return False, f"Duplicate scan ignored — {student.name} is still signed in.", None, False
+            # Debounce: QR scanner fired twice in quick succession — ignore. Still
+            # returns the matched student (not None) so the caller can tell this
+            # apart from a genuinely unrecognized badge — see kiosk_signin's use
+            # of this to decide whether to fall through to a mentor lookup.
+            return False, f"Duplicate scan ignored — {student.name} is still signed in.", student, False
         # Self-checkout: sign them out with auto status
         now = datetime.utcnow()
         elapsed_hours = (now - open_session.sign_in_time).total_seconds() / 3600.0
