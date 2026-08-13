@@ -1959,16 +1959,6 @@ async def admin_report_archived_student(
     if not student:
         return RedirectResponse("/admin/report/search", status_code=303)
 
-    from app.services.app_settings import get_leaderboard_since
-    from app.services.reports import (
-        default_report_range, drop_zero_requirement_weeks, week_starts_in_range, weekly_attendance_report,
-    )
-    since = await get_leaderboard_since(db)
-    default_from, default_to = default_report_range(since)
-    week_starts = week_starts_in_range(default_from, default_to)
-    rows = await weekly_attendance_report(db, week_starts, student_ids=[student_id])
-    week_starts, rows = drop_zero_requirement_weeks(week_starts, rows)
-
     sessions = (
         await db.execute(
             select(AttendanceSession)
@@ -1977,11 +1967,30 @@ async def admin_report_archived_student(
         )
     ).scalars().all()
 
+    week_starts, row, all_time_total = [], None, None
+    if student.is_active:
+        # The weekly-requirement breakdown only makes sense against the *current*
+        # report window for someone still on the team. For an archived student that
+        # window is almost always weeks after they left, showing a false "0/4, below
+        # requirement" — so skip it entirely and fall back to a plain all-time total.
+        from app.services.app_settings import get_leaderboard_since
+        from app.services.reports import (
+            default_report_range, drop_zero_requirement_weeks, week_starts_in_range, weekly_attendance_report,
+        )
+        since = await get_leaderboard_since(db)
+        default_from, default_to = default_report_range(since)
+        week_starts = week_starts_in_range(default_from, default_to)
+        rows = await weekly_attendance_report(db, week_starts, student_ids=[student_id])
+        week_starts, rows = drop_zero_requirement_weeks(week_starts, rows)
+        row = rows[0] if rows else None
+    else:
+        all_time_total = round(sum(s.hours_counted or 0.0 for s in sessions), 2)
+
     return templates.TemplateResponse(
         "admin/report_archived_student.html",
         {
             "request": request, "student": student, "week_starts": week_starts,
-            "row": rows[0] if rows else None, "sessions": sessions,
+            "row": row, "all_time_total": all_time_total, "sessions": sessions,
         },
     )
 
@@ -1998,13 +2007,6 @@ async def admin_report_archived_mentor(
     if not mentor:
         return RedirectResponse("/admin/report/search", status_code=303)
 
-    from app.services.app_settings import get_leaderboard_since
-    from app.services.reports import default_report_range, week_starts_in_range, weekly_mentor_hours
-    since = await get_leaderboard_since(db)
-    default_from, default_to = default_report_range(since)
-    week_starts = week_starts_in_range(default_from, default_to)
-    mentor_report = await weekly_mentor_hours(db, week_starts, mentor_id)
-
     sessions = (
         await db.execute(
             select(MentorSession)
@@ -2013,7 +2015,24 @@ async def admin_report_archived_mentor(
         )
     ).scalars().all()
 
+    mentor_report, all_time_total = None, None
+    if mentor.is_active:
+        # Same reasoning as the student detail page: a weekly breakdown against the
+        # *current* report window is meaningless for someone no longer on the team —
+        # skip it and show a plain all-time total instead.
+        from app.services.app_settings import get_leaderboard_since
+        from app.services.reports import default_report_range, week_starts_in_range, weekly_mentor_hours
+        since = await get_leaderboard_since(db)
+        default_from, default_to = default_report_range(since)
+        week_starts = week_starts_in_range(default_from, default_to)
+        mentor_report = await weekly_mentor_hours(db, week_starts, mentor_id)
+    else:
+        all_time_total = round(sum(s.hours_counted or 0.0 for s in sessions), 2)
+
     return templates.TemplateResponse(
         "admin/report_archived_mentor.html",
-        {"request": request, "mentor": mentor, "report": mentor_report, "sessions": sessions},
+        {
+            "request": request, "mentor": mentor, "report": mentor_report,
+            "all_time_total": all_time_total, "sessions": sessions,
+        },
     )
