@@ -219,13 +219,35 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     all_active = all_active_result.scalars().all()
     not_signed_in = [s for s in all_active if s.id not in signed_in_ids]
 
-    # Roster totals: org-wide student count, per-team student breakdown, active mentors.
-    student_total = len(all_active)
-    team_totals: dict[int, int] = {}
-    for s in all_active:
-        team_totals[s.team.number] = team_totals.get(s.team.number, 0) + 1
-    mentor_total = (await db.execute(
-        select(func.count()).select_from(Mentor).where(Mentor.is_active.is_(True))
+    # Roster hour totals: per-team + org-wide, for students and mentors separately —
+    # all counted from the same configured cutoff as the leaderboard above.
+    team_numbers_result = await db.execute(select(Team.number).order_by(Team.number))
+    team_numbers = [n for (n,) in team_numbers_result.all()]
+
+    student_team_hours: dict[int, float] = {}
+    for row in leaderboard:
+        student_team_hours[row.team_number] = student_team_hours.get(row.team_number, 0.0) + row.total
+    student_total_hours = sum(student_team_hours.values())
+
+    mentor_join_clause = MentorSession.mentor_id == Mentor.id
+    if since_utc is not None:
+        mentor_join_clause = and_(mentor_join_clause, MentorSession.sign_in_time >= since_utc)
+    mentor_lboard_result = await db.execute(
+        select(
+            Team.number.label("team_number"),
+            func.coalesce(func.sum(MentorSession.hours_counted), 0.0).label("total"),
+        )
+        .select_from(Mentor)
+        .join(MentorSession, mentor_join_clause, isouter=True)
+        .join(Team, Team.id == Mentor.team_id)
+        .where(Mentor.is_active.is_(True))
+        .group_by(Team.number)
+    )
+    mentor_team_hours = {row.team_number: row.total for row in mentor_lboard_result}
+    mentor_total_hours = sum(mentor_team_hours.values())
+
+    mentor_signed_in_count = (await db.execute(
+        select(func.count()).select_from(MentorSession).where(MentorSession.sign_out_time.is_(None))
     )).scalar_one()
 
     return templates.TemplateResponse(
@@ -236,9 +258,12 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
             "leaderboard": leaderboard,
             "leaderboard_since": leaderboard_since,
             "not_signed_in": not_signed_in,
-            "student_total": student_total,
-            "team_totals": team_totals,
-            "mentor_total": mentor_total,
+            "team_numbers": team_numbers,
+            "student_team_hours": student_team_hours,
+            "student_total_hours": student_total_hours,
+            "mentor_signed_in_count": mentor_signed_in_count,
+            "mentor_team_hours": mentor_team_hours,
+            "mentor_total_hours": mentor_total_hours,
         },
     )
 

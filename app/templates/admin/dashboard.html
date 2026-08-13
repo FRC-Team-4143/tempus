@@ -18,29 +18,21 @@
   </div>
 </div>
 
-<div class="row g-3 mb-4">
+<div class="row g-3 mb-2">
   <div class="col-sm-6 col-lg-3">
     <div class="card text-bg-primary">
       <div class="card-body">
         <div class="fs-2 fw-bold">{{ signed_in|length }}</div>
-        <div class="small">Currently Signed In</div>
+        <div class="small">Students Signed In</div>
       </div>
     </div>
   </div>
+  {% for team_number in team_numbers %}
   <div class="col-sm-6 col-lg-3">
     <div class="card text-bg-secondary">
       <div class="card-body">
-        <div class="fs-2 fw-bold">{{ student_total }}</div>
-        <div class="small">Total Students</div>
-      </div>
-    </div>
-  </div>
-  {% for team_number, count in team_totals.items()|sort %}
-  <div class="col-sm-6 col-lg-3">
-    <div class="card text-bg-secondary">
-      <div class="card-body">
-        <div class="fs-2 fw-bold">{{ count }}</div>
-        <div class="small">Team {{ team_number }} Students</div>
+        <div class="fs-2 fw-bold">{{ '%.1f' % student_team_hours.get(team_number, 0.0) }}</div>
+        <div class="small">Team {{ team_number }} Student Hours</div>
       </div>
     </div>
   </div>
@@ -48,8 +40,37 @@
   <div class="col-sm-6 col-lg-3">
     <div class="card text-bg-secondary">
       <div class="card-body">
-        <div class="fs-2 fw-bold">{{ mentor_total }}</div>
-        <div class="small">Total Mentors</div>
+        <div class="fs-2 fw-bold">{{ '%.1f' % student_total_hours }}</div>
+        <div class="small">Total Student Hours</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card text-bg-primary">
+      <div class="card-body">
+        <div class="fs-2 fw-bold">{{ mentor_signed_in_count }}</div>
+        <div class="small">Mentors Signed In</div>
+      </div>
+    </div>
+  </div>
+  {% for team_number in team_numbers %}
+  <div class="col-sm-6 col-lg-3">
+    <div class="card text-bg-secondary">
+      <div class="card-body">
+        <div class="fs-2 fw-bold">{{ '%.1f' % mentor_team_hours.get(team_number, 0.0) }}</div>
+        <div class="small">Team {{ team_number }} Mentor Hours</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  <div class="col-sm-6 col-lg-3">
+    <div class="card text-bg-secondary">
+      <div class="card-body">
+        <div class="fs-2 fw-bold">{{ '%.1f' % mentor_total_hours }}</div>
+        <div class="small">Total Mentor Hours</div>
       </div>
     </div>
   </div>
