@@ -307,9 +307,11 @@ window.Kiosk = (function () {
   // output between sounds; waking it back up for the next scan takes long
   // enough that a short beep plays into a still-silent output and is never
   // heard at all — the box only reliably beeps while something else (e.g. a
-  // second tab) keeps the output actively streaming. Loop a quiet, near-
-  // inaudible tone for the lifetime of the page so the output never goes
-  // idle between real beeps, instead of relying on an unrelated tab for it.
+  // second tab) keeps the output actively streaming. Loop dither-level noise
+  // (+/-1 LSB, non-zero but below any real speaker's own noise floor) for the
+  // lifetime of the page so the output never goes idle between real beeps —
+  // quiet enough to stay inaudible even with the kiosk's volume turned up
+  // for the beeps themselves, instead of relying on an unrelated tab for it.
   const KEEPALIVE_SOUND = new Audio('/static/sounds/keepalive.wav');
   KEEPALIVE_SOUND.loop = true;
   function _startKeepalive() {
