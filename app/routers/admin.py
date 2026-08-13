@@ -162,6 +162,18 @@ async def admin_logout(request: Request):
     return RedirectResponse(logout_url(request), status_code=303)
 
 
+def _leading_team(team_numbers: list[int], hours_by_team: dict[int, float]) -> Optional[int]:
+    """The team number with the most hours, for the dashboard's crown badge.
+    None on a tie (including 0-0) or when there's nothing to compare."""
+    if len(team_numbers) < 2:
+        return None
+    top = max(hours_by_team.get(n, 0.0) for n in team_numbers)
+    if top <= 0:
+        return None
+    leaders = [n for n in team_numbers if hours_by_team.get(n, 0.0) == top]
+    return leaders[0] if len(leaders) == 1 else None
+
+
 # ── Dashboard ──────────────────────────────────────────────────────────────────
 
 @router.get("", response_class=HTMLResponse)
@@ -219,6 +231,40 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     all_active = all_active_result.scalars().all()
     not_signed_in = [s for s in all_active if s.id not in signed_in_ids]
 
+    # Roster hour totals: per-team + org-wide, for students and mentors separately —
+    # all counted from the same configured cutoff as the leaderboard above.
+    team_numbers_result = await db.execute(select(Team.number).order_by(Team.number))
+    team_numbers = [n for (n,) in team_numbers_result.all()]
+
+    student_team_hours: dict[int, float] = {}
+    for row in leaderboard:
+        student_team_hours[row.team_number] = student_team_hours.get(row.team_number, 0.0) + row.total
+    student_total_hours = sum(student_team_hours.values())
+
+    mentor_join_clause = MentorSession.mentor_id == Mentor.id
+    if since_utc is not None:
+        mentor_join_clause = and_(mentor_join_clause, MentorSession.sign_in_time >= since_utc)
+    mentor_lboard_result = await db.execute(
+        select(
+            Team.number.label("team_number"),
+            func.coalesce(func.sum(MentorSession.hours_counted), 0.0).label("total"),
+        )
+        .select_from(Mentor)
+        .join(MentorSession, mentor_join_clause, isouter=True)
+        .join(Team, Team.id == Mentor.team_id)
+        .where(Mentor.is_active.is_(True))
+        .group_by(Team.number)
+    )
+    mentor_team_hours = {row.team_number: row.total for row in mentor_lboard_result}
+    mentor_total_hours = sum(mentor_team_hours.values())
+
+    mentor_signed_in_count = (await db.execute(
+        select(func.count()).select_from(MentorSession).where(MentorSession.sign_out_time.is_(None))
+    )).scalar_one()
+
+    student_leading_team = _leading_team(team_numbers, student_team_hours)
+    mentor_leading_team = _leading_team(team_numbers, mentor_team_hours)
+
     return templates.TemplateResponse(
         "admin/dashboard.html",
         {
@@ -227,6 +273,14 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
             "leaderboard": leaderboard,
             "leaderboard_since": leaderboard_since,
             "not_signed_in": not_signed_in,
+            "team_numbers": team_numbers,
+            "student_team_hours": student_team_hours,
+            "student_total_hours": student_total_hours,
+            "student_leading_team": student_leading_team,
+            "mentor_signed_in_count": mentor_signed_in_count,
+            "mentor_leading_team": mentor_leading_team,
+            "mentor_team_hours": mentor_team_hours,
+            "mentor_total_hours": mentor_total_hours,
         },
     )
 

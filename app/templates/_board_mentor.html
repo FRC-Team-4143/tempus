@@ -20,7 +20,7 @@
           {% if signed_in %}
             {% for m in signed_in %}
             <div class="person-row">
-              <span class="person-name">{{ m.name }}</span>
+              <span class="person-name">{{ m.name }}{% if m.is_leader %}<span class="person-crown" title="Leading in mentor hours">&#128081;</span>{% endif %}</span>
               <span class="person-meta">
                 {% if m.team %}Team {{ m.team }} &nbsp;·&nbsp; {% endif %}{{ m.elapsed }}
               </span>

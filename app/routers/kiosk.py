@@ -113,7 +113,30 @@ async def _pairing_gate(
     return response
 
 
-def _format_sessions(sessions) -> dict:
+async def _student_alltime_leader_id(db: AsyncSession) -> Optional[int]:
+    """The active student with the most all-time hours (since the leaderboard
+    cutoff) — for the kiosk board's crown. None on a tie for first, mirroring the
+    admin dashboard's team crown."""
+    from app.services.app_settings import leaderboard_since_utc
+    since_utc = await leaderboard_since_utc(db)
+
+    q = (
+        select(Student.id, func.sum(AttendanceSession.hours_counted).label("total"))
+        .join(AttendanceSession, AttendanceSession.student_id == Student.id)
+        .where(AttendanceSession.hours_counted.isnot(None))
+        .where(Student.is_active.is_(True))
+    )
+    if since_utc is not None:
+        q = q.where(AttendanceSession.sign_in_time >= since_utc)
+    rows = (await db.execute(
+        q.group_by(Student.id).order_by(func.sum(AttendanceSession.hours_counted).desc()).limit(2)
+    )).all()
+    if not rows or (len(rows) > 1 and rows[0].total == rows[1].total):
+        return None
+    return rows[0].id
+
+
+def _format_sessions(sessions, leader_id: Optional[int] = None) -> dict:
     """Return signed-in students grouped by team number."""
     by_team: dict[int, list[dict]] = {}
     for s in sessions:
@@ -126,6 +149,7 @@ def _format_sessions(sessions) -> dict:
                 "name": s.student.name,
                 "sign_in_time": utc_to_local(s.sign_in_time).strftime("%I:%M %p"),
                 "elapsed": format_elapsed(s.sign_in_time),
+                "is_leader": leader_id is not None and s.student.id == leader_id,
             }
         )
     return by_team
@@ -149,13 +173,15 @@ async def kiosk_page(request: Request, db: AsyncSession = Depends(get_db)):
         return page
     sessions = await get_signed_in_students(db)
     mentor_sessions = await get_signed_in_mentors(db)
+    student_leader_id = await _student_alltime_leader_id(db)
+    mentor_leader_id = await _mentor_alltime_leader_id(db)
     return templates.TemplateResponse(
         "kiosk_combined.html",
         {
             "request": request,
-            "by_team": _format_sessions(sessions),
+            "by_team": _format_sessions(sessions, student_leader_id),
             "teams": [4143, 4423],
-            "signed_in": _format_mentor_sessions(mentor_sessions),
+            "signed_in": _format_mentor_sessions(mentor_sessions, mentor_leader_id),
             "mentor_hold_seconds": settings.kiosk_mentor_hold_seconds,
         },
     )
@@ -167,7 +193,8 @@ async def kiosk_student_board(request: Request, db: AsyncSession = Depends(get_d
     if page := await _pairing_gate(request, db, "Student Board"):
         return page
     sessions = await get_signed_in_students(db)
-    by_team = _format_sessions(sessions)
+    student_leader_id = await _student_alltime_leader_id(db)
+    by_team = _format_sessions(sessions, student_leader_id)
     return templates.TemplateResponse(
         "kiosk.html",
         {
@@ -296,7 +323,8 @@ async def kiosk_signin(
 async def kiosk_data(db: AsyncSession = Depends(get_db)):
     """JSON snapshot of currently signed-in students, grouped by team number."""
     sessions = await get_signed_in_students(db)
-    by_team = _format_sessions(sessions)
+    student_leader_id = await _student_alltime_leader_id(db)
+    by_team = _format_sessions(sessions, student_leader_id)
     # Ensure both teams are always present in the response
     for t in [4143, 4423]:
         by_team.setdefault(t, [])
@@ -462,7 +490,23 @@ async def kiosk_stream():
 # Mentor board
 # ---------------------------------------------------------------------------
 
-def _format_mentor_sessions(sessions) -> list[dict]:
+async def _mentor_alltime_leader_id(db: AsyncSession) -> Optional[int]:
+    """The mentor with the most all-time hours — for the kiosk board's crown.
+    None on a tie for first, mirroring the admin dashboard's team crown."""
+    rows = (await db.execute(
+        select(Mentor.id, func.sum(MentorSession.hours_counted).label("total"))
+        .join(MentorSession, MentorSession.mentor_id == Mentor.id)
+        .where(MentorSession.hours_counted.isnot(None))
+        .group_by(Mentor.id)
+        .order_by(func.sum(MentorSession.hours_counted).desc())
+        .limit(2)
+    )).all()
+    if not rows or (len(rows) > 1 and rows[0].total == rows[1].total):
+        return None
+    return rows[0].id
+
+
+def _format_mentor_sessions(sessions, leader_id: Optional[int] = None) -> list[dict]:
     """Return list of currently signed-in mentors with elapsed time."""
     result = []
     for s in sessions:
@@ -470,6 +514,7 @@ def _format_mentor_sessions(sessions) -> list[dict]:
             "name": s.mentor.name,
             "team": s.mentor.team.number if s.mentor.team else None,
             "elapsed": format_elapsed(s.sign_in_time),
+            "is_leader": leader_id is not None and s.mentor.id == leader_id,
         })
     return result
 
@@ -481,7 +526,8 @@ async def mentor_board(request: Request, db: AsyncSession = Depends(get_db)):
     if page := await _pairing_gate(request, db, "Mentor Board"):
         return page
     sessions = await get_signed_in_mentors(db)
-    signed_in = _format_mentor_sessions(sessions)
+    mentor_leader_id = await _mentor_alltime_leader_id(db)
+    signed_in = _format_mentor_sessions(sessions, mentor_leader_id)
     return templates.TemplateResponse("mentor.html", {
         "request": request,
         "signed_in": signed_in,
@@ -498,7 +544,8 @@ async def mentor_board_legacy():
 @router.get("/kiosk/mentor/data", dependencies=[Depends(_require_paired_device)])
 async def mentor_data(db: AsyncSession = Depends(get_db)):
     sessions = await get_signed_in_mentors(db)
-    return {"signed_in": _format_mentor_sessions(sessions)}
+    mentor_leader_id = await _mentor_alltime_leader_id(db)
+    return {"signed_in": _format_mentor_sessions(sessions, mentor_leader_id)}
 
 
 @router.get("/kiosk/mentor/stats", dependencies=[Depends(_require_paired_device)])

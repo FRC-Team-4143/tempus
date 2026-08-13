@@ -81,6 +81,8 @@ body {
 .person-row:last-child { border-bottom: none; }
 .person-name { font-weight: 600; color: #ffffff; }
 .person-meta { color: #ffffff; font-size: 1.1rem; }
+/* All-time hours leader, currently signed in — see kiosk.py's *_alltime_leader_id */
+.person-crown { margin-left: 6px; font-size: 1rem; cursor: default; }
 
 /* Team 4143/4423 are a plain equal third of the row regardless of whether
    the camera panel exists — it shares the Leaderboard's column instead of

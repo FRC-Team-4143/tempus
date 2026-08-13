@@ -40,7 +40,7 @@
           {% if students %}
             {% for s in students %}
             <div class="person-row">
-              <span class="person-name">{{ s.name }}</span>
+              <span class="person-name">{{ s.name }}{% if s.is_leader %}<span class="person-crown" title="Leading in student hours">&#128081;</span>{% endif %}</span>
               <span class="person-meta">{{ s.sign_in_time }} &nbsp;·&nbsp; {{ s.elapsed }}</span>
             </div>
             {% endfor %}

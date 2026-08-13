@@ -19,6 +19,14 @@ window.Kiosk = (function () {
     return d.innerHTML;
   }
 
+  // The all-time hours leader, when currently signed in — see kiosk.py's
+  // *_alltime_leader_id (mirrors the admin dashboard's team crown).
+  function crownHtml(isLeader, label) {
+    return isLeader
+      ? `<span class="person-crown" title="${escHtml(label)}">&#128081;</span>`
+      : '';
+  }
+
   // ── Clock ────────────────────────────────────────────────────────────────
   function startClock() {
     const el = document.getElementById('clock');
@@ -168,7 +176,7 @@ window.Kiosk = (function () {
             ? '<div class="empty-state">No one signed in yet</div>'
             : students.map(s => `
                 <div class="person-row">
-                  <span class="person-name">${escHtml(s.name)}</span>
+                  <span class="person-name">${escHtml(s.name)}${crownHtml(s.is_leader, 'Leading in student hours')}</span>
                   <span class="person-meta">${escHtml(s.sign_in_time)} &nbsp;·&nbsp; ${escHtml(s.elapsed)}</span>
                 </div>`).join('');
           startAutoScroll(listEl);
@@ -203,7 +211,7 @@ window.Kiosk = (function () {
           : mentors.map(m => {
               const meta = (m.team ? `Team ${escHtml(m.team)} &nbsp;·&nbsp; ` : '') + escHtml(m.elapsed);
               return `<div class="person-row">
-                <span class="person-name">${escHtml(m.name)}</span>
+                <span class="person-name">${escHtml(m.name)}${crownHtml(m.is_leader, 'Leading in mentor hours')}</span>
                 <span class="person-meta">${meta}</span>
               </div>`;
             }).join('');
