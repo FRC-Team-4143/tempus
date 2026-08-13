@@ -219,6 +219,15 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     all_active = all_active_result.scalars().all()
     not_signed_in = [s for s in all_active if s.id not in signed_in_ids]
 
+    # Roster totals: org-wide student count, per-team student breakdown, active mentors.
+    student_total = len(all_active)
+    team_totals: dict[int, int] = {}
+    for s in all_active:
+        team_totals[s.team.number] = team_totals.get(s.team.number, 0) + 1
+    mentor_total = (await db.execute(
+        select(func.count()).select_from(Mentor).where(Mentor.is_active.is_(True))
+    )).scalar_one()
+
     return templates.TemplateResponse(
         "admin/dashboard.html",
         {
@@ -227,6 +236,9 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
             "leaderboard": leaderboard,
             "leaderboard_since": leaderboard_since,
             "not_signed_in": not_signed_in,
+            "student_total": student_total,
+            "team_totals": team_totals,
+            "mentor_total": mentor_total,
         },
     )
 
