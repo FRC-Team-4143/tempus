@@ -29,7 +29,10 @@
   </div>
   {% for team_number in team_numbers %}
   <div class="col-sm-6 col-lg-3">
-    <div class="card text-bg-secondary">
+    <div class="card text-bg-secondary stat-card">
+      {% if team_number == student_leading_team %}
+      <span class="stat-crown" title="Leading in student hours">&#128081;</span>
+      {% endif %}
       <div class="card-body">
         <div class="fs-2 fw-bold">{{ '%.1f' % student_team_hours.get(team_number, 0.0) }}</div>
         <div class="small">Team {{ team_number }} Student Hours</div>
@@ -58,7 +61,10 @@
   </div>
   {% for team_number in team_numbers %}
   <div class="col-sm-6 col-lg-3">
-    <div class="card text-bg-secondary">
+    <div class="card text-bg-secondary stat-card">
+      {% if team_number == mentor_leading_team %}
+      <span class="stat-crown" title="Leading in mentor hours">&#128081;</span>
+      {% endif %}
       <div class="card-body">
         <div class="fs-2 fw-bold">{{ '%.1f' % mentor_team_hours.get(team_number, 0.0) }}</div>
         <div class="small">Team {{ team_number }} Mentor Hours</div>

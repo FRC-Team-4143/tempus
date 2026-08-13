@@ -162,6 +162,18 @@ async def admin_logout(request: Request):
     return RedirectResponse(logout_url(request), status_code=303)
 
 
+def _leading_team(team_numbers: list[int], hours_by_team: dict[int, float]) -> Optional[int]:
+    """The team number with the most hours, for the dashboard's crown badge.
+    None on a tie (including 0-0) or when there's nothing to compare."""
+    if len(team_numbers) < 2:
+        return None
+    top = max(hours_by_team.get(n, 0.0) for n in team_numbers)
+    if top <= 0:
+        return None
+    leaders = [n for n in team_numbers if hours_by_team.get(n, 0.0) == top]
+    return leaders[0] if len(leaders) == 1 else None
+
+
 # ── Dashboard ──────────────────────────────────────────────────────────────────
 
 @router.get("", response_class=HTMLResponse)
@@ -250,6 +262,9 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
         select(func.count()).select_from(MentorSession).where(MentorSession.sign_out_time.is_(None))
     )).scalar_one()
 
+    student_leading_team = _leading_team(team_numbers, student_team_hours)
+    mentor_leading_team = _leading_team(team_numbers, mentor_team_hours)
+
     return templates.TemplateResponse(
         "admin/dashboard.html",
         {
@@ -261,7 +276,9 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
             "team_numbers": team_numbers,
             "student_team_hours": student_team_hours,
             "student_total_hours": student_total_hours,
+            "student_leading_team": student_leading_team,
             "mentor_signed_in_count": mentor_signed_in_count,
+            "mentor_leading_team": mentor_leading_team,
             "mentor_team_hours": mentor_team_hours,
             "mentor_total_hours": mentor_total_hours,
         },
