@@ -1,35 +1,37 @@
 {% extends "admin/base.html" %}
 {% set active_page = "report" %}
-{% block title %}Archived Member Lookup — Tempus Admin{% endblock %}
+{% block title %}Search Members — Tempus Admin{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <h2>Archived Member Lookup</h2>
+  <h2>Search Members</h2>
   <a href="/admin/report" class="btn btn-sm btn-outline-secondary">
     <i class="bi bi-arrow-left me-1"></i>Back to Report
   </a>
 </div>
 
-<p class="text-muted">
-  Archived students and mentors no longer appear in the report, roster, or any dropdown —
-  search by name here to look up their historical totals and sessions.
-</p>
-
-<form method="get" class="row g-2 mb-4 align-items-end">
-  <div class="col-auto" style="min-width: 260px;">
-    <label class="form-label small mb-1">Name</label>
-    <input type="text" name="q" class="form-control form-control-sm" value="{{ q }}"
-           placeholder="Type at least 2 characters" autofocus>
+<form method="get" class="mb-4">
+  <div class="row g-2 align-items-end">
+    <div class="col-auto" style="min-width: 260px;">
+      <label class="form-label small mb-1">Name</label>
+      <input type="text" name="q" class="form-control form-control-sm" value="{{ q }}"
+             placeholder="Type at least 2 characters" autofocus>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sm btn-primary">Search</button>
+    </div>
   </div>
-  <div class="col-auto">
-    <button type="submit" class="btn btn-sm btn-primary">Search</button>
+  <div class="form-check mt-2">
+    <input class="form-check-input" type="checkbox" id="includeArchived" name="archived" value="1"
+           {% if archived %}checked{% endif %} onchange="this.form.submit()">
+    <label class="form-check-label small" for="includeArchived">Include archived members</label>
   </div>
 </form>
 
 {% if q and q|length < 2 %}
 <div class="alert alert-secondary">Type at least 2 characters to search.</div>
 {% elif q and not students and not mentors %}
-<div class="alert alert-secondary">No archived member matches "{{ q }}".</div>
+<div class="alert alert-secondary">No member matches "{{ q }}".</div>
 {% elif students or mentors %}
 <div class="card">
   <div class="card-body p-0">
@@ -41,7 +43,7 @@
         {% for s in students %}
         <tr>
           <td>{{ s.name }}</td>
-          <td><span class="badge bg-secondary">Student (archived)</span></td>
+          <td>Student{% if not s.is_active %} <span class="badge bg-secondary">Archived</span>{% endif %}</td>
           <td class="text-muted">{{ s.team.number if s.team else '—' }}</td>
           <td class="text-end">
             <a href="/admin/report/archived/students/{{ s.id }}" class="btn btn-sm btn-outline-primary">View</a>
@@ -51,7 +53,7 @@
         {% for m in mentors %}
         <tr>
           <td>{{ m.name }}</td>
-          <td><span class="badge bg-secondary">Mentor (archived)</span></td>
+          <td>Mentor{% if not m.is_active %} <span class="badge bg-secondary">Archived</span>{% endif %}</td>
           <td class="text-muted">{{ m.team.number if m.team else '—' }}</td>
           <td class="text-end">
             <a href="/admin/report/archived/mentors/{{ m.id }}" class="btn btn-sm btn-outline-primary">View</a>

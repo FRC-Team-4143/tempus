@@ -1908,33 +1908,42 @@ async def admin_report_student_sessions(
     )
 
 
-@router.get("/report/archived", response_class=HTMLResponse)
-async def admin_report_archived(request: Request, q: Optional[str] = None, db: AsyncSession = Depends(get_db)):
-    """Deliberate, by-name lookup of an archived (is_active=False) student or mentor —
-    the only way to reach an archived person from Tempus's admin UI, since the report
-    table, roster, and every dropdown intentionally hide them. Not a list: a blank or
-    sub-2-character query returns no results rather than browsing every archived person,
-    so this can't be used as an "include archived" toggle."""
+@router.get("/report/search", response_class=HTMLResponse)
+async def admin_report_search(
+    request: Request, q: Optional[str] = None, archived: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """A buried, by-name member search — the only place archived people are reachable
+    from Tempus's admin UI, since the report table, roster, and every dropdown
+    intentionally hide them everywhere else. Searches active members by default;
+    the "Include archived" checkbox (`archived=1`) drops the is_active filter so
+    both active and archived matches show up together, each labeled. Not a browsable
+    list: a blank or sub-2-character query returns no results, so this never doubles
+    as a roster the way a bare "include archived" toggle on the main report would."""
     if redirect := _require_auth(request):
         return redirect
     query = (q or "").strip()
+    include_archived = bool(archived)
     students, mentors = [], []
     if len(query) >= 2:
-        students = (await db.execute(
+        student_q = (
             select(Student)
             .options(selectinload(Student.team))
-            .where(Student.is_active.is_(False), func.lower(Student.name).like(f"%{query.lower()}%"))
-            .order_by(Student.name)
-        )).scalars().all()
-        mentors = (await db.execute(
+            .where(func.lower(Student.name).like(f"%{query.lower()}%"))
+        )
+        mentor_q = (
             select(Mentor)
             .options(selectinload(Mentor.team))
-            .where(Mentor.is_active.is_(False), func.lower(Mentor.name).like(f"%{query.lower()}%"))
-            .order_by(Mentor.name)
-        )).scalars().all()
+            .where(func.lower(Mentor.name).like(f"%{query.lower()}%"))
+        )
+        if not include_archived:
+            student_q = student_q.where(Student.is_active.is_(True))
+            mentor_q = mentor_q.where(Mentor.is_active.is_(True))
+        students = (await db.execute(student_q.order_by(Student.name))).scalars().all()
+        mentors = (await db.execute(mentor_q.order_by(Mentor.name))).scalars().all()
     return templates.TemplateResponse(
-        "admin/report_archived.html",
-        {"request": request, "q": query, "students": students, "mentors": mentors},
+        "admin/report_search.html",
+        {"request": request, "q": query, "archived": include_archived, "students": students, "mentors": mentors},
     )
 
 
@@ -1942,13 +1951,13 @@ async def admin_report_archived(request: Request, q: Optional[str] = None, db: A
 async def admin_report_archived_student(
     student_id: int, request: Request, db: AsyncSession = Depends(get_db)
 ):
-    """Full totals + session history for one archived student, reached only via the
-    archived-lookup search above — deliberately not linked from any list."""
+    """Full totals + session history for one student (active or archived), reached
+    only via the member search above — deliberately not linked from any list."""
     if redirect := _require_auth(request):
         return redirect
     student = await db.get(Student, student_id, options=[selectinload(Student.team)])
     if not student:
-        return RedirectResponse("/admin/report/archived", status_code=303)
+        return RedirectResponse("/admin/report/search", status_code=303)
 
     from app.services.app_settings import get_leaderboard_since
     from app.services.reports import (
@@ -1981,13 +1990,13 @@ async def admin_report_archived_student(
 async def admin_report_archived_mentor(
     mentor_id: int, request: Request, db: AsyncSession = Depends(get_db)
 ):
-    """Full totals + session history for one archived mentor, reached only via the
-    archived-lookup search above — deliberately not linked from any list."""
+    """Full totals + session history for one mentor (active or archived), reached
+    only via the member search above — deliberately not linked from any list."""
     if redirect := _require_auth(request):
         return redirect
     mentor = await db.get(Mentor, mentor_id, options=[selectinload(Mentor.team)])
     if not mentor:
-        return RedirectResponse("/admin/report/archived", status_code=303)
+        return RedirectResponse("/admin/report/search", status_code=303)
 
     from app.services.app_settings import get_leaderboard_since
     from app.services.reports import default_report_range, week_starts_in_range, weekly_mentor_hours

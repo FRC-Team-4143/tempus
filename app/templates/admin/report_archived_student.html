@@ -1,6 +1,6 @@
 {% extends "admin/base.html" %}
 {% set active_page = "report" %}
-{% block title %}{{ student.name }} (archived) — Tempus Admin{% endblock %}
+{% block title %}{{ student.name }} — Tempus Admin{% endblock %}
 
 {% block head %}
 <style>
@@ -13,8 +13,8 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <h2>{{ student.name }} <span class="badge bg-secondary">Archived</span></h2>
-  <a href="/admin/report/archived" class="btn btn-sm btn-outline-secondary">
+  <h2>{{ student.name }}{% if not student.is_active %} <span class="badge bg-secondary">Archived</span>{% endif %}</h2>
+  <a href="/admin/report/search" class="btn btn-sm btn-outline-secondary">
     <i class="bi bi-arrow-left me-1"></i>Back to Search
   </a>
 </div>
