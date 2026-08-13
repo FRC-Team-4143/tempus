@@ -154,7 +154,7 @@ async def notify_student_hours(
     async with AsyncSessionLocal() as db:
         # Load student
         s_result = await db.execute(
-            select(Student).where(Student.id == student_id)
+            select(Student).where(Student.id == student_id, Student.is_active.is_(True))
         )
         student = s_result.scalars().first()
         if not student or not student.slack_user_id:
@@ -192,7 +192,7 @@ async def notify_student_hours(
             )
             .join(Team, Team.id == Student.team_id)
             .join(AttendanceSession, rank_join, isouter=True)
-            .where(Team.number.in_([4143, 4423]))
+            .where(Team.number.in_([4143, 4423]), Student.is_active.is_(True))
             .group_by(Student.id)
         )).all()
 

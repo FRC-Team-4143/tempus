@@ -497,6 +497,7 @@ async def _mentor_alltime_leader_id(db: AsyncSession) -> Optional[int]:
         select(Mentor.id, func.sum(MentorSession.hours_counted).label("total"))
         .join(MentorSession, MentorSession.mentor_id == Mentor.id)
         .where(MentorSession.hours_counted.isnot(None))
+        .where(Mentor.is_active.is_(True))
         .group_by(Mentor.id)
         .order_by(func.sum(MentorSession.hours_counted).desc())
         .limit(2)
@@ -558,6 +559,7 @@ async def mentor_stats(db: AsyncSession = Depends(get_db)):
         select(Mentor.name, func.sum(MentorSession.hours_counted).label("total"))
         .join(MentorSession, MentorSession.mentor_id == Mentor.id)
         .where(MentorSession.hours_counted.isnot(None))
+        .where(Mentor.is_active.is_(True))
         .group_by(Mentor.id)
         .order_by(func.sum(MentorSession.hours_counted).desc())
         .limit(3)
@@ -572,6 +574,7 @@ async def mentor_stats(db: AsyncSession = Depends(get_db)):
             MentorSession.hours_counted.isnot(None),
             MentorSession.sign_in_time >= week_start_utc,
         )
+        .where(Mentor.is_active.is_(True))
         .group_by(Mentor.id)
         .order_by(func.sum(MentorSession.hours_counted).desc())
         .limit(3)
@@ -583,6 +586,7 @@ async def mentor_stats(db: AsyncSession = Depends(get_db)):
         select(Mentor.name, func.max(MentorSession.hours_counted).label("max_h"))
         .join(MentorSession, MentorSession.mentor_id == Mentor.id)
         .where(MentorSession.hours_counted.isnot(None))
+        .where(Mentor.is_active.is_(True))
         .group_by(Mentor.id)
         .order_by(func.max(MentorSession.hours_counted).desc())
         .limit(3)
@@ -601,6 +605,7 @@ async def mentor_stats(db: AsyncSession = Depends(get_db)):
             .join(MentorSession, MentorSession.mentor_id == Mentor.id)
             .where(MentorSession.hours_counted.isnot(None))
             .where(MentorSession.sign_out_time.isnot(None))
+            .where(Mentor.is_active.is_(True))
         )
     ).all()
 

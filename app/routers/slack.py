@@ -523,9 +523,9 @@ async def slack_command(
             media_type="text/plain",
         )
 
-    # Verify the caller is a known mentor
+    # Verify the caller is a known, active mentor
     mentor_result = await db.execute(
-        select(Mentor).where(Mentor.slack_user_id == user_id)
+        select(Mentor).where(Mentor.slack_user_id == user_id, Mentor.is_active.is_(True))
     )
     if not mentor_result.scalars().first():
         return Response(
@@ -538,7 +538,10 @@ async def slack_command(
     students_result = await db.execute(
         select(Student)
         .options(selectinload(Student.team))
-        .where(sqlfunc.lower(Student.name).like(f"%{lower}%"))
+        .where(
+            sqlfunc.lower(Student.name).like(f"%{lower}%"),
+            Student.is_active.is_(True),
+        )
     )
     students = students_result.scalars().all()
 

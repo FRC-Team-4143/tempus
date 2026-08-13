@@ -1,0 +1,27 @@
+{% if sessions %}
+<div class="table-responsive">
+<table class="table table-hover mb-0 align-middle">
+  <thead class="table-light">
+    <tr><th>Sign In</th><th>Sign Out</th><th>Hours</th></tr>
+  </thead>
+  <tbody>
+    {% for s in sessions %}
+    <tr>
+      <td>{{ s.sign_in_time | localdt('%m/%d %I:%M %p') }}</td>
+      <td>
+        {% if s.sign_out_time %}
+          {{ s.sign_out_time | localdt('%I:%M %p') }}
+          {% if s.auto_closed %}<i class="bi bi-robot text-muted ms-1" title="Automated or admin-forced sign-out"></i>{% endif %}
+        {% else %}
+          <span class="badge bg-warning text-dark">Open</span>
+        {% endif %}
+      </td>
+      <td>{{ '%.2f'|format(s.hours_counted) if s.hours_counted is not none else '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="text-muted mb-0">No sessions yet.</p>
+{% endif %}

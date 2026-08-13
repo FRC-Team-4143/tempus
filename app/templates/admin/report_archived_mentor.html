@@ -1,0 +1,53 @@
+{% extends "admin/base.html" %}
+{% set active_page = "report" %}
+{% block title %}{{ mentor.name }} (archived) — Tempus Admin{% endblock %}
+
+{% block head %}
+<style>
+  .report-table th, .report-table td { white-space: nowrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h2>{{ mentor.name }} <span class="badge bg-secondary">Archived</span></h2>
+  <a href="/admin/report/archived" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Back to Search
+  </a>
+</div>
+
+<p class="text-muted">Team {{ mentor.team.number if mentor.team else '—' }}</p>
+
+{% if report %}
+<div class="card mb-4">
+  <div class="card-header">Weekly totals ({{ report.weeks|length }} week{{ 's' if report.weeks|length != 1 else '' }})</div>
+  <div class="card-body p-0" style="overflow-x: auto;">
+    <table class="table table-sm mb-0 report-table">
+      <thead class="table-dark">
+        <tr>
+          {% for w in report.weeks %}
+          <th class="text-center">{{ w.week_start.month }}/{{ w.week_start.day }}</th>
+          {% endfor %}
+          <th class="text-end">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          {% for w in report.weeks %}
+          <td class="text-center">{{ '%.1f'|format(w.hours) }}</td>
+          {% endfor %}
+          <td class="text-end fw-semibold">{{ '%.1f'|format(report.total_hours) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">Full session history</div>
+  <div class="card-body">
+    {% include "admin/_mentor_sessions_fragment.html" %}
+  </div>
+</div>
+{% endblock %}

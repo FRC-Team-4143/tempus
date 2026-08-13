@@ -81,7 +81,13 @@ async def weekly_attendance_report(
     if subteam_slug is not None:
         student_q = student_q.where(Student.subteam_slug == subteam_slug)
     if student_ids is not None:
+        # An explicit id list is a targeted lookup (a personal report, or an
+        # admin looking up one archived alumnus) — trust the caller and skip the
+        # active filter so it also works for an archived student. A broad browse
+        # (no student_ids) must never surface archived students.
         student_q = student_q.where(Student.id.in_(student_ids))
+    else:
+        student_q = student_q.where(Student.is_active.is_(True))
     students = (await db.execute(student_q)).scalars().all()
 
     if not students:
