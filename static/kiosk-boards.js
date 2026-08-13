@@ -298,9 +298,23 @@ window.Kiosk = (function () {
       const restore = () => { a.pause(); a.currentTime = 0; a.volume = vol; };
       a.play().then(restore).catch(restore);
     });
+    _startKeepalive();
   }
   document.addEventListener('pointerdown', _unlockBeeps, { once: true });
   document.addEventListener('keydown', _unlockBeeps, { once: true });
+
+  // Raspberry Pi kiosks (bcm2835 analog/HDMI audio) power down the audio
+  // output between sounds; waking it back up for the next scan takes long
+  // enough that a short beep plays into a still-silent output and is never
+  // heard at all — the box only reliably beeps while something else (e.g. a
+  // second tab) keeps the output actively streaming. Loop a quiet, near-
+  // inaudible tone for the lifetime of the page so the output never goes
+  // idle between real beeps, instead of relying on an unrelated tab for it.
+  const KEEPALIVE_SOUND = new Audio('/static/sounds/keepalive.wav');
+  KEEPALIVE_SOUND.loop = true;
+  function _startKeepalive() {
+    KEEPALIVE_SOUND.play().catch(() => {});
+  }
 
   function playBeep(kind) {
     let src = BEEP_SOUNDS[kind];
