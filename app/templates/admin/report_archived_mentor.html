@@ -42,17 +42,34 @@
     </table>
   </div>
 </div>
-{% elif all_time_total is not none %}
-<div class="card mb-4">
-  <div class="card-body d-flex justify-content-between align-items-center">
-    <span class="text-muted">All-time total (archived)</span>
-    <span class="fs-4 fw-semibold">{{ '%.1f'|format(all_time_total) }} hrs</span>
-  </div>
-</div>
 {% endif %}
 
+<form method="get" class="row g-2 mb-2 align-items-end">
+  <div class="col-auto">
+    <label class="form-label small mb-1">From</label>
+    <input type="date" name="date_from" class="form-control form-control-sm" value="{{ date_from or '' }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">To</label>
+    <input type="date" name="date_to" class="form-control form-control-sm" value="{{ date_to or '' }}">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+    <a href="/admin/report/archived/mentors/{{ mentor.id }}" class="btn btn-sm btn-outline-secondary ms-1">All Time</a>
+  </div>
+</form>
+
+<div class="card mb-4">
+  <div class="card-body d-flex justify-content-between align-items-center">
+    <span class="text-muted">
+      {% if date_from or date_to %}Total ({{ date_from or '…' }} – {{ date_to or '…' }}){% else %}All-time total{% endif %}
+    </span>
+    <span class="fs-4 fw-semibold">{{ '%.1f'|format(total_hours) }} hrs</span>
+  </div>
+</div>
+
 <div class="card">
-  <div class="card-header">Full session history</div>
+  <div class="card-header">Session history {% if date_from or date_to %}<span class="text-muted fw-normal">(filtered to range)</span>{% endif %}</div>
   <div class="card-body">
     {% include "admin/_mentor_sessions_fragment.html" %}
   </div>

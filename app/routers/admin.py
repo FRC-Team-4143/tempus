@@ -1949,30 +1949,41 @@ async def admin_report_search(
 
 @router.get("/report/archived/students/{student_id}", response_class=HTMLResponse)
 async def admin_report_archived_student(
-    student_id: int, request: Request, db: AsyncSession = Depends(get_db)
+    student_id: int, request: Request,
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
 ):
     """Full totals + session history for one student (active or archived), reached
-    only via the member search above — deliberately not linked from any list."""
+    only via the member search above — deliberately not linked from any list.
+    `date_from`/`date_to` scope the total + session list to a custom range; omitted,
+    they default to all-time (every session ever logged)."""
     if redirect := _require_auth(request):
         return redirect
     student = await db.get(Student, student_id, options=[selectinload(Student.team)])
     if not student:
         return RedirectResponse("/admin/report/search", status_code=303)
 
-    sessions = (
-        await db.execute(
-            select(AttendanceSession)
-            .where(AttendanceSession.student_id == student_id)
-            .order_by(AttendanceSession.sign_in_time.desc())
+    session_q = select(AttendanceSession).where(AttendanceSession.student_id == student_id)
+    if date_from:
+        session_q = session_q.where(
+            AttendanceSession.sign_in_time >= local_to_utc(datetime.combine(date_from, datetime.min.time()))
         )
+    if date_to:
+        session_q = session_q.where(
+            AttendanceSession.sign_in_time <= local_to_utc(datetime.combine(date_to, datetime.max.time()))
+        )
+    sessions = (
+        await db.execute(session_q.order_by(AttendanceSession.sign_in_time.desc()))
     ).scalars().all()
+    total_hours = round(sum(s.hours_counted or 0.0 for s in sessions), 2)
 
-    week_starts, row, all_time_total = [], None, None
+    week_starts, row = [], None
     if student.is_active:
         # The weekly-requirement breakdown only makes sense against the *current*
         # report window for someone still on the team. For an archived student that
         # window is almost always weeks after they left, showing a false "0/4, below
-        # requirement" — so skip it entirely and fall back to a plain all-time total.
+        # requirement" — so skip it entirely; the Total Hours card below (all-time or
+        # a custom range) covers archived people instead.
         from app.services.app_settings import get_leaderboard_since
         from app.services.reports import (
             default_report_range, drop_zero_requirement_weeks, week_starts_in_range, weekly_attendance_report,
@@ -1983,56 +1994,65 @@ async def admin_report_archived_student(
         rows = await weekly_attendance_report(db, week_starts, student_ids=[student_id])
         week_starts, rows = drop_zero_requirement_weeks(week_starts, rows)
         row = rows[0] if rows else None
-    else:
-        all_time_total = round(sum(s.hours_counted or 0.0 for s in sessions), 2)
 
     return templates.TemplateResponse(
         "admin/report_archived_student.html",
         {
-            "request": request, "student": student, "week_starts": week_starts,
-            "row": row, "all_time_total": all_time_total, "sessions": sessions,
+            "request": request, "student": student, "week_starts": week_starts, "row": row,
+            "total_hours": total_hours, "sessions": sessions,
+            "date_from": date_from, "date_to": date_to,
         },
     )
 
 
 @router.get("/report/archived/mentors/{mentor_id}", response_class=HTMLResponse)
 async def admin_report_archived_mentor(
-    mentor_id: int, request: Request, db: AsyncSession = Depends(get_db)
+    mentor_id: int, request: Request,
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
 ):
     """Full totals + session history for one mentor (active or archived), reached
-    only via the member search above — deliberately not linked from any list."""
+    only via the member search above — deliberately not linked from any list.
+    `date_from`/`date_to` scope the total + session list to a custom range; omitted,
+    they default to all-time (every session ever logged)."""
     if redirect := _require_auth(request):
         return redirect
     mentor = await db.get(Mentor, mentor_id, options=[selectinload(Mentor.team)])
     if not mentor:
         return RedirectResponse("/admin/report/search", status_code=303)
 
-    sessions = (
-        await db.execute(
-            select(MentorSession)
-            .where(MentorSession.mentor_id == mentor_id)
-            .order_by(MentorSession.sign_in_time.desc())
+    session_q = select(MentorSession).where(MentorSession.mentor_id == mentor_id)
+    if date_from:
+        session_q = session_q.where(
+            MentorSession.sign_in_time >= local_to_utc(datetime.combine(date_from, datetime.min.time()))
         )
+    if date_to:
+        session_q = session_q.where(
+            MentorSession.sign_in_time <= local_to_utc(datetime.combine(date_to, datetime.max.time()))
+        )
+    sessions = (
+        await db.execute(session_q.order_by(MentorSession.sign_in_time.desc()))
     ).scalars().all()
+    total_hours = round(sum(s.hours_counted or 0.0 for s in sessions), 2)
 
-    mentor_report, all_time_total = None, None
+    mentor_report = None
     if mentor.is_active:
         # Same reasoning as the student detail page: a weekly breakdown against the
         # *current* report window is meaningless for someone no longer on the team —
-        # skip it and show a plain all-time total instead.
+        # skip it; the Total Hours card below (all-time or a custom range) covers
+        # archived people instead.
         from app.services.app_settings import get_leaderboard_since
         from app.services.reports import default_report_range, week_starts_in_range, weekly_mentor_hours
         since = await get_leaderboard_since(db)
         default_from, default_to = default_report_range(since)
         week_starts = week_starts_in_range(default_from, default_to)
         mentor_report = await weekly_mentor_hours(db, week_starts, mentor_id)
-    else:
-        all_time_total = round(sum(s.hours_counted or 0.0 for s in sessions), 2)
 
     return templates.TemplateResponse(
         "admin/report_archived_mentor.html",
         {
             "request": request, "mentor": mentor, "report": mentor_report,
-            "all_time_total": all_time_total, "sessions": sessions,
+            "total_hours": total_hours, "sessions": sessions,
+            "date_from": date_from, "date_to": date_to,
         },
     )
