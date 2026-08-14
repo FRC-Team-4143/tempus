@@ -185,10 +185,12 @@ async def admin_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     # Currently signed in (exclude pending-checkout sessions)
     signed_in_result = await db.execute(
         select(AttendanceSession)
+        .join(Student, AttendanceSession.student_id == Student.id)
         .options(selectinload(AttendanceSession.student).selectinload(Student.team))
         .where(
             AttendanceSession.sign_out_time.is_(None),
             AttendanceSession.checkout_requested_at.is_(None),
+            Student.is_active.is_(True),
         )
         .order_by(AttendanceSession.sign_in_time)
     )
@@ -299,7 +301,9 @@ async def admin_manual_signin(
     from app.services.attendance import get_open_session
     from app.services.broadcaster import broadcaster
 
-    result = await db.execute(select(Student).where(Student.id == student_id))
+    result = await db.execute(
+        select(Student).where(Student.id == student_id, Student.is_active.is_(True))
+    )
     student = result.scalars().first()
     if student:
         open_session = await get_open_session(db, student.id)
@@ -688,14 +692,18 @@ async def admin_sessions_list(
         total = total_result.scalar() or 0
         sessions_result = await db.execute(query.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE))
         sessions = sessions_result.scalars().all()
-        roster_mentors = (await db.execute(select(Mentor).order_by(Mentor.name))).scalars().all()
+        roster_mentors = (
+            await db.execute(select(Mentor).where(Mentor.is_active.is_(True)).order_by(Mentor.name))
+        ).scalars().all()
     elif mode == "student":
         query = _student_query()
         total_result = await db.execute(select(func.count()).select_from(query.subquery()))
         total = total_result.scalar() or 0
         sessions_result = await db.execute(query.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE))
         sessions = sessions_result.scalars().all()
-        roster_students = (await db.execute(select(Student).order_by(Student.name))).scalars().all()
+        roster_students = (
+            await db.execute(select(Student).where(Student.is_active.is_(True)).order_by(Student.name))
+        ).scalars().all()
     else:
         # "all" merges two separate tables — no single SQL query spans both, so pull
         # every filtered row from each (small-team scale) and merge-sort in Python.
@@ -710,8 +718,12 @@ async def admin_sessions_list(
         )
         total = len(combined)
         sessions = combined[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
-        roster_students = (await db.execute(select(Student).order_by(Student.name))).scalars().all()
-        roster_mentors = (await db.execute(select(Mentor).order_by(Mentor.name))).scalars().all()
+        roster_students = (
+            await db.execute(select(Student).where(Student.is_active.is_(True)).order_by(Student.name))
+        ).scalars().all()
+        roster_mentors = (
+            await db.execute(select(Mentor).where(Mentor.is_active.is_(True)).order_by(Mentor.name))
+        ).scalars().all()
 
     if mode == "all":
         student_id_display = (
@@ -1893,4 +1905,154 @@ async def admin_report_student_sessions(
     return templates.TemplateResponse(
         "admin/_student_sessions_fragment.html",
         {"request": request, "student": student, "sessions": sessions},
+    )
+
+
+@router.get("/report/search", response_class=HTMLResponse)
+async def admin_report_search(
+    request: Request, q: Optional[str] = None, archived: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """A buried, by-name member search — the only place archived people are reachable
+    from Tempus's admin UI, since the report table, roster, and every dropdown
+    intentionally hide them everywhere else. Searches active members by default;
+    the "Include archived" checkbox (`archived=1`) drops the is_active filter so
+    both active and archived matches show up together, each labeled. Not a browsable
+    list: a blank or sub-2-character query returns no results, so this never doubles
+    as a roster the way a bare "include archived" toggle on the main report would."""
+    if redirect := _require_auth(request):
+        return redirect
+    query = (q or "").strip()
+    include_archived = bool(archived)
+    students, mentors = [], []
+    if len(query) >= 2:
+        student_q = (
+            select(Student)
+            .options(selectinload(Student.team))
+            .where(func.lower(Student.name).like(f"%{query.lower()}%"))
+        )
+        mentor_q = (
+            select(Mentor)
+            .options(selectinload(Mentor.team))
+            .where(func.lower(Mentor.name).like(f"%{query.lower()}%"))
+        )
+        if not include_archived:
+            student_q = student_q.where(Student.is_active.is_(True))
+            mentor_q = mentor_q.where(Mentor.is_active.is_(True))
+        students = (await db.execute(student_q.order_by(Student.name))).scalars().all()
+        mentors = (await db.execute(mentor_q.order_by(Mentor.name))).scalars().all()
+    return templates.TemplateResponse(
+        "admin/report_search.html",
+        {"request": request, "q": query, "archived": include_archived, "students": students, "mentors": mentors},
+    )
+
+
+@router.get("/report/archived/students/{student_id}", response_class=HTMLResponse)
+async def admin_report_archived_student(
+    student_id: int, request: Request,
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Full totals + session history for one student (active or archived), reached
+    only via the member search above — deliberately not linked from any list.
+    `date_from`/`date_to` scope the total + session list to a custom range; omitted,
+    they default to all-time (every session ever logged)."""
+    if redirect := _require_auth(request):
+        return redirect
+    student = await db.get(Student, student_id, options=[selectinload(Student.team)])
+    if not student:
+        return RedirectResponse("/admin/report/search", status_code=303)
+
+    session_q = select(AttendanceSession).where(AttendanceSession.student_id == student_id)
+    if date_from:
+        session_q = session_q.where(
+            AttendanceSession.sign_in_time >= local_to_utc(datetime.combine(date_from, datetime.min.time()))
+        )
+    if date_to:
+        session_q = session_q.where(
+            AttendanceSession.sign_in_time <= local_to_utc(datetime.combine(date_to, datetime.max.time()))
+        )
+    sessions = (
+        await db.execute(session_q.order_by(AttendanceSession.sign_in_time.desc()))
+    ).scalars().all()
+    total_hours = round(sum(s.hours_counted or 0.0 for s in sessions), 2)
+
+    week_starts, row = [], None
+    if student.is_active:
+        # The weekly-requirement breakdown only makes sense against the *current*
+        # report window for someone still on the team. For an archived student that
+        # window is almost always weeks after they left, showing a false "0/4, below
+        # requirement" — so skip it entirely; the Total Hours card below (all-time or
+        # a custom range) covers archived people instead.
+        from app.services.app_settings import get_leaderboard_since
+        from app.services.reports import (
+            default_report_range, drop_zero_requirement_weeks, week_starts_in_range, weekly_attendance_report,
+        )
+        since = await get_leaderboard_since(db)
+        default_from, default_to = default_report_range(since)
+        week_starts = week_starts_in_range(default_from, default_to)
+        rows = await weekly_attendance_report(db, week_starts, student_ids=[student_id])
+        week_starts, rows = drop_zero_requirement_weeks(week_starts, rows)
+        row = rows[0] if rows else None
+
+    return templates.TemplateResponse(
+        "admin/report_archived_student.html",
+        {
+            "request": request, "student": student, "week_starts": week_starts, "row": row,
+            "total_hours": total_hours, "sessions": sessions,
+            "date_from": date_from, "date_to": date_to,
+        },
+    )
+
+
+@router.get("/report/archived/mentors/{mentor_id}", response_class=HTMLResponse)
+async def admin_report_archived_mentor(
+    mentor_id: int, request: Request,
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Full totals + session history for one mentor (active or archived), reached
+    only via the member search above — deliberately not linked from any list.
+    `date_from`/`date_to` scope the total + session list to a custom range; omitted,
+    they default to all-time (every session ever logged)."""
+    if redirect := _require_auth(request):
+        return redirect
+    mentor = await db.get(Mentor, mentor_id, options=[selectinload(Mentor.team)])
+    if not mentor:
+        return RedirectResponse("/admin/report/search", status_code=303)
+
+    session_q = select(MentorSession).where(MentorSession.mentor_id == mentor_id)
+    if date_from:
+        session_q = session_q.where(
+            MentorSession.sign_in_time >= local_to_utc(datetime.combine(date_from, datetime.min.time()))
+        )
+    if date_to:
+        session_q = session_q.where(
+            MentorSession.sign_in_time <= local_to_utc(datetime.combine(date_to, datetime.max.time()))
+        )
+    sessions = (
+        await db.execute(session_q.order_by(MentorSession.sign_in_time.desc()))
+    ).scalars().all()
+    total_hours = round(sum(s.hours_counted or 0.0 for s in sessions), 2)
+
+    mentor_report = None
+    if mentor.is_active:
+        # Same reasoning as the student detail page: a weekly breakdown against the
+        # *current* report window is meaningless for someone no longer on the team —
+        # skip it; the Total Hours card below (all-time or a custom range) covers
+        # archived people instead.
+        from app.services.app_settings import get_leaderboard_since
+        from app.services.reports import default_report_range, week_starts_in_range, weekly_mentor_hours
+        since = await get_leaderboard_since(db)
+        default_from, default_to = default_report_range(since)
+        week_starts = week_starts_in_range(default_from, default_to)
+        mentor_report = await weekly_mentor_hours(db, week_starts, mentor_id)
+
+    return templates.TemplateResponse(
+        "admin/report_archived_mentor.html",
+        {
+            "request": request, "mentor": mentor, "report": mentor_report,
+            "total_hours": total_hours, "sessions": sessions,
+            "date_from": date_from, "date_to": date_to,
+        },
     )

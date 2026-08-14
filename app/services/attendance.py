@@ -188,12 +188,14 @@ async def sign_out_all_open(
 async def get_signed_in_students(db: AsyncSession) -> list[AttendanceSession]:
     result = await db.execute(
         select(AttendanceSession)
+        .join(Student, AttendanceSession.student_id == Student.id)
         .options(
             selectinload(AttendanceSession.student).selectinload(Student.team)
         )
         .where(
             AttendanceSession.sign_out_time.is_(None),
             AttendanceSession.checkout_requested_at.is_(None),
+            Student.is_active.is_(True),
         )
         .order_by(AttendanceSession.sign_in_time)
     )
@@ -299,8 +301,12 @@ async def mentor_sign_out(
 async def get_signed_in_mentors(db: AsyncSession) -> list[MentorSession]:
     result = await db.execute(
         select(MentorSession)
+        .join(Mentor, MentorSession.mentor_id == Mentor.id)
         .options(selectinload(MentorSession.mentor).selectinload(Mentor.team))
-        .where(MentorSession.sign_out_time.is_(None))
+        .where(
+            MentorSession.sign_out_time.is_(None),
+            Mentor.is_active.is_(True),
+        )
         .order_by(MentorSession.sign_in_time)
     )
     return result.scalars().all()

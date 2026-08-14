@@ -69,6 +69,36 @@ async def test_student_ids_none_returns_everyone(db, make_student):
     assert len(rows) == 2
 
 
+async def test_archived_student_excluded_by_default(db, make_student):
+    """An archived (graduated/alumni) student must never appear in the default
+    report browse — only students, mentors, and admins should see who's on the
+    active roster."""
+    await make_student(name="Ada Lovelace", code="ada00001")
+    grad = await make_student(name="Old Grad", code="grad0001", is_active=False)
+    await _add_session(db, grad.id, hours=5.0)
+
+    today = date.today()
+    week_starts = week_starts_in_range(today, today)
+    rows = await weekly_attendance_report(db, week_starts)
+
+    assert [r["student"].name for r in rows] == ["Ada Lovelace"]
+
+
+async def test_archived_student_reachable_via_explicit_student_ids(db, make_student):
+    """A deliberate by-id lookup (the admin archived-member search) must still work
+    for an archived student even though they're excluded from the default browse."""
+    grad = await make_student(name="Old Grad", code="grad0001", is_active=False)
+    await _add_session(db, grad.id, hours=5.0)
+
+    today = date.today()
+    week_starts = week_starts_in_range(today, today)
+    rows = await weekly_attendance_report(db, week_starts, student_ids=[grad.id])
+
+    assert len(rows) == 1
+    assert rows[0]["student"].id == grad.id
+    assert rows[0]["total_hours"] == 5.0
+
+
 # ── weeks_met / weeks_total exclude 0-requirement weeks ────────────────────────
 
 async def test_weeks_total_excludes_zero_requirement_weeks(db, make_student, team):

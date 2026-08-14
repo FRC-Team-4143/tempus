@@ -1,0 +1,87 @@
+{% extends "admin/base.html" %}
+{% set active_page = "report" %}
+{% block title %}{{ student.name }} — Tempus Admin{% endblock %}
+
+{% block head %}
+<style>
+  .report-table th, .report-table td { white-space: nowrap; }
+  .week-met { background-color: rgba(25, 135, 84, 0.25) !important; }
+  .week-miss { background-color: rgba(220, 53, 69, 0.18) !important; }
+  .week-zero { color: #888; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h2>{{ student.name }}{% if not student.is_active %} <span class="badge bg-secondary">Archived</span>{% endif %}</h2>
+  <a href="/admin/report/search" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Back to Search
+  </a>
+</div>
+
+<p class="text-muted">
+  Team {{ student.team.number if student.team else '—' }}{% if student.subteam_slug %} · {{ student.subteam_slug | capitalize }}{% endif %}
+</p>
+
+{% if row %}
+<div class="card mb-4">
+  <div class="card-header">Weekly totals ({{ week_starts|length }} week{{ 's' if week_starts|length != 1 else '' }})</div>
+  <div class="card-body p-0" style="overflow-x: auto;">
+    <table class="table table-sm mb-0 report-table">
+      <thead class="table-dark">
+        <tr>
+          {% for ws in week_starts %}
+          <th class="text-center">{{ ws.month }}/{{ ws.day }}</th>
+          {% endfor %}
+          <th class="text-end">Total</th>
+          <th class="text-center">Weeks Met</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          {% for w in row.weeks %}
+          <td class="text-center {% if w.met %}week-met{% else %}week-miss{% endif %}{% if w.hours == 0 %} week-zero{% endif %}"
+              title="{{ '%.1f'|format(w.hours) }} / {{ '%.1f'|format(w.required) }} hrs">
+            {{ '%.1f'|format(w.hours) }}
+          </td>
+          {% endfor %}
+          <td class="text-end fw-semibold">{{ '%.1f'|format(row.total_hours) }}</td>
+          <td class="text-center">{{ row.weeks_met }}/{{ row.weeks_total }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<form method="get" class="row g-2 mb-2 align-items-end">
+  <div class="col-auto">
+    <label class="form-label small mb-1">From</label>
+    <input type="date" name="date_from" class="form-control form-control-sm" value="{{ date_from or '' }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">To</label>
+    <input type="date" name="date_to" class="form-control form-control-sm" value="{{ date_to or '' }}">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+    <a href="/admin/report/archived/students/{{ student.id }}" class="btn btn-sm btn-outline-secondary ms-1">All Time</a>
+  </div>
+</form>
+
+<div class="card mb-4">
+  <div class="card-body d-flex justify-content-between align-items-center">
+    <span class="text-muted">
+      {% if date_from or date_to %}Total ({{ date_from or '…' }} – {{ date_to or '…' }}){% else %}All-time total{% endif %}
+    </span>
+    <span class="fs-4 fw-semibold">{{ '%.1f'|format(total_hours) }} hrs</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Session history {% if date_from or date_to %}<span class="text-muted fw-normal">(filtered to range)</span>{% endif %}</div>
+  <div class="card-body">
+    {% include "admin/_student_sessions_fragment.html" %}
+  </div>
+</div>
+{% endblock %}
