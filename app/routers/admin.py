@@ -51,6 +51,18 @@ _ADMIN_GROUP = "tempus-admin"
 _MANAGER_GROUP = "tempus-manager"
 
 
+def _range_slug(date_from: Optional[date], date_to: Optional[date]) -> str:
+    """Filename fragment for an export's date range — 'all-time' when unbounded."""
+    if not date_from and not date_to:
+        return "all-time"
+    return f"{date_from or 'start'}_{date_to or 'today'}"
+
+
+def _name_slug(name: str) -> str:
+    """A member's name, safe to drop in a Content-Disposition filename."""
+    return re.sub(r"[^a-z0-9]+", "-", (name or "member").lower()).strip("-") or "member"
+
+
 def _manager_allowed(path: str) -> bool:
     """The only routes a 'manager' may reach: the dashboard, the report view, the
     weekly-requirements editor, and the sessions editor (student + mentor)."""
@@ -1837,23 +1849,77 @@ async def admin_report_export(
     date_to: Optional[date] = None,
     team_id: Optional[str] = None,
     category: Optional[str] = None,
+    mode: Optional[str] = None,
+    archived: Optional[int] = None,
 ):
+    """The report's CSV, in two shapes.
+
+    Default (`mode` unset) is the week-by-week grid mirroring the on-screen table.
+    `mode=totals` is a flat one-row-per-student file — name, code, and a single hours
+    total for the requested range — meant to be handed to an outside program (e.g.
+    Silver Cords, which wants everyone at 200+ volunteer hours). The grid can't serve
+    that: `week_starts_in_range` caps at 26 weeks, so a multi-year request would come
+    back quietly truncated. Totals mode also honors `archived=1`, since a span that
+    long reaches students who have since left the roster.
+    """
     if redirect := _require_auth(request):
         return redirect
 
     from app.services.app_settings import get_leaderboard_since
     from app.services.reports import (
-        default_report_range, drop_zero_requirement_weeks, week_starts_in_range, weekly_attendance_report,
+        default_report_range, drop_zero_requirement_weeks, student_hours_totals,
+        week_starts_in_range, weekly_attendance_report,
     )
+
+    team_id_int = int(team_id) if team_id else None
+    subteam_slug = category.strip() if category and category.strip() else None
+
+    if mode == "totals":
+        # No default window here: blank means all-time, which is what a multi-season
+        # request usually wants. (The grid defaults to the leaderboard-cutoff window.)
+        totals = await student_hours_totals(
+            db, date_from, date_to,
+            team_id=team_id_int, subteam_slug=subteam_slug,
+            include_archived=bool(archived),
+        )
+
+        def _generate_totals():
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow([
+                "Name", "Member Code", "Team", "Subteam", "Status",
+                "Total Hours", "Sessions", "Range Start", "Range End",
+            ])
+            yield buf.getvalue()
+            for row in totals:
+                buf.seek(0)
+                buf.truncate()
+                s = row["student"]
+                writer.writerow([
+                    s.name,
+                    s.member_code or "",
+                    s.team.number if s.team else "",
+                    s.subteam_slug or "",
+                    "active" if s.is_active else "archived",
+                    f"{row['total_hours']:.2f}",
+                    row["session_count"],
+                    date_from.isoformat() if date_from else "",
+                    date_to.isoformat() if date_to else "",
+                ])
+                yield buf.getvalue()
+
+        filename = f"tempus_hour_totals_{_range_slug(date_from, date_to)}.csv"
+        return StreamingResponse(
+            _generate_totals(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     since = await get_leaderboard_since(db)
     default_from, default_to = default_report_range(since)
 
     d_from = date_from or default_from
     d_to = date_to or default_to
-
-    team_id_int = int(team_id) if team_id else None
-    subteam_slug = category.strip() if category and category.strip() else None
 
     week_starts = week_starts_in_range(d_from, d_to)
     rows = await weekly_attendance_report(db, week_starts, team_id=team_id_int, subteam_slug=subteam_slug)
@@ -2005,6 +2071,65 @@ async def admin_report_archived_student(
     )
 
 
+@router.get("/report/archived/students/{student_id}/export")
+async def admin_report_archived_student_export(
+    student_id: int, request: Request,
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """One student's raw session history as CSV, one row per session. Parses its date
+    params exactly like the HTML page above, so the export button is just that page's
+    URL plus `/export` and the same query string — the file always matches what's on
+    screen. No trailing total row: this is meant to be parsed, and the per-student
+    total already has a home in `/admin/report/export?mode=totals`."""
+    if redirect := _require_auth(request):
+        return redirect
+    student = await db.get(Student, student_id, options=[selectinload(Student.team)])
+    if not student:
+        return RedirectResponse("/admin/report/search", status_code=303)
+
+    session_q = select(AttendanceSession).where(AttendanceSession.student_id == student_id)
+    if date_from:
+        session_q = session_q.where(
+            AttendanceSession.sign_in_time >= local_to_utc(datetime.combine(date_from, datetime.min.time()))
+        )
+    if date_to:
+        session_q = session_q.where(
+            AttendanceSession.sign_in_time <= local_to_utc(datetime.combine(date_to, datetime.max.time()))
+        )
+    sessions = (
+        await db.execute(session_q.order_by(AttendanceSession.sign_in_time.desc()))
+    ).scalars().all()
+
+    def _generate():
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([
+            "Name", "Member Code", "Team", "Sign In", "Sign Out", "Status", "Hours Counted",
+        ])
+        yield buf.getvalue()
+        for s in sessions:
+            buf.seek(0)
+            buf.truncate()
+            writer.writerow([
+                student.name,
+                student.member_code or "",
+                student.team.number if student.team else "",
+                utc_to_local(s.sign_in_time).isoformat() if s.sign_in_time else "",
+                utc_to_local(s.sign_out_time).isoformat() if s.sign_out_time else "",
+                s.status.value if s.status else "",
+                f"{s.hours_counted or 0.0:.2f}",
+            ])
+            yield buf.getvalue()
+
+    filename = f"{_name_slug(student.name)}_sessions_{_range_slug(date_from, date_to)}.csv"
+    return StreamingResponse(
+        _generate(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/report/archived/mentors/{mentor_id}", response_class=HTMLResponse)
 async def admin_report_archived_mentor(
     mentor_id: int, request: Request,
@@ -2055,4 +2180,57 @@ async def admin_report_archived_mentor(
             "total_hours": total_hours, "sessions": sessions,
             "date_from": date_from, "date_to": date_to,
         },
+    )
+
+
+@router.get("/report/archived/mentors/{mentor_id}/export")
+async def admin_report_archived_mentor_export(
+    mentor_id: int, request: Request,
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """The mentor twin of the student session export. No Status column — `MentorSession`
+    has none, since mentor hours are always counted in full."""
+    if redirect := _require_auth(request):
+        return redirect
+    mentor = await db.get(Mentor, mentor_id, options=[selectinload(Mentor.team)])
+    if not mentor:
+        return RedirectResponse("/admin/report/search", status_code=303)
+
+    session_q = select(MentorSession).where(MentorSession.mentor_id == mentor_id)
+    if date_from:
+        session_q = session_q.where(
+            MentorSession.sign_in_time >= local_to_utc(datetime.combine(date_from, datetime.min.time()))
+        )
+    if date_to:
+        session_q = session_q.where(
+            MentorSession.sign_in_time <= local_to_utc(datetime.combine(date_to, datetime.max.time()))
+        )
+    sessions = (
+        await db.execute(session_q.order_by(MentorSession.sign_in_time.desc()))
+    ).scalars().all()
+
+    def _generate():
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["Name", "Member Code", "Team", "Sign In", "Sign Out", "Hours Counted"])
+        yield buf.getvalue()
+        for s in sessions:
+            buf.seek(0)
+            buf.truncate()
+            writer.writerow([
+                mentor.name,
+                mentor.member_code or "",
+                mentor.team.number if mentor.team else "",
+                utc_to_local(s.sign_in_time).isoformat() if s.sign_in_time else "",
+                utc_to_local(s.sign_out_time).isoformat() if s.sign_out_time else "",
+                f"{s.hours_counted or 0.0:.2f}",
+            ])
+            yield buf.getvalue()
+
+    filename = f"{_name_slug(mentor.name)}_sessions_{_range_slug(date_from, date_to)}.csv"
+    return StreamingResponse(
+        _generate(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
