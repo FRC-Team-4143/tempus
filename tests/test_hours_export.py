@@ -230,6 +230,48 @@ async def test_member_export_missing_member_redirects_to_search(authed_client):
     assert resp.headers["location"] == "/admin/report/search"
 
 
+# ── Where the buttons live ─────────────────────────────────────────────────────
+
+async def test_export_button_only_appears_once_a_member_is_selected(authed_client, make_student):
+    """The export is a per-member action, so it hangs off the single-member surfaces —
+    the detail page and the report's per-student modal. The search *results* list stays a
+    pure lookup with no export button on it."""
+    ada = await make_student(name="Ada Lovelace", code="ada00001")
+
+    detail = await authed_client.get(f"/admin/report/archived/students/{ada.id}")
+    assert f"/admin/report/archived/students/{ada.id}/export" in detail.text
+
+    # The modal's link is built in JS from the clicked row's student id.
+    report = await authed_client.get("/admin/report")
+    assert "studentSessionsExportLink" in report.text
+    assert "/admin/report/archived/students/' + id + '/export" in report.text
+
+    search = await authed_client.get("/admin/report/search?q=ada")
+    assert "Ada Lovelace" in search.text
+    assert "/export" not in search.text
+
+
+async def test_detail_export_button_carries_the_pages_date_range(authed_client, make_student):
+    ada = await make_student(name="Ada Lovelace", code="ada00001")
+
+    resp = await authed_client.get(
+        f"/admin/report/archived/students/{ada.id}?date_from=2025-01-01&date_to=2025-06-30"
+    )
+    # `&` is HTML-escaped in the rendered href, as it should be.
+    assert (
+        f"/admin/report/archived/students/{ada.id}/export?date_from=2025-01-01&amp;date_to=2025-06-30"
+        in resp.text
+    )
+
+
+async def test_report_page_offers_the_totals_export(authed_client, make_student):
+    await make_student(name="Ada Lovelace", code="ada00001")
+
+    resp = await authed_client.get("/admin/report")
+    assert "Export hour totals" in resp.text
+    assert 'name="mode" value="totals"' in resp.text
+
+
 async def test_manager_can_reach_the_new_exports(client, make_student):
     """`tempus-manager` is scoped to /admin/report/* — the new routes live there, so a
     manager who can already read the report can pull the same data as a file."""

@@ -124,6 +124,23 @@ all-time). `services/reports.default_report_range(since)` derives the report vie
 week through the current week (falling back to a rolling 4-week window when no
 cutoff is set) — used by `/admin/report`, `/admin/report/export`, and `/me`.
 
+### CSV exports
+`/admin/report/export` has two shapes. Default is the **weekly grid** mirroring the
+on-screen table — bounded by `week_starts_in_range`, which caps at **26 weeks** and keeps
+the *first* 26 Mondays from `date_from`, so a multi-year request silently returns a window
+from years ago rather than an obviously-truncated one. `?mode=totals` is the flat
+**one-row-per-student** file (`reports.student_hours_totals`) over an arbitrary range with
+no cap, for handing to an outside program (e.g. Silver Cords at 200+ hours); it takes
+`archived=1`, since a multi-season span reaches students who have since left the roster.
+Reach for totals mode whenever the ask is "hours per person between two dates" — never
+widen the grid's cap.
+
+Per-member detail CSVs live at `/admin/report/archived/{students,mentors}/{id}/export`,
+parsing `date_from`/`date_to` exactly like their HTML twins so the button is just the page
+URL + `/export` + the same query string. They're linked only from single-member surfaces
+(the detail pages, and the report modal's header link, which is all-time); the member
+search page deliberately has no export.
+
 ### Database Migrations
 No Alembic. Add a `def _migration_name(conn)` function to `database.py` and call it from `init_db()`. Pattern: check if column/table exists, then apply the change. SQLite 3.35+ `DROP COLUMN` is supported.
 
