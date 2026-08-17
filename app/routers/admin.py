@@ -1849,99 +1849,68 @@ async def admin_report_export(
     date_to: Optional[date] = None,
     team_id: Optional[str] = None,
     category: Optional[str] = None,
-    mode: Optional[str] = None,
     archived: Optional[int] = None,
 ):
-    """The report's CSV, in two shapes.
-
-    Default (`mode` unset) is the week-by-week grid mirroring the on-screen table.
-    `mode=totals` is a flat one-row-per-student file — name, code, and a single hours
-    total for the requested range — meant to be handed to an outside program (e.g.
-    Silver Cords, which wants everyone at 200+ volunteer hours). The grid can't serve
-    that: `week_starts_in_range` caps at 26 weeks, so a multi-year request would come
-    back quietly truncated. Totals mode also honors `archived=1`, since a span that
-    long reaches students who have since left the roster.
+    """The report's CSV: one row per session, grouped by student, with a TOTAL
+    subtotal row after each student's sessions — so a single file carries both the
+    full session history and each student's hours total. No default window: blank
+    date_from/date_to means all-time (unlike the on-screen grid, which defaults to
+    the leaderboard-cutoff window) — this has no 26-week cap since it never
+    materializes week columns. Honors `archived=1` to include students who have
+    since left the roster.
     """
     if redirect := _require_auth(request):
         return redirect
 
-    from app.services.app_settings import get_leaderboard_since
-    from app.services.reports import (
-        default_report_range, drop_zero_requirement_weeks, student_hours_totals,
-        week_starts_in_range, weekly_attendance_report,
-    )
+    from app.services.reports import student_session_export_rows
 
     team_id_int = int(team_id) if team_id else None
     subteam_slug = category.strip() if category and category.strip() else None
 
-    if mode == "totals":
-        # No default window here: blank means all-time, which is what a multi-season
-        # request usually wants. (The grid defaults to the leaderboard-cutoff window.)
-        totals = await student_hours_totals(
-            db, date_from, date_to,
-            team_id=team_id_int, subteam_slug=subteam_slug,
-            include_archived=bool(archived),
-        )
-
-        def _generate_totals():
-            buf = io.StringIO()
-            writer = csv.writer(buf)
-            writer.writerow([
-                "Name", "Member Code", "Team", "Subteam", "Status",
-                "Total Hours", "Sessions", "Range Start", "Range End",
-            ])
-            yield buf.getvalue()
-            for row in totals:
-                buf.seek(0)
-                buf.truncate()
-                s = row["student"]
-                writer.writerow([
-                    s.name,
-                    s.member_code or "",
-                    s.team.number if s.team else "",
-                    s.subteam_slug or "",
-                    "active" if s.is_active else "archived",
-                    f"{row['total_hours']:.2f}",
-                    row["session_count"],
-                    date_from.isoformat() if date_from else "",
-                    date_to.isoformat() if date_to else "",
-                ])
-                yield buf.getvalue()
-
-        filename = f"tempus_hour_totals_{_range_slug(date_from, date_to)}.csv"
-        return StreamingResponse(
-            _generate_totals(),
-            media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-
-    since = await get_leaderboard_since(db)
-    default_from, default_to = default_report_range(since)
-
-    d_from = date_from or default_from
-    d_to = date_to or default_to
-
-    week_starts = week_starts_in_range(d_from, d_to)
-    rows = await weekly_attendance_report(db, week_starts, team_id=team_id_int, subteam_slug=subteam_slug)
-    week_starts, rows = drop_zero_requirement_weeks(week_starts, rows)
+    rows = await student_session_export_rows(
+        db, date_from, date_to,
+        team_id=team_id_int, subteam_slug=subteam_slug,
+        include_archived=bool(archived),
+    )
 
     def _generate():
         buf = io.StringIO()
         writer = csv.writer(buf)
-        header = ["Student", "Team", "Subteam"] + [ws.strftime("%Y-%m-%d") for ws in week_starts] + ["Total Hours", "Weeks Met"]
-        writer.writerow(header)
+        writer.writerow([
+            "Student", "Member Code", "Team", "Subteam",
+            "Sign In", "Sign Out", "Status", "Hours Counted", "Sessions",
+        ])
         yield buf.getvalue()
         for row in rows:
             buf.seek(0)
             buf.truncate()
             s = row["student"]
-            data = [s.name, s.team.number if s.team else "", s.subteam_slug or ""]
-            data += [f"{w['hours']:.2f}" for w in row["weeks"]]
-            data += [f"{row['total_hours']:.2f}", f"{row['weeks_met']}/{row['weeks_total']}"]
-            writer.writerow(data)
+            for sess in row["sessions"]:
+                writer.writerow([
+                    s.name,
+                    s.member_code or "",
+                    s.team.number if s.team else "",
+                    s.subteam_slug or "",
+                    utc_to_local(sess.sign_in_time).isoformat() if sess.sign_in_time else "",
+                    utc_to_local(sess.sign_out_time).isoformat() if sess.sign_out_time else "",
+                    sess.status.value if sess.status else "",
+                    f"{sess.hours_counted or 0.0:.2f}",
+                    "",
+                ])
+            writer.writerow([
+                s.name,
+                s.member_code or "",
+                s.team.number if s.team else "",
+                s.subteam_slug or "",
+                "",
+                "",
+                "TOTAL",
+                f"{row['total_hours']:.2f}",
+                row["session_count"],
+            ])
             yield buf.getvalue()
 
-    filename = f"weekly_report_{d_from}_{d_to}.csv"
+    filename = f"tempus_report_{_range_slug(date_from, date_to)}.csv"
     return StreamingResponse(
         _generate(),
         media_type="text/csv",
@@ -2081,7 +2050,7 @@ async def admin_report_archived_student_export(
     params exactly like the HTML page above, so the export button is just that page's
     URL plus `/export` and the same query string — the file always matches what's on
     screen. No trailing total row: this is meant to be parsed, and the per-student
-    total already has a home in `/admin/report/export?mode=totals`."""
+    total already has a home in `/admin/report/export`."""
     if redirect := _require_auth(request):
         return redirect
     student = await db.get(Student, student_id, options=[selectinload(Student.team)])
