@@ -23,12 +23,14 @@
   {% set qs = "date_from=" ~ filters.date_from ~ "&date_to=" ~ filters.date_to %}
   {% if filters.team_id %}{% set qs = qs ~ "&team_id=" ~ filters.team_id %}{% endif %}
   {% if filters.category %}{% set qs = qs ~ "&category=" ~ filters.category %}{% endif %}
-  <a href="/admin/report/export?{{ qs }}" class="btn btn-sm btn-outline-primary">
-    <i class="bi bi-download me-1"></i>Export CSV
-  </a>
-  <a href="/admin/report/search" class="btn btn-sm btn-link text-muted">
-    <i class="bi bi-search me-1"></i>Search members
-  </a>
+  <div class="d-flex align-items-center gap-2">
+    <a href="/admin/report/export?{{ qs }}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-download me-1"></i>Export CSV
+    </a>
+    <a href="/admin/report/search" class="btn btn-sm btn-link text-muted">
+      <i class="bi bi-search me-1"></i>Search members
+    </a>
+  </div>
 </div>
 
 <!-- Filters -->
