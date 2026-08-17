@@ -67,9 +67,55 @@
     <a href="/admin/report" class="btn btn-sm btn-outline-secondary ms-1">Clear</a>
   </div>
   <div class="col-12">
-    <small class="text-muted">Date range snaps to Mondays. Max 26 weeks.</small>
+    <small class="text-muted">
+      Date range snaps to Mondays. Max 26 weeks — for a longer span, use
+      <a href="#exportTotals" data-bs-toggle="collapse" class="text-decoration-none">hour totals</a> below.
+    </small>
   </div>
 </form>
+
+<!-- Totals export: a flat per-student file for outside programs (e.g. Silver Cords),
+     with no 26-week cap and its own range, independent of the grid's filters above. -->
+<div class="card mb-4">
+  <div class="card-header py-2">
+    <a href="#exportTotals" data-bs-toggle="collapse" class="text-decoration-none small">
+      <i class="bi bi-filetype-csv me-1"></i>Export hour totals (any date range)
+    </a>
+  </div>
+  <div class="collapse" id="exportTotals">
+    <div class="card-body">
+      <p class="small text-muted">
+        One row per student — name, member code, and a single hours total for the range.
+        Leave the dates blank for all-time. Unlike the weekly grid above, this has no
+        26-week limit, so a multi-season span exports in full.
+      </p>
+      <form method="get" action="/admin/report/export" class="row g-2 align-items-end">
+        <input type="hidden" name="mode" value="totals">
+        {% if filters.team_id %}<input type="hidden" name="team_id" value="{{ filters.team_id }}">{% endif %}
+        {% if filters.category %}<input type="hidden" name="category" value="{{ filters.category }}">{% endif %}
+        <div class="col-auto">
+          <label class="form-label small mb-1">From</label>
+          <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.date_from }}">
+        </div>
+        <div class="col-auto">
+          <label class="form-label small mb-1">To</label>
+          <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.date_to }}">
+        </div>
+        <div class="col-auto">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="archived" value="1" id="totalsArchived">
+            <label class="form-check-label small" for="totalsArchived">Include archived members</label>
+          </div>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-download me-1"></i>Export totals
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 
 <!-- Legend -->
 <div class="d-flex gap-3 mb-3 small">
@@ -141,7 +187,10 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="studentSessionsModalLabel">Sessions</h5>
-        <a href="#" id="studentSessionsBadgeLink" target="_blank" class="btn btn-sm btn-outline-info ms-auto me-2">
+        <a href="#" id="studentSessionsExportLink" class="btn btn-sm btn-outline-primary ms-auto me-2">
+          <i class="bi bi-download me-1"></i>Export CSV
+        </a>
+        <a href="#" id="studentSessionsBadgeLink" target="_blank" class="btn btn-sm btn-outline-info me-2">
           <i class="bi bi-qr-code me-1"></i>QR Badge
         </a>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -159,6 +208,7 @@
     var modalEl = document.getElementById('studentSessionsModal');
     var titleEl = document.getElementById('studentSessionsModalLabel');
     var badgeLinkEl = document.getElementById('studentSessionsBadgeLink');
+    var exportLinkEl = document.getElementById('studentSessionsExportLink');
     var bodyEl = modalEl.querySelector('.modal-body');
 
     modalEl.addEventListener('show.bs.modal', function (event) {
@@ -167,6 +217,8 @@
       var name = btn.dataset.studentName;
       titleEl.textContent = name + ' — Sessions';
       badgeLinkEl.href = btn.dataset.badgeUrl;
+      // No date params: the modal lists every session ever, so its export does too.
+      exportLinkEl.href = '/admin/report/archived/students/' + id + '/export';
       bodyEl.innerHTML = LOADING_HTML;
       fetch('/admin/report/students/' + id + '/sessions')
         .then(function (r) {

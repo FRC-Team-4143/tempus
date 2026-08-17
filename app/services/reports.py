@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -163,6 +163,79 @@ async def weekly_attendance_report(
             "weeks_total": weeks_total,
         })
 
+    return rows
+
+
+async def student_hours_totals(
+    db: AsyncSession,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    *,
+    team_id: Optional[int] = None,
+    subteam_slug: Optional[str] = None,
+    include_archived: bool = False,
+) -> list[dict]:
+    """
+    A flat, one-row-per-student hours total over an arbitrary date range:
+      {"student": Student, "total_hours": float, "session_count": int}
+    sorted by name.
+
+    Deliberately *not* `weekly_attendance_report` with a wide range: that one buckets
+    into week columns and `week_starts_in_range` caps at 26 weeks, so a multi-season
+    span (e.g. a four-year Silver Cord list) would silently truncate. This has no cap
+    because it never materializes weeks.
+
+    Both bounds are optional; omitted means unbounded in that direction. Students with
+    no sessions in range are still returned, at 0.0 — the caller is producing a roster
+    file, and a missing row reads as "not on the team" rather than "no hours".
+    """
+    student_q = (
+        select(Student)
+        .options(selectinload(Student.team))
+        .order_by(Student.name)
+    )
+    if team_id is not None:
+        student_q = student_q.where(Student.team_id == team_id)
+    if subteam_slug is not None:
+        student_q = student_q.where(Student.subteam_slug == subteam_slug)
+    if not include_archived:
+        student_q = student_q.where(Student.is_active.is_(True))
+    students = (await db.execute(student_q)).scalars().all()
+
+    if not students:
+        return []
+
+    # One grouped aggregate for every student at once, rather than a query per row.
+    totals_q = (
+        select(
+            AttendanceSession.student_id,
+            func.sum(AttendanceSession.hours_counted),
+            func.count(AttendanceSession.id),
+        )
+        .where(
+            AttendanceSession.student_id.in_([s.id for s in students]),
+            AttendanceSession.sign_out_time.is_not(None),
+        )
+        .group_by(AttendanceSession.student_id)
+    )
+    if date_from is not None:
+        totals_q = totals_q.where(
+            AttendanceSession.sign_in_time >= local_to_utc(datetime.combine(date_from, datetime.min.time()))
+        )
+    if date_to is not None:
+        totals_q = totals_q.where(
+            AttendanceSession.sign_in_time <= local_to_utc(datetime.combine(date_to, datetime.max.time()))
+        )
+    totals = {row[0]: (row[1] or 0.0, row[2] or 0) for row in (await db.execute(totals_q)).all()}
+
+    rows = []
+    for student in students:
+        hours, count = totals.get(student.id, (0.0, 0))
+        rows.append({
+            "student": student,
+            "total_hours": round(hours, 2),
+            "session_count": count,
+        })
     return rows
 
 
