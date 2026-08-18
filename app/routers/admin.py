@@ -1831,6 +1831,7 @@ async def admin_report(
             "week_starts": week_starts,
             "teams": teams,
             "subteams": await _active_subteams(db),
+            "leaderboard_since": since,
             "filters": {
                 "date_from": d_from,
                 "date_to": d_to,

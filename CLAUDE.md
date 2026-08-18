@@ -136,9 +136,11 @@ includes students who have since left the roster.
 
 Per-member detail CSVs live at `/admin/report/archived/{students,mentors}/{id}/export`,
 parsing `date_from`/`date_to` exactly like their HTML twins so the button is just the page
-URL + `/export` + the same query string. They're linked only from single-member surfaces
-(the detail pages, and the report modal's header link, which is all-time); the member
-search page deliberately has no export.
+URL + `/export` + the same query string. They're linked only from single-member surfaces:
+the detail pages (all-time by default, following the page's own date filter) and the
+report modal's header link, which instead defaults `date_from` to `leaderboard_since` (the
+season window) when a cutoff is configured — a template-side default on that one link, not
+a change to the export route itself. The member search page deliberately has no export.
 
 ### Database Migrations
 No Alembic. Add a `def _migration_name(conn)` function to `database.py` and call it from `init_db()`. Pattern: check if column/table exists, then apply the change. SQLite 3.35+ `DROP COLUMN` is supported.
