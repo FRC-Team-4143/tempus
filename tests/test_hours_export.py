@@ -1,8 +1,8 @@
-"""Tests for the CSV exports added for outside programs (e.g. Silver Cords, which wants
-a list of everyone at 200+ hours):
+"""Tests for the report page's CSV exports:
 
-  * /admin/report/export?mode=totals — a flat one-row-per-student totals file over an
-    arbitrary range, with no 26-week cap.
+  * /admin/report/export — a single combined file: one row per session, grouped by
+    student, with a TOTAL subtotal row after each student's sessions. No 26-week cap,
+    honors an optional date range (blank = all-time) and `archived=1`.
   * /admin/report/archived/{students,mentors}/{id}/export — one member's raw session
     history, honoring the detail page's own date range.
 """
@@ -34,45 +34,51 @@ def _rows(resp):
     return parsed[0], parsed[1:]
 
 
-def _row_for(rows, name):
-    return next(r for r in rows if r[0] == name)
+def _total_row_for(rows, name):
+    return next(r for r in rows if r[0] == name and r[6] == "TOTAL")
 
 
-# ── Totals export ──────────────────────────────────────────────────────────────
+def _session_rows_for(rows, name):
+    return [r for r in rows if r[0] == name and r[6] != "TOTAL"]
 
-async def test_totals_export_one_row_per_student(authed_client, db, make_student):
+
+# ── Combined report export ───────────────────────────────────────────────────────
+
+async def test_export_lists_sessions_and_a_total_row_per_student(authed_client, db, make_student):
     ada = await make_student(name="Ada Lovelace", code="ada00001")
     grace = await make_student(name="Grace Hopper", code="gh000001")
     await _add_session(db, ada.id, days_ago=3, hours=4.0)
     await _add_session(db, ada.id, days_ago=2, hours=2.5)
     await _add_session(db, grace.id, days_ago=1, hours=1.0)
 
-    resp = await authed_client.get("/admin/report/export?mode=totals")
+    resp = await authed_client.get("/admin/report/export")
     assert resp.status_code == 200
     assert "text/csv" in resp.headers["content-type"]
 
     header, rows = _rows(resp)
     assert header == [
-        "Name", "Member Code", "Team", "Subteam", "Status",
-        "Total Hours", "Sessions", "Range Start", "Range End",
+        "Student", "Member Code", "Team", "Subteam",
+        "Sign In", "Sign Out", "Status", "Hours Counted", "Sessions",
     ]
-    assert len(rows) == 2
-    assert _row_for(rows, "Ada Lovelace")[5] == "6.50"
-    assert _row_for(rows, "Ada Lovelace")[6] == "2"
-    assert _row_for(rows, "Grace Hopper")[5] == "1.00"
+    assert len(_session_rows_for(rows, "Ada Lovelace")) == 2
+    assert _total_row_for(rows, "Ada Lovelace")[7] == "6.50"
+    assert _total_row_for(rows, "Ada Lovelace")[8] == "2"
+    assert len(_session_rows_for(rows, "Grace Hopper")) == 1
+    assert _total_row_for(rows, "Grace Hopper")[7] == "1.00"
 
 
-async def test_totals_export_includes_students_with_no_hours(authed_client, make_student):
+async def test_export_includes_students_with_no_hours(authed_client, make_student):
     """A roster file needs the zero rows too — a missing line reads as "not on the
-    team", not "no hours"."""
+    team", not "no hours". A student with no sessions still gets a TOTAL row."""
     await make_student(name="Ada Lovelace", code="ada00001")
 
-    resp = await authed_client.get("/admin/report/export?mode=totals")
+    resp = await authed_client.get("/admin/report/export")
     _, rows = _rows(resp)
-    assert _row_for(rows, "Ada Lovelace")[5] == "0.00"
+    assert _session_rows_for(rows, "Ada Lovelace") == []
+    assert _total_row_for(rows, "Ada Lovelace")[7] == "0.00"
 
 
-async def test_totals_export_honors_date_range(authed_client, db, make_student):
+async def test_export_honors_date_range(authed_client, db, make_student):
     ada = await make_student(name="Ada Lovelace", code="ada00001")
     await _add_session(db, ada.id, days_ago=400, hours=9.0)   # outside
     await _add_session(db, ada.id, days_ago=5, hours=2.0)     # inside
@@ -80,19 +86,17 @@ async def test_totals_export_honors_date_range(authed_client, db, make_student):
     d_from = (datetime.utcnow() - timedelta(days=10)).date().isoformat()
     d_to = (datetime.utcnow() + timedelta(days=1)).date().isoformat()
     resp = await authed_client.get(
-        f"/admin/report/export?mode=totals&date_from={d_from}&date_to={d_to}"
+        f"/admin/report/export?date_from={d_from}&date_to={d_to}"
     )
     _, rows = _rows(resp)
-    row = _row_for(rows, "Ada Lovelace")
-    assert row[5] == "2.00"
-    assert row[7] == d_from
-    assert row[8] == d_to
+    assert len(_session_rows_for(rows, "Ada Lovelace")) == 1
+    assert _total_row_for(rows, "Ada Lovelace")[7] == "2.00"
 
 
-async def test_totals_export_spans_more_than_26_weeks(authed_client, db, make_student):
-    """The whole reason totals mode exists: the weekly grid's `week_starts_in_range`
-    caps at 26 weeks, so a multi-season request silently loses everything older. Totals
-    mode has no cap."""
+async def test_export_spans_more_than_26_weeks(authed_client, db, make_student):
+    """Unlike the on-screen weekly grid (`week_starts_in_range`, capped at 26 weeks),
+    the export never materializes week columns, so a multi-season range exports in
+    full instead of silently truncating."""
     ada = await make_student(name="Ada Lovelace", code="ada00001")
     await _add_session(db, ada.id, days_ago=700, hours=120.0)
     await _add_session(db, ada.id, days_ago=2, hours=80.0)
@@ -100,75 +104,52 @@ async def test_totals_export_spans_more_than_26_weeks(authed_client, db, make_st
     d_from = (datetime.utcnow() - timedelta(days=1000)).date().isoformat()
     d_to = (datetime.utcnow() + timedelta(days=1)).date().isoformat()
 
-    totals = await authed_client.get(
-        f"/admin/report/export?mode=totals&date_from={d_from}&date_to={d_to}"
-    )
-    _, rows = _rows(totals)
-    assert _row_for(rows, "Ada Lovelace")[5] == "200.00"
-
-    # The same range through the weekly grid is worse than merely truncated:
-    # `week_starts_in_range` keeps the *first* 26 Mondays from date_from, so a
-    # multi-year ask returns a window from three years ago and reports 0.00 for a
-    # student who has 200 hours. That's what totals mode exists to avoid.
-    grid = await authed_client.get(
+    resp = await authed_client.get(
         f"/admin/report/export?date_from={d_from}&date_to={d_to}"
     )
-    grid_header, grid_rows = _rows(grid)
-    assert len(grid_header) == 3 + 26 + 2  # 3 leading + the 26-week cap + 2 trailing
-    assert _row_for(grid_rows, "Ada Lovelace")[-2] == "0.00"
+    _, rows = _rows(resp)
+    assert len(_session_rows_for(rows, "Ada Lovelace")) == 2
+    assert _total_row_for(rows, "Ada Lovelace")[7] == "200.00"
 
 
-async def test_totals_export_archived_flag(authed_client, db, make_student):
-    """A four-year cords window reaches students who have since been archived, so
+async def test_export_archived_flag(authed_client, db, make_student):
+    """A multi-season window reaches students who have since been archived, so
     they're opt-in rather than absent."""
     grad = await make_student(name="Old Grad", code="grad0001", is_active=False)
     await _add_session(db, grad.id, days_ago=500, hours=210.0)
 
-    default = await authed_client.get("/admin/report/export?mode=totals")
+    default = await authed_client.get("/admin/report/export")
     _, rows = _rows(default)
     assert not any(r[0] == "Old Grad" for r in rows)
 
-    with_archived = await authed_client.get("/admin/report/export?mode=totals&archived=1")
+    with_archived = await authed_client.get("/admin/report/export?archived=1")
     _, rows = _rows(with_archived)
-    row = _row_for(rows, "Old Grad")
-    assert row[4] == "archived"
-    assert row[5] == "210.00"
+    assert _total_row_for(rows, "Old Grad")[7] == "210.00"
 
 
-async def test_totals_export_filters_by_team_and_subteam(authed_client, db, make_student, team):
+async def test_export_filters_by_team_and_subteam(authed_client, db, make_student, team):
     ada = await make_student(name="Ada Lovelace", code="ada00001", subteam_slug="software")
     await make_student(name="Bob Mech", code="bob00001", subteam_slug="mechanical")
     await _add_session(db, ada.id, days_ago=1, hours=3.0)
 
     resp = await authed_client.get(
-        f"/admin/report/export?mode=totals&team_id={team.id}&category=software"
+        f"/admin/report/export?team_id={team.id}&category=software"
     )
     _, rows = _rows(resp)
-    assert [r[0] for r in rows] == ["Ada Lovelace"]
+    assert {r[0] for r in rows} == {"Ada Lovelace"}
     assert rows[0][3] == "software"
 
 
-async def test_default_export_is_still_the_weekly_grid(authed_client, make_student):
-    """Totals mode is additive — the existing button and its filename must not shift."""
+async def test_export_filename_reflects_range(authed_client, make_student):
     await make_student(name="Ada Lovelace", code="ada00001")
 
-    resp = await authed_client.get("/admin/report/export")
-    assert resp.status_code == 200
-    header, _ = _rows(resp)
-    assert header[:3] == ["Student", "Team", "Subteam"]
-    assert "weekly_report_" in resp.headers["content-disposition"]
-
-
-async def test_totals_export_filename_reflects_range(authed_client, make_student):
-    await make_student(name="Ada Lovelace", code="ada00001")
-
-    all_time = await authed_client.get("/admin/report/export?mode=totals")
-    assert "tempus_hour_totals_all-time.csv" in all_time.headers["content-disposition"]
+    all_time = await authed_client.get("/admin/report/export")
+    assert "tempus_report_all-time.csv" in all_time.headers["content-disposition"]
 
     ranged = await authed_client.get(
-        "/admin/report/export?mode=totals&date_from=2022-08-01&date_to=2026-06-01"
+        "/admin/report/export?date_from=2022-08-01&date_to=2026-06-01"
     )
-    assert "tempus_hour_totals_2022-08-01_2026-06-01.csv" in ranged.headers["content-disposition"]
+    assert "tempus_report_2022-08-01_2026-06-01.csv" in ranged.headers["content-disposition"]
 
 
 # ── Per-member detail export ───────────────────────────────────────────────────
@@ -264,12 +245,13 @@ async def test_detail_export_button_carries_the_pages_date_range(authed_client, 
     )
 
 
-async def test_report_page_offers_the_totals_export(authed_client, make_student):
+async def test_report_page_offers_the_export_modal(authed_client, make_student):
     await make_student(name="Ada Lovelace", code="ada00001")
 
     resp = await authed_client.get("/admin/report")
-    assert "Export hour totals" in resp.text
-    assert 'name="mode" value="totals"' in resp.text
+    assert 'id="exportReportModal"' in resp.text
+    assert 'data-bs-target="#exportReportModal"' in resp.text
+    assert 'name="archived"' in resp.text
 
 
 async def test_manager_can_reach_the_new_exports(client, make_student):
@@ -281,8 +263,8 @@ async def test_manager_can_reach_the_new_exports(client, make_student):
     student = await make_student(name="Ada Lovelace", code="ada00001")
     client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-manager"]))
 
-    totals = await client.get("/admin/report/export?mode=totals", follow_redirects=False)
-    assert totals.status_code == 200
+    export = await client.get("/admin/report/export", follow_redirects=False)
+    assert export.status_code == 200
 
     detail = await client.get(
         f"/admin/report/archived/students/{student.id}/export", follow_redirects=False

@@ -125,15 +125,14 @@ week through the current week (falling back to a rolling 4-week window when no
 cutoff is set) — used by `/admin/report`, `/admin/report/export`, and `/me`.
 
 ### CSV exports
-`/admin/report/export` has two shapes. Default is the **weekly grid** mirroring the
-on-screen table — bounded by `week_starts_in_range`, which caps at **26 weeks** and keeps
-the *first* 26 Mondays from `date_from`, so a multi-year request silently returns a window
-from years ago rather than an obviously-truncated one. `?mode=totals` is the flat
-**one-row-per-student** file (`reports.student_hours_totals`) over an arbitrary range with
-no cap, for handing to an outside program (e.g. Silver Cords at 200+ hours); it takes
-`archived=1`, since a multi-season span reaches students who have since left the roster.
-Reach for totals mode whenever the ask is "hours per person between two dates" — never
-widen the grid's cap.
+`/admin/report/export`, opened via the report page's **Export CSV** button (a modal for
+picking a date range — blank means all-time — and an "include archived students"
+checkbox), is a single combined shape: one row per session, grouped by student, with a
+`TOTAL` subtotal row after each student's sessions (`reports.student_session_export_rows`).
+It has no 26-week cap — unlike the on-screen weekly grid (which still uses
+`week_starts_in_range`, capped at **26 weeks**, for its own HTML view only), the export
+never materializes week columns, so a multi-year range exports in full. `archived=1`
+includes students who have since left the roster.
 
 Per-member detail CSVs live at `/admin/report/archived/{students,mentors}/{id}/export`,
 parsing `date_from`/`date_to` exactly like their HTML twins so the button is just the page
