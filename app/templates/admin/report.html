@@ -179,13 +179,15 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="studentSessionsModalLabel">Sessions</h5>
-        <a href="#" id="studentSessionsExportLink" class="btn btn-sm btn-outline-primary ms-auto me-2">
-          <i class="bi bi-download me-1"></i>Export CSV
-        </a>
-        <a href="#" id="studentSessionsBadgeLink" target="_blank" class="btn btn-sm btn-outline-info me-2">
-          <i class="bi bi-qr-code me-1"></i>QR Badge
-        </a>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div class="d-flex align-items-center gap-2">
+          <a href="#" id="studentSessionsExportLink" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-download me-1"></i>Export CSV
+          </a>
+          <a href="#" id="studentSessionsBadgeLink" target="_blank" class="btn btn-sm btn-outline-info">
+            <i class="bi bi-qr-code me-1"></i>QR Badge
+          </a>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
       </div>
       <div class="modal-body">
         <div class="text-muted text-center py-4"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>
@@ -202,6 +204,7 @@
     var badgeLinkEl = document.getElementById('studentSessionsBadgeLink');
     var exportLinkEl = document.getElementById('studentSessionsExportLink');
     var bodyEl = modalEl.querySelector('.modal-body');
+    var seasonStart = {{ (leaderboard_since.isoformat() | tojson) if leaderboard_since else 'null' }};
 
     modalEl.addEventListener('show.bs.modal', function (event) {
       var btn = event.relatedTarget;
@@ -209,8 +212,10 @@
       var name = btn.dataset.studentName;
       titleEl.textContent = name + ' — Sessions';
       badgeLinkEl.href = btn.dataset.badgeUrl;
-      // No date params: the modal lists every session ever, so its export does too.
-      exportLinkEl.href = '/admin/report/archived/students/' + id + '/export';
+      // Scoped to the season window (leaderboard_since) when a cutoff is configured,
+      // unlike the full detail page's own export which defaults to all-time.
+      exportLinkEl.href = '/admin/report/archived/students/' + id + '/export'
+        + (seasonStart ? ('?date_from=' + seasonStart) : '');
       bodyEl.innerHTML = LOADING_HTML;
       fetch('/admin/report/students/' + id + '/sessions')
         .then(function (r) {
