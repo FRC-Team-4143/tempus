@@ -367,10 +367,22 @@ async def admin_roster(request: Request, db: AsyncSession = Depends(get_db)):
 
     subteams = await _active_subteams(db)
 
+    # One combined table (students + mentors) — Role is now just another Excel-style
+    # column filter, replacing the old Students/Mentors tabs.
+    members = [
+        {"role": "Student", "person": s, "name": s.name, "team": s.team, "subteam_slug": s.subteam_slug, "lead_groups": None}
+        for s in students
+    ] + [
+        {"role": "Mentor", "person": m, "name": m.name, "team": m.team, "subteam_slug": m.subteam_slug, "lead_groups": m.lead_groups}
+        for m in mentors
+    ]
+    members.sort(key=lambda r: r["name"].lower())
+
     return templates.TemplateResponse(
         "admin/roster.html",
         {
             "request": request,
+            "members": members,
             "students": students,
             "mentors": mentors,
             "last_synced": last_synced,
