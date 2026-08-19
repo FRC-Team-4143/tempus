@@ -41,7 +41,7 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h2>{{ "All" if mode == 'all' else ("Mentor" if is_mentor else "Student") }} Sessions</h2>
+  <h2>Sessions</h2>
   <div class="d-flex gap-2">
     <button type="button" id="refresh-btn" class="btn btn-outline-secondary btn-sm" onclick="location.reload()">
       <i class="bi bi-arrow-clockwise me-1"></i> Refresh
@@ -49,25 +49,15 @@
     <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#new-session-modal">
       <i class="bi bi-plus-lg me-1"></i> New Session
     </button>
-    {% if mode != 'all' and not is_mentor %}
     <a href="/admin/sessions/export?{% if filters.date_from %}date_from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}date_to={{ filters.date_to }}{% endif %}"
        class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-download me-1"></i> Export CSV
     </a>
-    {% endif %}
   </div>
 </div>
 
-<!-- Person type toggle -->
-<ul class="nav nav-pills mb-3 gap-2">
-  <li class="nav-item"><a class="btn btn-sm {% if mode == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/sessions?person_type=all">All</a></li>
-  <li class="nav-item"><a class="btn btn-sm {% if mode == 'student' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/sessions?person_type=student">Students</a></li>
-  <li class="nav-item"><a class="btn btn-sm {% if mode == 'mentor' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/sessions?person_type=mentor">Mentors</a></li>
-</ul>
-
 <!-- Filters -->
 <form method="get" class="row g-2 mb-3 align-items-end">
-  <input type="hidden" name="person_type" value="{{ mode }}">
   <div class="col-auto">
     <label class="form-label small mb-1">From</label>
     <input type="date" name="date_from" class="form-control form-control-sm"
@@ -81,7 +71,7 @@
   <div class="col-auto">
     <label class="form-label small mb-1 d-block">&nbsp;</label>
     <button type="submit" class="btn btn-sm btn-primary">Filter</button>
-    <a href="/admin/sessions?person_type={{ mode }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+    <a href="/admin/sessions" class="btn btn-sm btn-outline-secondary">Clear</a>
   </div>
 </form>
 
@@ -95,7 +85,6 @@
           <span class="th-inner d-inline-flex align-items-center"><span class="th-label">{{ label }}</span></span>
         </th>
         {% endmacro %}
-        {% if mode == 'all' %}
         <tr>
           {{ fs_th('Person', 'person', sortable=true) }}
           {{ fs_th('Type', 'type') }}
@@ -107,32 +96,9 @@
           {{ fs_th('Hours', 'hours', sortable=true, sort_type='num', filterable=false) }}
           <th></th>
         </tr>
-        {% elif is_mentor %}
-        <tr>
-          {{ fs_th('Mentor', 'person', sortable=true) }}
-          {{ fs_th('Team', 'team', sortable=true, sort_type='num') }}
-          {{ fs_th('Subteam', 'subteam', sortable=true) }}
-          {{ fs_th('Sign In', 'signin', sortable=true, filterable=false) }}
-          {{ fs_th('Sign Out', 'signout', sortable=true, filterable=false) }}
-          {{ fs_th('Hours', 'hours', sortable=true, sort_type='num', filterable=false) }}
-          <th></th>
-        </tr>
-        {% else %}
-        <tr>
-          {{ fs_th('Student', 'person', sortable=true) }}
-          {{ fs_th('Team', 'team', sortable=true, sort_type='num') }}
-          {{ fs_th('Subteam', 'subteam', sortable=true) }}
-          {{ fs_th('Sign In', 'signin', sortable=true, filterable=false) }}
-          {{ fs_th('Sign Out', 'signout', sortable=true, filterable=false) }}
-          {{ fs_th('Status', 'status') }}
-          {{ fs_th('Hours', 'hours', sortable=true, sort_type='num', filterable=false) }}
-          <th></th>
-        </tr>
-        {% endif %}
       </thead>
       <tbody>
         {% for s in sessions %}
-        {% if mode == 'all' %}
         {% set person = s.student if s.session_type == 'student' else s.mentor %}
         <tr>
           <td data-value="{{ person.name }}">{{ person.name }}</td>
@@ -171,74 +137,6 @@
             </form>
           </td>
         </tr>
-        {% elif is_mentor %}
-        <tr>
-          <td data-value="{{ s.mentor.name }}">{{ s.mentor.name }}</td>
-          <td data-value="{{ s.mentor.team.number if s.mentor.team else '' }}">{{ s.mentor.team.number if s.mentor.team else '—' }}</td>
-          <td data-value="{{ s.mentor.subteam_slug or '' }}" data-label="{{ subteam_labels.get(s.mentor.subteam_slug, s.mentor.subteam_slug) if s.mentor.subteam_slug else '' }}">{{ subteam_labels.get(s.mentor.subteam_slug, s.mentor.subteam_slug) if s.mentor.subteam_slug else '—' }}</td>
-          <td data-value="{{ s.sign_in_time.isoformat() }}">{{ s.sign_in_time | localdt('%m/%d %I:%M %p') }}</td>
-          <td data-value="{{ s.sign_out_time.isoformat() if s.sign_out_time else '' }}">
-            {% if s.sign_out_time %}
-              {{ s.sign_out_time | localdt('%I:%M %p') }}
-              {% if s.auto_closed %}
-              <i class="bi bi-robot text-muted ms-1"
-                 title="Automated or mentor-forced sign-out — not a self-checkout"></i>
-              {% endif %}
-            {% else %}
-              <span class="badge bg-warning text-dark">Open</span>
-            {% endif %}
-          </td>
-          <td data-value="{{ s.hours_counted or 0 }}">{{ '%.2f'|format(s.hours_counted) if s.hours_counted is not none else '—' }}</td>
-          <td>
-            {% if not s.sign_out_time %}
-            <button type="button" class="btn btn-sm btn-warning me-1"
-                    data-bs-toggle="modal" data-bs-target="#mentor-signout-modal-{{ s.id }}">Sign Out</button>
-            {% endif %}
-            <a href="/admin/mentor-sessions/{{ s.id }}/edit" class="btn btn-sm btn-outline-secondary me-1">Edit</a>
-            <form method="post" action="/admin/mentor-sessions/{{ s.id }}/delete?{{ request.query_params }}" class="d-inline"
-                  onsubmit="return confirm('Delete this session record?')">
-              <button class="btn btn-sm btn-outline-danger">Del</button>
-            </form>
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td data-value="{{ s.student.name }}">{{ s.student.name }}</td>
-          <td data-value="{{ s.student.team.number if s.student.team else '' }}">{{ s.student.team.number }}</td>
-          <td data-value="{{ s.student.subteam_slug or '' }}" data-label="{{ subteam_labels.get(s.student.subteam_slug, s.student.subteam_slug) if s.student.subteam_slug else '' }}">{{ subteam_labels.get(s.student.subteam_slug, s.student.subteam_slug) if s.student.subteam_slug else '—' }}</td>
-          <td data-value="{{ s.sign_in_time.isoformat() }}">{{ s.sign_in_time | localdt('%m/%d %I:%M %p') }}</td>
-          <td data-value="{{ s.sign_out_time.isoformat() if s.sign_out_time else '' }}">
-            {% if s.sign_out_time %}
-              {{ s.sign_out_time | localdt('%I:%M %p') }}
-              {% if s.auto_closed %}
-              <i class="bi bi-robot text-muted ms-1"
-                 title="Automated or mentor-forced sign-out — not a self-checkout"></i>
-              {% endif %}
-            {% else %}
-              <span class="badge bg-warning text-dark">Open</span>
-            {% endif %}
-          </td>
-          <td data-value="{{ s.status.value if s.status else '' }}" data-label="{{ s.status.value | capitalize if s.status else '' }}">
-            {% if s.status %}
-              {% if s.status.value == 'contributor' %}<span class="badge bg-success">Contributor</span>
-              {% elif s.status.value == 'present' %}<span class="badge bg-warning text-dark">Present</span>
-              {% elif s.status.value == 'distraction' %}<span class="badge bg-danger">Distraction</span>{% endif %}
-            {% else %}—{% endif %}
-          </td>
-          <td data-value="{{ s.hours_counted or 0 }}">{{ '%.2f'|format(s.hours_counted) if s.hours_counted is not none else '—' }}</td>
-          <td>
-            {% if not s.sign_out_time %}
-            <button type="button" class="btn btn-sm btn-warning me-1"
-                    data-bs-toggle="modal" data-bs-target="#signout-modal-{{ s.id }}">Sign Out</button>
-            {% endif %}
-            <a href="/admin/sessions/{{ s.id }}/edit" class="btn btn-sm btn-outline-secondary me-1">Edit</a>
-            <form method="post" action="/admin/sessions/{{ s.id }}/delete?{{ request.query_params }}" class="d-inline"
-                  onsubmit="return confirm('Delete this session record?')">
-              <button class="btn btn-sm btn-outline-danger">Del</button>
-            </form>
-          </td>
-        </tr>
-        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -259,9 +157,8 @@
   </ul>
 </nav>
 
-{% if mode in ('mentor', 'all') %}
-  {% for s in sessions %}
-    {% if not s.sign_out_time and (s.session_type is not defined or s.session_type == 'mentor') %}
+{% for s in sessions %}
+    {% if not s.sign_out_time and s.session_type == 'mentor' %}
     <div class="modal fade" id="mentor-signout-modal-{{ s.id }}" tabindex="-1">
       <div class="modal-dialog modal-sm">
         <div class="modal-content">
@@ -282,12 +179,10 @@
       </div>
     </div>
     {% endif %}
-  {% endfor %}
-{% endif %}
+{% endfor %}
 
-{% if mode in ('student', 'all') %}
-  {% for s in sessions %}
-    {% if not s.sign_out_time and (s.session_type is not defined or s.session_type == 'student') %}
+{% for s in sessions %}
+    {% if not s.sign_out_time and s.session_type == 'student' %}
     <div class="modal fade" id="signout-modal-{{ s.id }}" tabindex="-1">
       <div class="modal-dialog modal-sm">
         <div class="modal-content">
@@ -314,8 +209,7 @@
       </div>
     </div>
     {% endif %}
-  {% endfor %}
-{% endif %}
+{% endfor %}
 
 <div class="modal fade" id="new-session-modal" tabindex="-1">
   <div class="modal-dialog">

@@ -623,7 +623,6 @@ async def admin_sessions_list(
     request: Request,
     db: AsyncSession = Depends(get_db),
     page: int = 1,
-    person_type: Optional[str] = "all",
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
 ):
@@ -631,14 +630,10 @@ async def admin_sessions_list(
     column filters, see static/js/table-filter-sort.js) — only the date range is
     a real server-side query param, since it's what bounds the (paginated) result
     set. Team/Subteam/Person used to be reload-based <select> filters too; removed
-    once their columns got funnel filters of their own."""
+    once their columns got funnel filters of their own. This page always shows the
+    combined student+mentor table — the old per-person-type views were retired."""
     if redirect := _require_auth(request):
         return redirect
-
-    mode = (person_type or "all").strip().lower()
-    if mode not in ("student", "mentor", "all"):
-        mode = "all"
-    is_mentor = mode == "mentor"
 
     try:
         d_from = date.fromisoformat(date_from.strip()) if date_from and date_from.strip() else None
@@ -683,46 +678,25 @@ async def admin_sessions_list(
             )
         return q
 
-    roster_students, roster_mentors = [], []
-
-    if mode == "mentor":
-        query = _mentor_query()
-        total_result = await db.execute(select(func.count()).select_from(query.subquery()))
-        total = total_result.scalar() or 0
-        sessions_result = await db.execute(query.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE))
-        sessions = sessions_result.scalars().all()
-        roster_mentors = (
-            await db.execute(select(Mentor).where(Mentor.is_active.is_(True)).order_by(Mentor.name))
-        ).scalars().all()
-    elif mode == "student":
-        query = _student_query()
-        total_result = await db.execute(select(func.count()).select_from(query.subquery()))
-        total = total_result.scalar() or 0
-        sessions_result = await db.execute(query.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE))
-        sessions = sessions_result.scalars().all()
-        roster_students = (
-            await db.execute(select(Student).where(Student.is_active.is_(True)).order_by(Student.name))
-        ).scalars().all()
-    else:
-        # "all" merges two separate tables — no single SQL query spans both, so pull
-        # every filtered row from each (small-team scale) and merge-sort in Python.
-        student_sessions = (await db.execute(_student_query())).scalars().all()
-        mentor_sessions = (await db.execute(_mentor_query())).scalars().all()
-        for s in student_sessions:
-            s.session_type = "student"
-        for m in mentor_sessions:
-            m.session_type = "mentor"
-        combined = sorted(
-            [*student_sessions, *mentor_sessions], key=lambda s: s.sign_in_time, reverse=True
-        )
-        total = len(combined)
-        sessions = combined[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
-        roster_students = (
-            await db.execute(select(Student).where(Student.is_active.is_(True)).order_by(Student.name))
-        ).scalars().all()
-        roster_mentors = (
-            await db.execute(select(Mentor).where(Mentor.is_active.is_(True)).order_by(Mentor.name))
-        ).scalars().all()
+    # Combines two separate tables — no single SQL query spans both, so pull every
+    # filtered row from each (small-team scale) and merge-sort in Python.
+    student_sessions = (await db.execute(_student_query())).scalars().all()
+    mentor_sessions = (await db.execute(_mentor_query())).scalars().all()
+    for s in student_sessions:
+        s.session_type = "student"
+    for m in mentor_sessions:
+        m.session_type = "mentor"
+    combined = sorted(
+        [*student_sessions, *mentor_sessions], key=lambda s: s.sign_in_time, reverse=True
+    )
+    total = len(combined)
+    sessions = combined[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
+    roster_students = (
+        await db.execute(select(Student).where(Student.is_active.is_(True)).order_by(Student.name))
+    ).scalars().all()
+    roster_mentors = (
+        await db.execute(select(Mentor).where(Mentor.is_active.is_(True)).order_by(Mentor.name))
+    ).scalars().all()
 
     subteams = await _active_subteams(db)
 
@@ -737,8 +711,6 @@ async def admin_sessions_list(
         {
             "request": request,
             "sessions": sessions,
-            "mode": mode,
-            "is_mentor": is_mentor,
             "page": page,
             "total": total,
             "page_size": PAGE_SIZE,
@@ -750,7 +722,6 @@ async def admin_sessions_list(
             "statuses": list(SessionStatus),
             "today": today_local().isoformat(),
             "filters": {
-                "person_type": mode,
                 "date_from": d_from,
                 "date_to": d_to,
             },
@@ -943,7 +914,7 @@ async def admin_sessions_edit_form(
     )
     session = result.scalar_one_or_none()
     if not session:
-        return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
+        return RedirectResponse("/admin/sessions", status_code=303)
 
     return templates.TemplateResponse(
         "admin/session_edit.html",
@@ -971,7 +942,7 @@ async def admin_sessions_edit(
     )
     session = result.scalar_one_or_none()
     if not session:
-        return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
+        return RedirectResponse("/admin/sessions", status_code=303)
 
     before = {
         "sign_in_time": str(session.sign_in_time),
@@ -1010,7 +981,7 @@ async def admin_sessions_edit(
         detail={"before": before, "after": after},
     )
     await db.commit()
-    return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
+    return RedirectResponse("/admin/sessions", status_code=303)
 
 
 @router.post("/sessions/{session_id}/delete")
@@ -1024,7 +995,7 @@ async def admin_sessions_delete(
     # so deleting a row returns to whatever view — including an unfiltered "All" —
     # the admin was actually looking at, instead of snapping back to defaults.
     qs = request.url.query
-    redirect_url = f"/admin/sessions?{qs}" if qs else "/admin/sessions?person_type=student"
+    redirect_url = f"/admin/sessions?{qs}" if qs else "/admin/sessions"
 
     result = await db.execute(
         select(AttendanceSession)
@@ -1064,7 +1035,7 @@ async def admin_sessions_force_signout(
     )
     att = result.scalar_one_or_none()
     if not att or att.sign_out_time is not None:
-        return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
+        return RedirectResponse("/admin/sessions", status_code=303)
 
     from app.services.attendance import sign_out
     await sign_out(db, session_id, SessionStatus.contributor, auto_closed=True)
@@ -1089,7 +1060,7 @@ async def admin_sessions_force_signout(
         except Exception as e:
             log.error("Force sign-out meme failed for %s: %s", first_name, e)
 
-    return RedirectResponse("/admin/sessions?person_type=student", status_code=303)
+    return RedirectResponse("/admin/sessions", status_code=303)
 
 
 @router.post("/mentor-sessions/{session_id}/force-signout")
@@ -1104,12 +1075,12 @@ async def admin_mentor_sessions_force_signout(
     from app.services.attendance import mentor_sign_out
     session = await mentor_sign_out(db, session_id, auto_closed=True)
     if session is None:
-        return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+        return RedirectResponse("/admin/sessions", status_code=303)
 
     from app.services.broadcaster import broadcaster
     await broadcaster.broadcast("mentor_update")
 
-    return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+    return RedirectResponse("/admin/sessions", status_code=303)
 
 
 @router.get("/mentor-sessions/{session_id}/edit")
@@ -1126,7 +1097,7 @@ async def admin_mentor_sessions_edit_form(
     )
     session = result.scalar_one_or_none()
     if not session:
-        return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+        return RedirectResponse("/admin/sessions", status_code=303)
 
     return templates.TemplateResponse(
         "admin/session_edit.html",
@@ -1152,7 +1123,7 @@ async def admin_mentor_sessions_edit(
     )
     session = result.scalar_one_or_none()
     if not session:
-        return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+        return RedirectResponse("/admin/sessions", status_code=303)
 
     before = {
         "sign_in_time": str(session.sign_in_time),
@@ -1185,7 +1156,7 @@ async def admin_mentor_sessions_edit(
         detail={"before": before, "after": after},
     )
     await db.commit()
-    return RedirectResponse("/admin/sessions?person_type=mentor", status_code=303)
+    return RedirectResponse("/admin/sessions", status_code=303)
 
 
 @router.post("/mentor-sessions/{session_id}/delete")
@@ -1198,7 +1169,7 @@ async def admin_mentor_sessions_delete(
     # See admin_sessions_delete — same filter-preserving redirect, mirrored here
     # for the mentor board.
     qs = request.url.query
-    redirect_url = f"/admin/sessions?{qs}" if qs else "/admin/sessions?person_type=mentor"
+    redirect_url = f"/admin/sessions?{qs}" if qs else "/admin/sessions"
 
     result = await db.execute(
         select(MentorSession)
