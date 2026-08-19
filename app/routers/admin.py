@@ -11,7 +11,7 @@ import re
 import tempfile
 from datetime import date, datetime, timedelta
 from typing import Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 log = logging.getLogger(__name__)
 
@@ -761,6 +761,13 @@ async def admin_sessions_list(
 
     teams_result = await db.execute(select(Team).order_by(Team.number))
     teams = teams_result.scalars().all()
+    subteams = await _active_subteams(db)
+
+    # Preserves every filter param except `page` for the pagination Prev/Next links,
+    # so paging forward/back doesn't silently drop the active filters (see the
+    # row-action delete forms below, which already round-trip request.query_params
+    # the same way).
+    pagination_qs = urlencode({k: v for k, v in request.query_params.items() if k != "page"})
 
     return templates.TemplateResponse(
         "admin/sessions.html",
@@ -773,10 +780,12 @@ async def admin_sessions_list(
             "total": total,
             "page_size": PAGE_SIZE,
             "total_pages": max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE),
+            "pagination_qs": pagination_qs,
             "roster_students": roster_students,
             "roster_mentors": roster_mentors,
             "teams": teams,
-            "subteams": await _active_subteams(db),
+            "subteams": subteams,
+            "subteam_labels": {s.slug: s.label for s in subteams},
             "statuses": list(SessionStatus),
             "today": today_local().isoformat(),
             "filters": {
