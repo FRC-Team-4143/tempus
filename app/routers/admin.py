@@ -624,12 +624,14 @@ async def admin_sessions_list(
     db: AsyncSession = Depends(get_db),
     page: int = 1,
     person_type: Optional[str] = "all",
-    student_id: Optional[str] = None,
-    team_id: Optional[str] = None,
-    category: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
 ):
+    """Team/Subteam/Person filtering on this page is client-side (Excel-style
+    column filters, see static/js/table-filter-sort.js) — only the date range is
+    a real server-side query param, since it's what bounds the (paginated) result
+    set. Team/Subteam/Person used to be reload-based <select> filters too; removed
+    once their columns got funnel filters of their own."""
     if redirect := _require_auth(request):
         return redirect
 
@@ -638,20 +640,6 @@ async def admin_sessions_list(
         mode = "all"
     is_mentor = mode == "mentor"
 
-    # Sanitize integer params — empty string from blank form select becomes None.
-    # In "all" mode the person filter is prefixed ("student-<id>" / "mentor-<id>")
-    # to disambiguate the two id spaces; the student/mentor tabs still send a bare int.
-    sel_type, sel_id = _parse_person_selector(student_id)
-
-    if mode == "all":
-        sid = sel_id if sel_type == "student" else None
-        mid = sel_id if sel_type == "mentor" else None
-    else:
-        sid = sel_id if not is_mentor else None
-        mid = sel_id if is_mentor else None
-    tid = int(team_id) if team_id and team_id.strip().isdigit() else None
-    cat_str = category.strip() if category and category.strip() else None
-    cat = cat_str  # subteam slug (free-form, sourced from Legion)
     try:
         d_from = date.fromisoformat(date_from.strip()) if date_from and date_from.strip() else None
     except ValueError:
@@ -669,14 +657,6 @@ async def admin_sessions_list(
             .options(selectinload(MentorSession.mentor).selectinload(Mentor.team))
             .order_by(MentorSession.sign_in_time.desc())
         )
-        if mid:
-            q = q.where(MentorSession.mentor_id == mid)
-        if tid or cat:
-            q = q.join(Mentor)
-            if tid:
-                q = q.where(Mentor.team_id == tid)
-            if cat:
-                q = q.where(Mentor.subteam_slug == cat)
         if d_from:
             q = q.where(
                 MentorSession.sign_in_time >= local_to_utc(datetime.combine(d_from, datetime.min.time()))
@@ -693,14 +673,6 @@ async def admin_sessions_list(
             .options(selectinload(AttendanceSession.student).selectinload(Student.team))
             .order_by(AttendanceSession.sign_in_time.desc())
         )
-        if sid:
-            q = q.where(AttendanceSession.student_id == sid)
-        if tid or cat:
-            q = q.join(Student)
-            if tid:
-                q = q.where(Student.team_id == tid)
-            if cat:
-                q = q.where(Student.subteam_slug == cat)
         if d_from:
             q = q.where(
                 AttendanceSession.sign_in_time >= local_to_utc(datetime.combine(d_from, datetime.min.time()))
@@ -752,15 +724,6 @@ async def admin_sessions_list(
             await db.execute(select(Mentor).where(Mentor.is_active.is_(True)).order_by(Mentor.name))
         ).scalars().all()
 
-    if mode == "all":
-        student_id_display = (
-            f"student-{sid}" if sid else (f"mentor-{mid}" if mid else None)
-        )
-    else:
-        student_id_display = mid if is_mentor else sid
-
-    teams_result = await db.execute(select(Team).order_by(Team.number))
-    teams = teams_result.scalars().all()
     subteams = await _active_subteams(db)
 
     # Preserves every filter param except `page` for the pagination Prev/Next links,
@@ -783,16 +746,11 @@ async def admin_sessions_list(
             "pagination_qs": pagination_qs,
             "roster_students": roster_students,
             "roster_mentors": roster_mentors,
-            "teams": teams,
-            "subteams": subteams,
             "subteam_labels": {s.slug: s.label for s in subteams},
             "statuses": list(SessionStatus),
             "today": today_local().isoformat(),
             "filters": {
                 "person_type": mode,
-                "student_id": student_id_display,
-                "team_id": tid,
-                "category": cat,
                 "date_from": d_from,
                 "date_to": d_to,
             },

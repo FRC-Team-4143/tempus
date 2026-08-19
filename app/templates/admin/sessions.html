@@ -50,7 +50,7 @@
       <i class="bi bi-plus-lg me-1"></i> New Session
     </button>
     {% if mode != 'all' and not is_mentor %}
-    <a href="/admin/sessions/export?{% if filters.student_id %}student_id={{ filters.student_id }}&{% endif %}{% if filters.team_id %}team_id={{ filters.team_id }}&{% endif %}{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.date_from %}date_from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}date_to={{ filters.date_to }}{% endif %}"
+    <a href="/admin/sessions/export?{% if filters.date_from %}date_from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}date_to={{ filters.date_to }}{% endif %}"
        class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-download me-1"></i> Export CSV
     </a>
@@ -68,49 +68,6 @@
 <!-- Filters -->
 <form method="get" class="row g-2 mb-3 align-items-end">
   <input type="hidden" name="person_type" value="{{ mode }}">
-  <div class="col-auto">
-    <label class="form-label small mb-1">{{ "Person" if mode == 'all' else ("Mentor" if is_mentor else "Student") }}</label>
-    {% if mode == 'all' %}
-    <select name="student_id" class="form-select form-select-sm">
-      <option value="">All People</option>
-      <optgroup label="Students">
-        {% for s in roster_students %}
-        <option value="student-{{ s.id }}" {% if filters.student_id == 'student-' ~ s.id %}selected{% endif %}>{{ s.name }}</option>
-        {% endfor %}
-      </optgroup>
-      <optgroup label="Mentors">
-        {% for m in roster_mentors %}
-        <option value="mentor-{{ m.id }}" {% if filters.student_id == 'mentor-' ~ m.id %}selected{% endif %}>{{ m.name }}</option>
-        {% endfor %}
-      </optgroup>
-    </select>
-    {% else %}
-    <select name="student_id" class="form-select form-select-sm">
-      <option value="">All {{ "Mentors" if is_mentor else "Students" }}</option>
-      {% for s in (roster_mentors if is_mentor else roster_students) %}
-      <option value="{{ s.id }}" {% if filters.student_id == s.id %}selected{% endif %}>{{ s.name }}</option>
-      {% endfor %}
-    </select>
-    {% endif %}
-  </div>
-  <div class="col-auto">
-    <label class="form-label small mb-1">Team</label>
-    <select name="team_id" class="form-select form-select-sm">
-      <option value="">All Teams</option>
-      {% for t in teams %}
-      <option value="{{ t.id }}" {% if filters.team_id == t.id %}selected{% endif %}>Team {{ t.number }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="col-auto">
-    <label class="form-label small mb-1">Subteam</label>
-    <select name="category" class="form-select form-select-sm">
-      <option value="">All Subteams</option>
-      {% for s in subteams %}
-      <option value="{{ s.slug }}" {% if filters.category == s.slug %}selected{% endif %}>{{ s.label }}</option>
-      {% endfor %}
-    </select>
-  </div>
   <div class="col-auto">
     <label class="form-label small mb-1">From</label>
     <input type="date" name="date_from" class="form-control form-control-sm"
@@ -140,7 +97,7 @@
         {% endmacro %}
         {% if mode == 'all' %}
         <tr>
-          {{ fs_th('Person', 'person', sortable=true, filterable=false) }}
+          {{ fs_th('Person', 'person', sortable=true) }}
           {{ fs_th('Type', 'type') }}
           {{ fs_th('Team', 'team', sortable=true, sort_type='num') }}
           {{ fs_th('Subteam', 'subteam', sortable=true) }}
@@ -152,7 +109,7 @@
         </tr>
         {% elif is_mentor %}
         <tr>
-          {{ fs_th('Mentor', 'person', sortable=true, filterable=false) }}
+          {{ fs_th('Mentor', 'person', sortable=true) }}
           {{ fs_th('Team', 'team', sortable=true, sort_type='num') }}
           {{ fs_th('Subteam', 'subteam', sortable=true) }}
           {{ fs_th('Sign In', 'signin', sortable=true, filterable=false) }}
@@ -162,7 +119,7 @@
         </tr>
         {% else %}
         <tr>
-          {{ fs_th('Student', 'person', sortable=true, filterable=false) }}
+          {{ fs_th('Student', 'person', sortable=true) }}
           {{ fs_th('Team', 'team', sortable=true, sort_type='num') }}
           {{ fs_th('Subteam', 'subteam', sortable=true) }}
           {{ fs_th('Sign In', 'signin', sortable=true, filterable=false) }}
