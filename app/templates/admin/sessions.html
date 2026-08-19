@@ -2,9 +2,46 @@
 {% set active_page = "sessions" %}
 {% block title %}Sessions — Tempus Admin{% endblock %}
 
+{% block head %}
+<style>
+  .fs-th { white-space: nowrap; }
+  .fs-th .th-inner { gap: .35rem; }
+  .sort-icon { font-size: .75rem; cursor: pointer; }
+  .table-responsive { min-height: 360px; }
+  .filter-funnel-btn {
+    border: none;
+    background: none;
+    padding: 0 .15rem;
+    line-height: 1;
+    min-width: 1em;
+    min-height: 1em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #9a7878;
+    cursor: pointer;
+  }
+  .filter-funnel-btn:hover, .filter-funnel-btn.active { color: #e05540; }
+  .filter-dropdown-menu {
+    min-width: 220px;
+    max-width: 280px;
+    background: #111111;
+    border: 1px solid #2a1a1a;
+  }
+  .filter-checkbox-list {
+    max-height: 240px;
+    overflow-y: auto;
+    margin-bottom: .25rem;
+  }
+  .filter-dropdown-menu .form-check-label { color: #f0e8e8; }
+  .filter-dropdown-menu a.small { color: #e05540; text-decoration: none; }
+  .filter-dropdown-menu a.small:hover { text-decoration: underline; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h2>{{ "All" if mode == 'all' else ("Mentor" if is_mentor else "Student") }} Sessions</h2>
+  <h2>Sessions</h2>
   <div class="d-flex gap-2">
     <button type="button" id="refresh-btn" class="btn btn-outline-secondary btn-sm" onclick="location.reload()">
       <i class="bi bi-arrow-clockwise me-1"></i> Refresh
@@ -12,68 +49,15 @@
     <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#new-session-modal">
       <i class="bi bi-plus-lg me-1"></i> New Session
     </button>
-    {% if mode != 'all' and not is_mentor %}
-    <a href="/admin/sessions/export?{% if filters.student_id %}student_id={{ filters.student_id }}&{% endif %}{% if filters.team_id %}team_id={{ filters.team_id }}&{% endif %}{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.date_from %}date_from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}date_to={{ filters.date_to }}{% endif %}"
+    <a href="/admin/sessions/export?{% if filters.date_from %}date_from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}date_to={{ filters.date_to }}{% endif %}"
        class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-download me-1"></i> Export CSV
     </a>
-    {% endif %}
   </div>
 </div>
 
-<!-- Person type toggle -->
-<ul class="nav nav-pills mb-3 gap-2">
-  <li class="nav-item"><a class="btn btn-sm {% if mode == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/sessions?person_type=all">All</a></li>
-  <li class="nav-item"><a class="btn btn-sm {% if mode == 'student' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/sessions?person_type=student">Students</a></li>
-  <li class="nav-item"><a class="btn btn-sm {% if mode == 'mentor' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/sessions?person_type=mentor">Mentors</a></li>
-</ul>
-
 <!-- Filters -->
 <form method="get" class="row g-2 mb-3 align-items-end">
-  <input type="hidden" name="person_type" value="{{ mode }}">
-  <div class="col-auto">
-    <label class="form-label small mb-1">{{ "Person" if mode == 'all' else ("Mentor" if is_mentor else "Student") }}</label>
-    {% if mode == 'all' %}
-    <select name="student_id" class="form-select form-select-sm">
-      <option value="">All People</option>
-      <optgroup label="Students">
-        {% for s in roster_students %}
-        <option value="student-{{ s.id }}" {% if filters.student_id == 'student-' ~ s.id %}selected{% endif %}>{{ s.name }}</option>
-        {% endfor %}
-      </optgroup>
-      <optgroup label="Mentors">
-        {% for m in roster_mentors %}
-        <option value="mentor-{{ m.id }}" {% if filters.student_id == 'mentor-' ~ m.id %}selected{% endif %}>{{ m.name }}</option>
-        {% endfor %}
-      </optgroup>
-    </select>
-    {% else %}
-    <select name="student_id" class="form-select form-select-sm">
-      <option value="">All {{ "Mentors" if is_mentor else "Students" }}</option>
-      {% for s in (roster_mentors if is_mentor else roster_students) %}
-      <option value="{{ s.id }}" {% if filters.student_id == s.id %}selected{% endif %}>{{ s.name }}</option>
-      {% endfor %}
-    </select>
-    {% endif %}
-  </div>
-  <div class="col-auto">
-    <label class="form-label small mb-1">Team</label>
-    <select name="team_id" class="form-select form-select-sm">
-      <option value="">All Teams</option>
-      {% for t in teams %}
-      <option value="{{ t.id }}" {% if filters.team_id == t.id %}selected{% endif %}>Team {{ t.number }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="col-auto">
-    <label class="form-label small mb-1">Subteam</label>
-    <select name="category" class="form-select form-select-sm">
-      <option value="">All Subteams</option>
-      {% for s in subteams %}
-      <option value="{{ s.slug }}" {% if filters.category == s.slug %}selected{% endif %}>{{ s.label }}</option>
-      {% endfor %}
-    </select>
-  </div>
   <div class="col-auto">
     <label class="form-label small mb-1">From</label>
     <input type="date" name="date_from" class="form-control form-control-sm"
@@ -87,32 +71,42 @@
   <div class="col-auto">
     <label class="form-label small mb-1 d-block">&nbsp;</label>
     <button type="submit" class="btn btn-sm btn-primary">Filter</button>
-    <a href="/admin/sessions?person_type={{ mode }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+    <a href="/admin/sessions" class="btn btn-sm btn-outline-secondary">Clear</a>
   </div>
 </form>
 
 <div class="card shadow-sm">
   <div class="card-body p-0">
     <div class="table-responsive">
-    <table class="table table-sm table-hover mb-0">
+    <table class="table table-sm table-hover mb-0" data-filter-sort data-empty-text="No sessions on this page match your filters — try Next page or adjust the filters above.">
       <thead class="table-light">
-        {% if mode == 'all' %}
-        <tr><th>Person</th><th>Type</th><th>Team</th><th>Sign In</th><th>Sign Out</th><th>Status</th><th>Hours</th><th></th></tr>
-        {% elif is_mentor %}
-        <tr><th>Mentor</th><th>Team</th><th>Sign In</th><th>Sign Out</th><th>Hours</th><th></th></tr>
-        {% else %}
-        <tr><th>Student</th><th>Team</th><th>Sign In</th><th>Sign Out</th><th>Status</th><th>Hours</th><th></th></tr>
-        {% endif %}
+        {% macro fs_th(label, col, sortable=false, sort_type='text', filterable=true, extra_class='') %}
+        <th class="fs-th {{ extra_class }}" data-col="{{ col }}"{% if sortable %} data-sortable="true" data-sort-type="{{ sort_type }}"{% endif %}{% if not filterable %} data-filter="none"{% endif %}>
+          <span class="th-inner d-inline-flex align-items-center"><span class="th-label">{{ label }}</span></span>
+        </th>
+        {% endmacro %}
+        <tr>
+          {{ fs_th('Person', 'person', sortable=true) }}
+          {{ fs_th('Type', 'type') }}
+          {{ fs_th('Team', 'team', sortable=true, sort_type='num') }}
+          {{ fs_th('Subteam', 'subteam', sortable=true) }}
+          {{ fs_th('Sign In', 'signin', sortable=true, filterable=false) }}
+          {{ fs_th('Sign Out', 'signout', sortable=true, filterable=false) }}
+          {{ fs_th('Status', 'status') }}
+          {{ fs_th('Hours', 'hours', sortable=true, sort_type='num', filterable=false) }}
+          <th></th>
+        </tr>
       </thead>
       <tbody>
         {% for s in sessions %}
-        {% if mode == 'all' %}
+        {% set person = s.student if s.session_type == 'student' else s.mentor %}
         <tr>
-          <td>{{ s.student.name if s.session_type == 'student' else s.mentor.name }}</td>
-          <td><span class="badge {{ 'bg-info text-dark' if s.session_type == 'student' else 'bg-secondary' }}">{{ 'Student' if s.session_type == 'student' else 'Mentor' }}</span></td>
-          <td>{{ s.student.team.number if s.session_type == 'student' else (s.mentor.team.number if s.mentor.team else '—') }}</td>
-          <td>{{ s.sign_in_time | localdt('%m/%d %I:%M %p') }}</td>
-          <td>
+          <td data-value="{{ person.name }}">{{ person.name }}</td>
+          <td data-value="{{ 'Student' if s.session_type == 'student' else 'Mentor' }}"><span class="badge {{ 'bg-info text-dark' if s.session_type == 'student' else 'bg-secondary' }}">{{ 'Student' if s.session_type == 'student' else 'Mentor' }}</span></td>
+          <td data-value="{{ person.team.number if person.team else '' }}">{{ person.team.number if person.team else '—' }}</td>
+          <td data-value="{{ person.subteam_slug or '' }}" data-label="{{ subteam_labels.get(person.subteam_slug, person.subteam_slug) if person.subteam_slug else '' }}">{{ subteam_labels.get(person.subteam_slug, person.subteam_slug) if person.subteam_slug else '—' }}</td>
+          <td data-value="{{ s.sign_in_time.isoformat() }}">{{ s.sign_in_time | localdt('%m/%d %I:%M %p') }}</td>
+          <td data-value="{{ s.sign_out_time.isoformat() if s.sign_out_time else '' }}">
             {% if s.sign_out_time %}
               {{ s.sign_out_time | localdt('%I:%M %p') }}
               {% if s.auto_closed %}
@@ -123,14 +117,14 @@
               <span class="badge bg-warning text-dark">Open</span>
             {% endif %}
           </td>
-          <td>
+          <td data-value="{{ s.status.value if s.session_type == 'student' and s.status else '' }}" data-label="{{ s.status.value | capitalize if s.session_type == 'student' and s.status else '' }}">
             {% if s.session_type == 'student' and s.status %}
               {% if s.status.value == 'contributor' %}<span class="badge bg-success">Contributor</span>
               {% elif s.status.value == 'present' %}<span class="badge bg-warning text-dark">Present</span>
               {% elif s.status.value == 'distraction' %}<span class="badge bg-danger">Distraction</span>{% endif %}
             {% else %}—{% endif %}
           </td>
-          <td>{{ '%.2f'|format(s.hours_counted) if s.hours_counted is not none else '—' }}</td>
+          <td data-value="{{ s.hours_counted or 0 }}">{{ '%.2f'|format(s.hours_counted) if s.hours_counted is not none else '—' }}</td>
           <td>
             {% if not s.sign_out_time %}
             <button type="button" class="btn btn-sm btn-warning me-1"
@@ -143,72 +137,6 @@
             </form>
           </td>
         </tr>
-        {% elif is_mentor %}
-        <tr>
-          <td>{{ s.mentor.name }}</td>
-          <td>{{ s.mentor.team.number if s.mentor.team else '—' }}</td>
-          <td>{{ s.sign_in_time | localdt('%m/%d %I:%M %p') }}</td>
-          <td>
-            {% if s.sign_out_time %}
-              {{ s.sign_out_time | localdt('%I:%M %p') }}
-              {% if s.auto_closed %}
-              <i class="bi bi-robot text-muted ms-1"
-                 title="Automated or mentor-forced sign-out — not a self-checkout"></i>
-              {% endif %}
-            {% else %}
-              <span class="badge bg-warning text-dark">Open</span>
-            {% endif %}
-          </td>
-          <td>{{ '%.2f'|format(s.hours_counted) if s.hours_counted is not none else '—' }}</td>
-          <td>
-            {% if not s.sign_out_time %}
-            <button type="button" class="btn btn-sm btn-warning me-1"
-                    data-bs-toggle="modal" data-bs-target="#mentor-signout-modal-{{ s.id }}">Sign Out</button>
-            {% endif %}
-            <a href="/admin/mentor-sessions/{{ s.id }}/edit" class="btn btn-sm btn-outline-secondary me-1">Edit</a>
-            <form method="post" action="/admin/mentor-sessions/{{ s.id }}/delete?{{ request.query_params }}" class="d-inline"
-                  onsubmit="return confirm('Delete this session record?')">
-              <button class="btn btn-sm btn-outline-danger">Del</button>
-            </form>
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td>{{ s.student.name }}</td>
-          <td>{{ s.student.team.number }}</td>
-          <td>{{ s.sign_in_time | localdt('%m/%d %I:%M %p') }}</td>
-          <td>
-            {% if s.sign_out_time %}
-              {{ s.sign_out_time | localdt('%I:%M %p') }}
-              {% if s.auto_closed %}
-              <i class="bi bi-robot text-muted ms-1"
-                 title="Automated or mentor-forced sign-out — not a self-checkout"></i>
-              {% endif %}
-            {% else %}
-              <span class="badge bg-warning text-dark">Open</span>
-            {% endif %}
-          </td>
-          <td>
-            {% if s.status %}
-              {% if s.status.value == 'contributor' %}<span class="badge bg-success">Contributor</span>
-              {% elif s.status.value == 'present' %}<span class="badge bg-warning text-dark">Present</span>
-              {% elif s.status.value == 'distraction' %}<span class="badge bg-danger">Distraction</span>{% endif %}
-            {% else %}—{% endif %}
-          </td>
-          <td>{{ '%.2f'|format(s.hours_counted) if s.hours_counted is not none else '—' }}</td>
-          <td>
-            {% if not s.sign_out_time %}
-            <button type="button" class="btn btn-sm btn-warning me-1"
-                    data-bs-toggle="modal" data-bs-target="#signout-modal-{{ s.id }}">Sign Out</button>
-            {% endif %}
-            <a href="/admin/sessions/{{ s.id }}/edit" class="btn btn-sm btn-outline-secondary me-1">Edit</a>
-            <form method="post" action="/admin/sessions/{{ s.id }}/delete?{{ request.query_params }}" class="d-inline"
-                  onsubmit="return confirm('Delete this session record?')">
-              <button class="btn btn-sm btn-outline-danger">Del</button>
-            </form>
-          </td>
-        </tr>
-        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -220,18 +148,17 @@
 <nav class="mt-3">
   <ul class="pagination pagination-sm">
     {% if page > 1 %}
-    <li class="page-item"><a class="page-link" href="?page={{ page - 1 }}">Previous</a></li>
+    <li class="page-item"><a class="page-link" href="?{{ (pagination_qs + '&') if pagination_qs else '' }}page={{ page - 1 }}">Previous</a></li>
     {% endif %}
     <li class="page-item disabled"><span class="page-link">Page {{ page }} of {{ total_pages }} ({{ total }} records)</span></li>
     {% if page < total_pages %}
-    <li class="page-item"><a class="page-link" href="?page={{ page + 1 }}">Next</a></li>
+    <li class="page-item"><a class="page-link" href="?{{ (pagination_qs + '&') if pagination_qs else '' }}page={{ page + 1 }}">Next</a></li>
     {% endif %}
   </ul>
 </nav>
 
-{% if mode in ('mentor', 'all') %}
-  {% for s in sessions %}
-    {% if not s.sign_out_time and (s.session_type is not defined or s.session_type == 'mentor') %}
+{% for s in sessions %}
+    {% if not s.sign_out_time and s.session_type == 'mentor' %}
     <div class="modal fade" id="mentor-signout-modal-{{ s.id }}" tabindex="-1">
       <div class="modal-dialog modal-sm">
         <div class="modal-content">
@@ -252,12 +179,10 @@
       </div>
     </div>
     {% endif %}
-  {% endfor %}
-{% endif %}
+{% endfor %}
 
-{% if mode in ('student', 'all') %}
-  {% for s in sessions %}
-    {% if not s.sign_out_time and (s.session_type is not defined or s.session_type == 'student') %}
+{% for s in sessions %}
+    {% if not s.sign_out_time and s.session_type == 'student' %}
     <div class="modal fade" id="signout-modal-{{ s.id }}" tabindex="-1">
       <div class="modal-dialog modal-sm">
         <div class="modal-content">
@@ -284,8 +209,7 @@
       </div>
     </div>
     {% endif %}
-  {% endfor %}
-{% endif %}
+{% endfor %}
 
 <div class="modal fade" id="new-session-modal" tabindex="-1">
   <div class="modal-dialog">
@@ -349,6 +273,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/table-filter-sort.js" defer></script>
 <script>
   // Sessions change as people sign in/out elsewhere, so poll for a fresh view. Skip a
   // tick while the admin is mid-filter or has a sign-out modal open, so a reload never
