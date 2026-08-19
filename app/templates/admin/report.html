@@ -9,11 +9,37 @@
   .week-met { background-color: rgba(25, 135, 84, 0.25) !important; }
   .week-miss { background-color: rgba(220, 53, 69, 0.18) !important; }
   .week-zero { color: #888; }
-  /* Click-to-sort column headers with a direction indicator. */
-  .report-table th.sortable { cursor: pointer; user-select: none; }
-  .report-table th.sortable::after { content: "\2195"; opacity: .55; margin-left: .4em; font-size: 1.2em; }
-  .report-table th.sort-asc::after { content: "\25B2"; opacity: 1; font-size: .9em; color: #e05540; }
-  .report-table th.sort-desc::after { content: "\25BC"; opacity: 1; font-size: .9em; color: #e05540; }
+  .fs-th .th-inner { gap: .35rem; }
+  .sort-icon { font-size: .75rem; cursor: pointer; }
+  .card-body { min-height: 360px; }
+  .filter-funnel-btn {
+    border: none;
+    background: none;
+    padding: 0 .15rem;
+    line-height: 1;
+    min-width: 1em;
+    min-height: 1em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #9a7878;
+    cursor: pointer;
+  }
+  .filter-funnel-btn:hover, .filter-funnel-btn.active { color: #e05540; }
+  .filter-dropdown-menu {
+    min-width: 220px;
+    max-width: 280px;
+    background: #111111;
+    border: 1px solid #2a1a1a;
+  }
+  .filter-checkbox-list {
+    max-height: 240px;
+    overflow-y: auto;
+    margin-bottom: .25rem;
+  }
+  .filter-dropdown-menu .form-check-label { color: #f0e8e8; }
+  .filter-dropdown-menu a.small { color: #e05540; text-decoration: none; }
+  .filter-dropdown-menu a.small:hover { text-decoration: underline; }
 </style>
 {% endblock %}
 
@@ -41,24 +67,6 @@
     <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.date_to }}">
   </div>
   <div class="col-auto">
-    <label class="form-label small mb-1">Team</label>
-    <select name="team_id" class="form-select form-select-sm">
-      <option value="">All Teams</option>
-      {% for t in teams %}
-      <option value="{{ t.id }}" {% if filters.team_id == t.id %}selected{% endif %}>{{ t.number }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="col-auto">
-    <label class="form-label small mb-1">Subteam</label>
-    <select name="category" class="form-select form-select-sm">
-      <option value="">All Subteams</option>
-      {% for s in subteams %}
-      <option value="{{ s.slug }}" {% if filters.category == s.slug %}selected{% endif %}>{{ s.label }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="col-auto">
     <label class="form-label small mb-1 d-block">&nbsp;</label>
     <button type="submit" class="btn btn-sm btn-primary">Filter</button>
     <a href="/admin/report" class="btn btn-sm btn-outline-secondary ms-1">Clear</a>
@@ -81,8 +89,6 @@
             One row per session, grouped by student, with a total row after each
             student. Leave dates blank for all time.
           </p>
-          {% if filters.team_id %}<input type="hidden" name="team_id" value="{{ filters.team_id }}">{% endif %}
-          {% if filters.category %}<input type="hidden" name="category" value="{{ filters.category }}">{% endif %}
           <div class="row g-2">
             <div class="col-auto">
               <label class="form-label small mb-1">From</label>
@@ -125,44 +131,56 @@
     <span class="text-muted">{{ week_starts|length }} week{{ 's' if week_starts|length != 1 else '' }}</span>
   </div>
   <div class="card-body p-0" style="overflow-x: auto;">
-    <table class="table table-sm table-hover mb-0 report-table">
+    <table class="table table-sm table-hover mb-0 report-table" data-filter-sort data-empty-text="No students match the current filters.">
       <thead class="table-dark">
         <tr>
-          <th class="col-student sortable" data-type="text">Student</th>
-          <th class="sortable" data-type="text">Team</th>
-          <th class="sortable" data-type="text">Subteam</th>
+          <th class="col-student fs-th" data-col="student" data-sortable="true" data-sort-type="text" data-filter="none">
+            <span class="th-inner d-inline-flex align-items-center"><span class="th-label">Student</span></span>
+          </th>
+          <th class="fs-th" data-col="team" data-sortable="true" data-sort-type="num">
+            <span class="th-inner d-inline-flex align-items-center"><span class="th-label">Team</span></span>
+          </th>
+          <th class="fs-th" data-col="subteam" data-sortable="true" data-sort-type="text">
+            <span class="th-inner d-inline-flex align-items-center"><span class="th-label">Subteam</span></span>
+          </th>
           {% for ws in week_starts %}
-          <th class="text-center sortable" data-type="num">{{ ws.month }}/{{ ws.day }}</th>
+          <th class="text-center fs-th" data-col="week{{ loop.index }}" data-sortable="true" data-sort-type="num" data-filter="none">
+            <span class="th-inner d-inline-flex align-items-center justify-content-center"><span class="th-label">{{ ws.month }}/{{ ws.day }}</span></span>
+          </th>
           {% endfor %}
-          <th class="text-end sortable" data-type="num">Total</th>
-          <th class="text-center sortable" data-type="num">Weeks Met</th>
+          <th class="text-end fs-th" data-col="total" data-sortable="true" data-sort-type="num" data-filter="none">
+            <span class="th-inner d-inline-flex align-items-center justify-content-end"><span class="th-label">Total</span></span>
+          </th>
+          <th class="text-center fs-th" data-col="weeksmet" data-sortable="true" data-sort-type="num">
+            <span class="th-inner d-inline-flex align-items-center justify-content-center"><span class="th-label">Weeks Met</span></span>
+          </th>
         </tr>
       </thead>
       <tbody>
         {% for row in rows %}
         <tr>
-          <td class="col-student" data-sort="{{ row.student.name }}">
+          <td class="col-student" data-value="{{ row.student.name }}">
             <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="modal"
                     data-bs-target="#studentSessionsModal" data-student-id="{{ row.student.id }}"
                     data-student-name="{{ row.student.name }}" data-badge-url="{{ badge_url(row.student) }}">
               {{ row.student.name }}
             </button>
           </td>
-          <td class="text-muted" data-sort="{{ row.student.team.number if row.student.team else '' }}">
+          <td class="text-muted" data-value="{{ row.student.team.number if row.student.team else '' }}">
             {{ row.student.team.number if row.student.team else '—' }}
           </td>
-          <td class="text-muted" data-sort="{{ row.student.subteam_slug or '' }}">
-            {{ row.student.subteam_slug | capitalize if row.student.subteam_slug else '—' }}
+          <td class="text-muted" data-value="{{ row.student.subteam_slug or '' }}" data-label="{{ subteam_labels.get(row.student.subteam_slug, row.student.subteam_slug) if row.student.subteam_slug else '' }}">
+            {{ subteam_labels.get(row.student.subteam_slug, row.student.subteam_slug) if row.student.subteam_slug else '—' }}
           </td>
           {% for w in row.weeks %}
           <td class="text-center {% if w.met %}week-met{% else %}week-miss{% endif %}{% if w.hours == 0 %} week-zero{% endif %}"
-              data-sort="{{ w.hours }}"
+              data-value="{{ w.hours }}"
               title="{{ '%.1f'|format(w.hours) }} / {{ '%.1f'|format(w.required) }} hrs">
             {{ '%.1f'|format(w.hours) }}
           </td>
           {% endfor %}
-          <td class="text-end fw-semibold" data-sort="{{ row.total_hours }}">{{ '%.1f'|format(row.total_hours) }}</td>
-          <td class="text-center" data-sort="{{ row.weeks_met }}">
+          <td class="text-end fw-semibold" data-value="{{ row.total_hours }}">{{ '%.1f'|format(row.total_hours) }}</td>
+          <td class="text-center" data-value="{{ row.weeks_met }}" data-label="{{ row.weeks_met }}/{{ row.weeks_total }}">
             <span class="{% if row.weeks_met == row.weeks_total %}text-success{% elif row.weeks_met == 0 %}text-danger{% else %}text-warning{% endif %}">
               {{ row.weeks_met }}/{{ row.weeks_total }}
             </span>
@@ -233,33 +251,8 @@
       bodyEl.innerHTML = LOADING_HTML;
     });
   })();
-
-  // Click a column header to sort the table by that column; click again to reverse.
-  document.querySelectorAll('.report-table th.sortable').forEach(function (th) {
-    th.addEventListener('click', function () {
-      var table = th.closest('table');
-      var tbody = table.querySelector('tbody');
-      var idx = Array.prototype.indexOf.call(th.parentNode.children, th);
-      var numeric = th.dataset.type === 'num';
-      var asc = !th.classList.contains('sort-asc');
-
-      table.querySelectorAll('th.sortable').forEach(function (h) {
-        h.classList.remove('sort-asc', 'sort-desc');
-      });
-      th.classList.add(asc ? 'sort-asc' : 'sort-desc');
-
-      var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
-      rows.sort(function (a, b) {
-        var av = a.children[idx].dataset.sort || '';
-        var bv = b.children[idx].dataset.sort || '';
-        var cmp = numeric
-          ? (parseFloat(av) || 0) - (parseFloat(bv) || 0)
-          : av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
-        return asc ? cmp : -cmp;
-      });
-      rows.forEach(function (r) { tbody.appendChild(r); });
-    });
-  });
 </script>
 {% endif %}
 {% endblock %}
+
+{% block scripts %}<script src="/static/js/table-filter-sort.js" defer></script>{% endblock %}

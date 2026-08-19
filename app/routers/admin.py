@@ -365,6 +365,8 @@ async def admin_roster(request: Request, db: AsyncSession = Depends(get_db)):
     from app.services.app_settings import get_setting
     last_synced = await get_setting(db, "legion_last_synced_at")
 
+    subteams = await _active_subteams(db)
+
     return templates.TemplateResponse(
         "admin/roster.html",
         {
@@ -372,6 +374,7 @@ async def admin_roster(request: Request, db: AsyncSession = Depends(get_db)):
             "students": students,
             "mentors": mentors,
             "last_synced": last_synced,
+            "subteam_labels": {s.slug: s.label for s in subteams},
         },
     )
 
@@ -1796,9 +1799,11 @@ async def admin_report(
     db: AsyncSession = Depends(get_db),
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
-    team_id: Optional[str] = None,
-    category: Optional[str] = None,
 ):
+    """Team/Subteam filtering on this page is client-side (Excel-style column
+    filters, see static/js/table-filter-sort.js) — the report always computes every
+    team/subteam for the chosen date range and the table's own funnel dropdowns
+    narrow what's visible, no reload needed."""
     if redirect := _require_auth(request):
         return redirect
 
@@ -1813,15 +1818,11 @@ async def admin_report(
     d_from = date_from or default_from
     d_to = date_to or default_to
 
-    team_id_int = int(team_id) if team_id else None
-    subteam_slug = category.strip() if category and category.strip() else None
-
     week_starts = week_starts_in_range(d_from, d_to)
-    rows = await weekly_attendance_report(db, week_starts, team_id=team_id_int, subteam_slug=subteam_slug)
+    rows = await weekly_attendance_report(db, week_starts)
     week_starts, rows = drop_zero_requirement_weeks(week_starts, rows)
 
-    teams_result = await db.execute(select(Team).order_by(Team.number))
-    teams = teams_result.scalars().all()
+    subteams = await _active_subteams(db)
 
     return templates.TemplateResponse(
         "admin/report.html",
@@ -1829,14 +1830,11 @@ async def admin_report(
             "request": request,
             "rows": rows,
             "week_starts": week_starts,
-            "teams": teams,
-            "subteams": await _active_subteams(db),
+            "subteam_labels": {s.slug: s.label for s in subteams},
             "leaderboard_since": since,
             "filters": {
                 "date_from": d_from,
                 "date_to": d_to,
-                "team_id": team_id_int,
-                "category": category or "",
             },
         },
     )
