@@ -1,12 +1,15 @@
 """
-Slack client helpers — DMs, group DMs, message updates.
+Slack client helpers — DMs, group DMs, message updates, modals.
 """
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.config import settings
 from app.utils import today_local, local_to_utc
+
+log = logging.getLogger(__name__)
 
 _client: Optional[AsyncWebClient] = None
 
@@ -16,6 +19,29 @@ def get_slack_client() -> AsyncWebClient:
     if _client is None:
         _client = AsyncWebClient(token=settings.slack_bot_token)
     return _client
+
+
+async def open_modal(trigger_id: str, view: dict) -> bool:
+    """Open a Slack modal for an interaction. Returns True on success.
+
+    `trigger_id` is short-lived (~3s), so call this promptly from whatever handed it to
+    you — a slash command payload carries one same as a block_actions click does.
+    Mirrors Munus's `services/slack_client.open_modal`.
+    """
+    from slack_sdk.errors import SlackApiError
+
+    client = get_slack_client()
+    try:
+        await client.views_open(trigger_id=trigger_id, view=view)
+        return True
+    except SlackApiError as e:
+        # Surface Slack's actual reason (e.g. invalid_arguments, expired_trigger_id,
+        # missing_scope, not_authed) so modal failures aren't silent.
+        log.error("views.open failed: %s", e.response.get("error", e))
+        return False
+    except Exception as e:
+        log.error("views.open failed: %s", e)
+        return False
 
 
 async def send_dm(slack_user_id: str, text: str, blocks=None, automated: bool = False) -> Optional[str]:

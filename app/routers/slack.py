@@ -29,7 +29,7 @@ from app.services.broadcaster import broadcaster
 from app.services.legion_auth import make_link_url
 from app.services.requirements import resolve_requirement
 from app.services.scheduler import _post_wall_of_shame
-from app.services.slack_client import send_dm, send_qr_dm
+from app.services.slack_client import open_modal, send_dm, send_qr_dm
 from app.utils import utc_to_local, today_local, format_elapsed, current_week_bounds
 
 router = APIRouter(prefix="/slack")
@@ -76,80 +76,71 @@ _STATUS_LABELS = {
 }
 
 
-def _edit_session_list_blocks(student: Student, sessions: list) -> list[dict]:
-    """Step 1 — list of the student's last 5 sessions, each as a selectable button."""
-    buttons = []
+_EDIT_CALLBACK = "edit_session"
+_STATUS_CHOICES = (
+    (SessionStatus.contributor, "✅ Contributor (full hours)"),
+    (SessionStatus.present, "🔸 Present (50% hours)"),
+    (SessionStatus.distraction, "🚫 Distraction (0% hours)"),
+)
+
+
+def _edit_session_modal(student: Student, sessions: list) -> dict:
+    """The /edit modal: pick which of the student's last 5 closed sessions to change,
+    and what to change it to — both in one view, submitted together.
+
+    Replaces a two-step button wizard (pick session -> pick status), each step its own
+    full round trip that edited the same ephemeral message via `response_url`. A modal
+    collapses that to one screen and one submit; `_handle_edit_session_submit` is the
+    other half."""
+    session_options = []
     for s in sessions:
         date_str = utc_to_local(s.sign_in_time).strftime("%b %d")
         status_label = _STATUS_LABELS.get(s.status, "—") if s.status else "—"
         label = f"{date_str} · {format_elapsed(s.sign_in_time, s.sign_out_time)} · {status_label}"
-        buttons.append({
-            "type": "button",
+        session_options.append({
             "text": {"type": "plain_text", "text": label},
-            "action_id": f"edit_select_{s.id}",
             "value": str(s.id),
         })
 
-    return [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"*Edit Session — {student.name}*\nSelect a session to change its contribution level:",
-            },
-        },
-        {
-            "type": "actions",
-            "block_id": f"edit_list_{student.id}",
-            "elements": buttons,
-        },
+    status_options = [
+        {"text": {"type": "plain_text", "text": label}, "value": status.value}
+        for status, label in _STATUS_CHOICES
     ]
 
+    title = f"Edit — {student.name}"
+    if len(title) > 24:  # Slack caps modal titles at 24 characters
+        title = title[:23] + "…"
 
-def _edit_status_blocks(session: AttendanceSession, student: Student) -> list[dict]:
-    """Step 2 — show the chosen session details and offer 3 status buttons."""
-    date_str = utc_to_local(session.sign_in_time).strftime("%b %d")
-    current = _STATUS_LABELS.get(session.status, "—") if session.status else "—"
-
-    return [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": (
-                    f"*Edit Session — {student.name}*\n"
-                    f"{date_str} · {format_elapsed(session.sign_in_time, session.sign_out_time)} · Current: *{current}*\n"
-                    f"Choose a new contribution level:"
-                ),
+    return {
+        "type": "modal",
+        "callback_id": _EDIT_CALLBACK,
+        "title": {"type": "plain_text", "text": title},
+        "submit": {"type": "plain_text", "text": "Save"},
+        "close": {"type": "plain_text", "text": "Cancel"},
+        "blocks": [
+            {
+                "type": "input",
+                "block_id": "session",
+                "label": {"type": "plain_text", "text": "Session"},
+                "element": {
+                    "type": "static_select",
+                    "action_id": "value",
+                    "placeholder": {"type": "plain_text", "text": "Choose a session"},
+                    "options": session_options,
+                },
             },
-        },
-        {
-            "type": "actions",
-            "block_id": f"edit_status_{session.id}",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "✅ Contributor (full hours)"},
-                    "style": "primary",
-                    "action_id": "edit_contributor",
-                    "value": str(session.id),
+            {
+                "type": "input",
+                "block_id": "status",
+                "label": {"type": "plain_text", "text": "New contribution level"},
+                "element": {
+                    "type": "radio_buttons",
+                    "action_id": "value",
+                    "options": status_options,
                 },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "🔸 Present (50% hours)"},
-                    "action_id": "edit_present",
-                    "value": str(session.id),
-                },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "🚫 Distraction (0% hours)"},
-                    "style": "danger",
-                    "action_id": "edit_distraction",
-                    "value": str(session.id),
-                },
-            ],
-        },
-    ]
+            },
+        ],
+    }
 
 
 # ── /interact student notification (background task) ──────────────────────────
@@ -269,6 +260,7 @@ async def slack_command(
     command = form.get("command", "")
     text = (form.get("text") or "").strip()
     user_id = form.get("user_id", "")
+    trigger_id = form.get("trigger_id", "")
 
     # ── /tempus — a bare one-tap link to the personal dashboard, no stats ──
     if command == "/tempus":
@@ -612,11 +604,17 @@ async def slack_command(
             media_type="text/plain",
         )
 
-    return JSONResponse({
-        "response_type": "ephemeral",
-        "blocks": _edit_session_list_blocks(student, sessions),
-        "text": f"Edit session for {student.name}",
-    })
+    if not trigger_id:
+        return Response(
+            content="⚠️ Couldn't open the edit form — try again.", media_type="text/plain"
+        )
+    ok = await open_modal(trigger_id, _edit_session_modal(student, sessions))
+    if not ok:
+        return Response(
+            content="⚠️ Couldn't open the edit form — try again in a bit.",
+            media_type="text/plain",
+        )
+    return Response(status_code=200)
 
 
 # ── Interactive actions handler ────────────────────────────────────────────────
@@ -636,69 +634,73 @@ async def slack_interact(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid payload")
 
-    action = payload.get("actions", [{}])[0]
-    action_id = action.get("action_id", "")
-    session_id_str = action.get("value", "")
-    mentor_slack_id = payload.get("user", {}).get("id", "")
-    response_url = payload.get("response_url", "")
-
-    from slack_sdk.webhook.async_client import AsyncWebhookClient
-
-    # ── Step 1: mentor selected a session from the list ──
-    if action_id.startswith("edit_select_"):
-        try:
-            session_id = int(session_id_str)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid session id")
-
-        result = await db.execute(
-            select(AttendanceSession)
-            .options(selectinload(AttendanceSession.student).selectinload(Student.team))
-            .where(AttendanceSession.id == session_id)
-        )
-        session = result.scalars().first()
-
-        # Acknowledge immediately — outbound Slack webhook calls go in the background
-        # so a slow network path to Slack can't cause a 500 visible to the user.
-        if not session:
-            background_tasks.add_task(
-                AsyncWebhookClient(response_url).send,
-                text="⚠️ Session not found.",
-                replace_original=True,
-            )
-        else:
-            blocks = _edit_status_blocks(session, session.student)
-            background_tasks.add_task(
-                AsyncWebhookClient(response_url).send,
-                text=f"Edit session for {session.student.name}",
-                blocks=blocks,
-                replace_original=True,
+    if payload.get("type") == "view_submission":
+        view = payload.get("view", {})
+        if view.get("callback_id") == _EDIT_CALLBACK:
+            return await _handle_edit_session_submit(
+                request, db, background_tasks, view, payload.get("user", {}).get("id", "")
             )
         return Response(status_code=200)
 
-    # ── Step 2: mentor chose a new status ──
-    if action_id not in ("edit_contributor", "edit_present", "edit_distraction"):
-        return Response(status_code=200)
+    # No other interactive component exists in Tempus today (the /edit flow above is
+    # the only one, and it's now a modal) — nothing currently reaches this point, kept
+    # as a safe no-op rather than assuming block_actions.
+    return Response(status_code=200)
+
+
+def _selected_option_value(view: dict, block_id: str) -> str:
+    """The `value` of whichever option is selected in `block_id` (a `static_select` or
+    `radio_buttons` input), or "" if nothing was — same state shape either way."""
+    values = view.get("state", {}).get("values", {})
+    selected = values.get(block_id, {}).get("value", {}).get("selected_option") or {}
+    return selected.get("value", "")
+
+
+async def _handle_edit_session_submit(
+    request: Request,
+    db: AsyncSession,
+    background_tasks: BackgroundTasks,
+    view: dict,
+    mentor_slack_id: str,
+) -> Response:
+    """Submission of the /edit modal — apply the chosen session's new contribution
+    level. Reuses `update_session_status`, the same call the old button flow made, so
+    the hours math and audit/notify side effects are unchanged; only how the mentor
+    gets there did.
+
+    Re-verifies the caller is still an active mentor at submit time — the old button
+    flow didn't (it trusted the check `/edit` made before ever showing buttons, and
+    Slack scopes both an ephemeral message and a modal to the one user who triggered
+    it either way) — but a modal can sit open for a while, and re-checking here is
+    cheap insurance against a mentor being deactivated in between."""
+    mentor_result = await db.execute(
+        select(Mentor).where(Mentor.slack_user_id == mentor_slack_id, Mentor.is_active.is_(True))
+    )
+    mentor = mentor_result.scalars().first()
+    if not mentor:
+        return JSONResponse({
+            "response_action": "errors",
+            "errors": {"session": "You're no longer a registered mentor."},
+        })
 
     try:
-        session_id = int(session_id_str)
+        session_id = int(_selected_option_value(view, "session"))
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid session id")
+        return JSONResponse({"response_action": "errors", "errors": {"session": "Pick a session."}})
 
-    status = (
-        SessionStatus.contributor if action_id == "edit_contributor"
-        else SessionStatus.present if action_id == "edit_present"
-        else SessionStatus.distraction
-    )
+    try:
+        status = SessionStatus(_selected_option_value(view, "status"))
+    except ValueError:
+        return JSONResponse({
+            "response_action": "errors", "errors": {"status": "Pick a contribution level."},
+        })
 
     session = await update_session_status(db, session_id, status)
     if not session:
-        background_tasks.add_task(
-            AsyncWebhookClient(response_url).send,
-            text="⚠️ Session not found or not yet signed out.",
-            replace_original=True,
-        )
-        return Response(status_code=200)
+        return JSONResponse({
+            "response_action": "errors",
+            "errors": {"session": "That session is no longer available, or hasn't been signed out yet."},
+        })
 
     await broadcaster.broadcast("update")
 
@@ -708,16 +710,11 @@ async def slack_interact(
     hours = session.hours_counted
 
     # Audit log — update_session_status already committed, so this is a second commit.
-    mentor_result = await db.execute(
-        select(Mentor).where(Mentor.slack_user_id == mentor_slack_id)
-    )
-    mentor = mentor_result.scalars().first()
-    actor = mentor.name if mentor else mentor_slack_id
     await audit.record(
         db, request, "session.edit",
-        f"{actor} changed {student.name}'s session ({date_str}) to {status_label} via Slack",
+        f"{mentor.name} changed {student.name}'s session ({date_str}) to {status_label} via Slack",
         entity_type="session", entity_id=session.id,
-        actor=actor,
+        actor=mentor.name,
         detail={"student": student.name, "status": status.value, "hours": hours, "via": "slack"},
     )
     await db.commit()
@@ -732,19 +729,5 @@ async def slack_interact(
             hours,
         )
 
-    background_tasks.add_task(
-        AsyncWebhookClient(response_url).send,
-        text=f"Updated session for {student.name}",
-        blocks=[{
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": (
-                    f"✅ *Updated — {student.name}*\n"
-                    f"{date_str}: Status changed to *{status_label}* · *{hours:.2f} hrs* recorded"
-                ),
-            },
-        }],
-        replace_original=True,
-    )
+    # Empty 200 closes the modal — Slack's own convention for "submission accepted".
     return Response(status_code=200)
