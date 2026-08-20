@@ -8,6 +8,7 @@ import pytest
 from app.models import AttendanceSession, SessionStatus
 from app.services.badge import compute_badge_id, effective_code
 from app.services.sso import SSO_COOKIE
+from app.utils import utc_to_local
 from tests.conftest import make_sso_cookie
 
 pytestmark = pytest.mark.asyncio
@@ -36,9 +37,15 @@ async def test_sessions_fragment_orders_most_recent_first(authed_client, db, mak
 
     # The 2-hours-ago session's sign-in time should appear before the 24- and
     # 48-hour-ago ones in the rendered HTML (most recent on top).
+    #
+    # Dates are stored naive-UTC but rendered through `utc_to_local`, so the expected
+    # strings must be converted too. Deriving them straight from `utcnow()` matched only
+    # while the UTC and local dates happened to agree, and broke every day between UTC
+    # midnight and local midnight — including on CI, since `utc_to_local` follows the
+    # app's `timezone` setting rather than the machine's.
     html = resp.text
-    pos_2h = html.find((datetime.utcnow() - timedelta(hours=2)).strftime("%m/%d"))
-    pos_48h = html.find((datetime.utcnow() - timedelta(hours=48)).strftime("%m/%d"))
+    pos_2h = html.find(utc_to_local(datetime.utcnow() - timedelta(hours=2)).strftime("%m/%d"))
+    pos_48h = html.find(utc_to_local(datetime.utcnow() - timedelta(hours=48)).strftime("%m/%d"))
     assert pos_2h != -1 and pos_48h != -1
     assert pos_2h < pos_48h
 

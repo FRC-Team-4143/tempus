@@ -14,6 +14,32 @@ from app.database import Base, get_db
 from app.models import Student, Team
 
 
+@pytest.fixture(autouse=True)
+def _isolate_base_url_from_dotenv():
+    """Pin `base_url` to a plain-http default so tests don't depend on the developer's
+    `.env`.
+
+    `services/kiosk_device.issue_cookie` marks the device cookie `Secure` when
+    `base_url` is https, which any real `.env` sets. The test client speaks plain http,
+    so httpx then correctly refuses to send the cookie back and every request looks like
+    a brand-new device — which made the kiosk pairing tests fail locally while passing
+    in CI, where no `.env` exists.
+
+    Deliberately narrow rather than resetting every setting the way Legion's
+    `_isolate_settings_from_dotenv` does: `services/sso.py` builds its itsdangerous
+    signer at *import* time from `sso_secret` (see CLAUDE.md), so blanking that setting
+    afterward desynchronizes it from `tests/conftest.make_sso_cookie`, which builds its
+    signer per call — every SSO-authenticated test then fails. Widen this only alongside
+    a fix for that.
+    """
+    from app.config import Settings, settings
+
+    original = settings.base_url
+    settings.base_url = Settings.model_fields["base_url"].default
+    yield
+    settings.base_url = original
+
+
 @pytest_asyncio.fixture
 async def engine():
     """A fresh in-memory database engine with all tables created."""
