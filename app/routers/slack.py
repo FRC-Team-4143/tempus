@@ -292,7 +292,7 @@ async def slack_command(
             )
         # /me is open to both students and mentors (unlike Munus's, student-only) —
         # see legion/app/services/home.py's tiles_for for the same distinction.
-        return _ephemeral(f"<{make_link_url(member_code, '/me')}|🕒 Open my Tempus dashboard>")
+        return _ephemeral(f"<{make_link_url(member_code, '/me')}|🕒 Open Tempus>")
 
     # ── /hours — inline response, visible only to caller ──
     if command == "/hours":
