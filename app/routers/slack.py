@@ -77,11 +77,29 @@ _STATUS_LABELS = {
 
 
 _EDIT_CALLBACK = "edit_session"
-_STATUS_CHOICES = (
-    (SessionStatus.contributor, "✅ Contributor (full hours)"),
-    (SessionStatus.present, "🔸 Present (50% hours)"),
-    (SessionStatus.distraction, "🚫 Distraction (0% hours)"),
-)
+_STATUS_ICONS = {
+    SessionStatus.contributor: "✅",
+    SessionStatus.present: "🔸",
+    SessionStatus.distraction: "🚫",
+}
+
+
+def _status_choices() -> list[tuple[SessionStatus, str]]:
+    """The 3 status options with their *live* hours percentage — Admin -> Settings can
+    change contributor/present/distraction_multiplier at any time (`_status_multiplier`
+    in `services/attendance.py`, which this modal's own submit handler calls), and a
+    stale hardcoded "(50% hours)" would mislead a mentor about what they're about to
+    apply. Built fresh per call, not a module-level constant, so an admin's change
+    shows up on the very next `/edit` without a restart."""
+    from app.services.attendance import _status_multiplier
+
+    choices = []
+    for status in (SessionStatus.contributor, SessionStatus.present, SessionStatus.distraction):
+        pct = round(_status_multiplier(status) * 100)
+        portion = "full hours" if pct == 100 else f"{pct}% hours"
+        label = f"{_STATUS_ICONS[status]} {_STATUS_LABELS[status]} ({portion})"
+        choices.append((status, label))
+    return choices
 
 
 def _edit_session_modal(student: Student, sessions: list) -> dict:
@@ -104,7 +122,7 @@ def _edit_session_modal(student: Student, sessions: list) -> dict:
 
     status_options = [
         {"text": {"type": "plain_text", "text": label}, "value": status.value}
-        for status, label in _STATUS_CHOICES
+        for status, label in _status_choices()
     ]
 
     title = f"Edit — {student.name}"

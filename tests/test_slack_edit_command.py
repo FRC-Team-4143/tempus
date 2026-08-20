@@ -320,3 +320,37 @@ async def test_unrelated_view_submission_is_a_no_op(client, monkeypatch):
     resp = await _interact(client, payload)
     assert resp.status_code == 200
     assert resp.text == ""
+
+
+async def test_modal_status_labels_reflect_configured_multipliers(
+    client, db, make_student, monkeypatch
+):
+    """The percentages shown must track Admin -> Settings live, not a hardcoded 50%/0%
+    — a mentor picking "Present" needs to see what it will actually compute to."""
+    from app.config import settings
+
+    _bypass_signature(monkeypatch)
+    await _add_mentor(db, "UMENTOR")
+    student = await make_student(name="Ada Lovelace", code="ada00001")
+    await _add_closed_session(db, student.id)
+    captured = _capture_open_modal(monkeypatch)
+
+    original = (settings.contributor_multiplier, settings.present_multiplier, settings.distraction_multiplier)
+    settings.contributor_multiplier = 0.9
+    settings.present_multiplier = 0.75
+    settings.distraction_multiplier = 0.1
+    try:
+        await _edit(client, "Ada")
+    finally:
+        (
+            settings.contributor_multiplier,
+            settings.present_multiplier,
+            settings.distraction_multiplier,
+        ) = original
+
+    labels = [o["text"]["text"] for o in captured["view"]["blocks"][1]["element"]["options"]]
+    assert labels == [
+        "✅ Contributor (90% hours)",
+        "🔸 Present (75% hours)",
+        "🚫 Distraction (10% hours)",
+    ]
