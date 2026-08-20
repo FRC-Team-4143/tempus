@@ -233,6 +233,16 @@ def _neighbor_gap_text(rows: list, my_sid: int, my_total: float) -> str:
     return " · ".join(parts)
 
 
+def _ephemeral(text: str) -> JSONResponse:
+    """Wrap `text` as an ephemeral (caller-only) Slack response, rendered as mrkdwn so a
+    `<url|label>` link comes through clickable rather than as a raw URL."""
+    return JSONResponse({
+        "response_type": "ephemeral",
+        "text": text,
+        "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": text}}],
+    })
+
+
 def _hours_response(reply: str, member_code: Optional[str]) -> JSONResponse:
     """Ephemeral /hours reply with a one-tap "open my dashboard" link appended (mirrors
     Munus's /vhours). A plain mrkdwn hyperlink, so it opens in the browser without firing
@@ -243,11 +253,7 @@ def _hours_response(reply: str, member_code: Optional[str]) -> JSONResponse:
     if member_code:
         link = f"<{make_link_url(member_code, '/me')}|📊 Open my dashboard>"
         reply = f"{reply}\n{link}"
-    return JSONResponse({
-        "response_type": "ephemeral",
-        "text": reply,
-        "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": reply}}],
-    })
+    return _ephemeral(reply)
 
 
 # ── Slash command router ───────────────────────────────────────────────────────
@@ -263,6 +269,30 @@ async def slack_command(
     command = form.get("command", "")
     text = (form.get("text") or "").strip()
     user_id = form.get("user_id", "")
+
+    # ── /tempus — a bare one-tap link to the personal dashboard, no stats ──
+    if command == "/tempus":
+        student = (
+            await db.execute(
+                select(Student).where(Student.slack_user_id == user_id, Student.is_active.is_(True))
+            )
+        ).scalars().first()
+        member_code = student.member_code if student else None
+        if member_code is None:
+            mentor = (
+                await db.execute(
+                    select(Mentor).where(Mentor.slack_user_id == user_id, Mentor.is_active.is_(True))
+                )
+            ).scalars().first()
+            member_code = mentor.member_code if mentor else None
+        if member_code is None:
+            return Response(
+                content="❌ Your Slack account isn't linked to a Tempus record. Please ask a mentor.",
+                media_type="text/plain",
+            )
+        # /me is open to both students and mentors (unlike Munus's, student-only) —
+        # see legion/app/services/home.py's tiles_for for the same distinction.
+        return _ephemeral(f"<{make_link_url(member_code, '/me')}|🕒 Open my Tempus dashboard>")
 
     # ── /hours — inline response, visible only to caller ──
     if command == "/hours":

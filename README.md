@@ -121,6 +121,7 @@ AUTO_SIGNOUT_TIME=21:30
    - `commands`
    - `files:write` (needed to DM QR badge images — both `/qr` and the Roster page's "Send student/mentor badges" buttons)
 3. Add slash commands (all point to the same URL):
+   - `/tempus` → `https://<your-host>/slack/command` (a bare one-tap link to your `/me` dashboard — no stats)
    - `/hours` → `https://<your-host>/slack/command`
    - `/edit` → `https://<your-host>/slack/command`
    - `/shop` → `https://<your-host>/slack/command`

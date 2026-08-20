@@ -1,6 +1,6 @@
 # Tempus — Codebase Guide
 
-FRC attendance and hours tracker for teams 4143 (MARS/WARS) and 4423 (MARS' Minions). FastAPI + SQLAlchemy (async) + Jinja2 + SQLite. Slack integration for `/hours`, `/shop`, `/edit`, `/qr`, and `/gtfo` slash commands. A personal portal at `/me` lets any active student or mentor see their own hours on the web, alongside the kiosk (public sign-in display) and `/admin` (staff-only management).
+FRC attendance and hours tracker for teams 4143 (MARS/WARS) and 4423 (MARS' Minions). FastAPI + SQLAlchemy (async) + Jinja2 + SQLite. Slack integration for `/tempus` (a bare one-tap dashboard link), `/hours`, `/shop`, `/edit`, `/qr`, and `/gtfo` slash commands. A personal portal at `/me` lets any active student or mentor see their own hours on the web, alongside the kiosk (public sign-in display) and `/admin` (staff-only management).
 
 ## Running
 
