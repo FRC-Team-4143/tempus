@@ -122,8 +122,21 @@ data flows Legion → Tempus only, never back.
   lost its old unguarded "Admin" nav link, the actual way anyone reaches `/admin` or `/me` today
   is Legion's own home-page app launcher (`legion/app/services/home.py`), not any link inside
   Tempus itself.
-- **One-tap `/enter` (`routers/portal.py`, `services/legion_auth.py`):** the `/hours` Slack
-  reply ends with an "open my dashboard" link to `/enter?member=<code>&next=/me`. If the browser
+- **Magic links (`services/legion_auth.make_link_url` → Legion's `GET /sso/link`):** the
+  `/hours` reply's "open my dashboard" link is a signed magic link, not an `/enter` link.
+  Slack's in-app browser (iOS *and* Android; undetectable server-side, it sends a stock
+  mobile Safari UA) keeps no cookies between opens, so `mw_sso` never survives from one
+  Slack tap to the next and every tap used to cost an Approve/Deny round trip. The token
+  names the member, and Legion mints the cookie from it on arrival. Sound because Slack
+  already authenticated the recipient of an ephemeral reply. **Only put these in
+  per-person channels** — a link is a bearer credential. Link-borne cookies are
+  non-privileged (`groups: []` + `via: "link"`) and `_require_auth` bounces them to a real
+  sign-in, so a leaked link can't reach `/admin`. TTL is Legion's `SSO_LINK_TTL`, held
+  equal to `SSO_SESSION_TTL` (12h) so a link in a shared computer's browser history
+  can't outlive the session it created.
+- **One-tap `/enter` (`routers/portal.py`, `services/legion_auth.py`) — the older
+  Slack-push path,** still live for `/enter?member=<code>&next=/me` links already in Slack
+  history and for anyone arriving without a token. If the browser
   already holds a live `mw_sso` cookie, `/enter` redirects straight to `next` (no Legion round
   trip — stops repeat clicks from spamming a fresh Slack push); otherwise it calls Legion's
   `POST /sso/challenge` (`X-API-Key`) to start an Approve/Deny push for that member without a

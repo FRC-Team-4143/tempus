@@ -96,15 +96,18 @@ async def client(session_factory):
 
 def make_sso_cookie(
     groups=("tempus-admin",), *, name="Test Admin", username="test.admin",
-    member_code="test0001", role="mentor",
+    member_code="test0001", role="mentor", via=None,
 ):
     """Mint a valid `mw_sso` cookie value for tests, mirroring Legion's `make_sso_token`.
-    Uses the app's own `sso_secret`, so `read_sso_token` verifies it."""
+    Uses the app's own `sso_secret`, so `read_sso_token` verifies it.
+
+    `via="link"` mimics a magic-link identity (Legion's `make_link_sso_token`), which is
+    deliberately non-privileged — pass `groups=()` with it to match what Legion mints."""
     from itsdangerous import URLSafeTimedSerializer
     from app.config import settings
 
     signer = URLSafeTimedSerializer(settings.sso_secret, salt="mw-sso")
-    return signer.dumps({
+    claims = {
         "member_code": member_code,
         "username": username,
         "name": name,
@@ -112,7 +115,10 @@ def make_sso_cookie(
         "team_number": 4143,
         "groups": list(groups),
         "slack_user_id": None,
-    })
+    }
+    if via is not None:
+        claims["via"] = via
+    return signer.dumps(claims)
 
 
 @pytest_asyncio.fixture

@@ -26,6 +26,7 @@ from app.services import audit
 from app.services.app_settings import get_leaderboard_since, leaderboard_since_utc, get_auto_signout_session_minutes
 from app.services.attendance import update_session_status, get_signed_in_students, get_signed_in_mentors, sign_out_all_open, mentor_sign_out_all_open
 from app.services.broadcaster import broadcaster
+from app.services.legion_auth import make_link_url
 from app.services.requirements import resolve_requirement
 from app.services.scheduler import _post_wall_of_shame
 from app.services.slack_client import send_dm, send_qr_dm
@@ -234,11 +235,13 @@ def _neighbor_gap_text(rows: list, my_sid: int, my_total: float) -> str:
 
 def _hours_response(reply: str, member_code: Optional[str]) -> JSONResponse:
     """Ephemeral /hours reply with a one-tap "open my dashboard" link appended (mirrors
-    Munus's /vhours). The link is a plain mrkdwn hyperlink to /enter, so it opens in the
-    browser without firing a Slack interaction. Omitted when the member has no
-    `member_code` (legacy-only rows Legion's /sso/challenge can't match)."""
+    Munus's /vhours). A plain mrkdwn hyperlink, so it opens in the browser without firing
+    a Slack interaction, and a signed magic link, so the tap works first time even in
+    Slack's in-app browser where no cookie survives — safe because an ephemeral reply is
+    visible only to the caller. Omitted when the member has no `member_code` (legacy-only
+    rows Legion can't match)."""
     if member_code:
-        link = f"<{settings.base_url}/enter?member={member_code}&next={quote('/me')}|📊 Open my dashboard>"
+        link = f"<{make_link_url(member_code, '/me')}|📊 Open my dashboard>"
         reply = f"{reply}\n{link}"
     return JSONResponse({
         "response_type": "ephemeral",

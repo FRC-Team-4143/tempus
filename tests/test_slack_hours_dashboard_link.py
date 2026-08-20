@@ -1,10 +1,23 @@
-"""The /hours reply now ends with a one-tap "open my dashboard" link (to /enter),
-mirroring Munus's /vhours. Present for students and mentors with a member_code; omitted
-for the not-linked case."""
+"""The /hours reply ends with a one-tap "open my dashboard" magic link, mirroring Munus's
+/vhours. Present for students and mentors with a member_code; omitted for the not-linked
+case. The member code rides *inside* the signed token rather than in the query string, so
+these assert on the decoded payload — which also proves the link was signed with the salt
+and secret Legion will actually accept."""
+import re
 from datetime import datetime, timedelta
 
+from itsdangerous import URLSafeTimedSerializer
+
 import app.routers.slack as slack_router
+from app.config import settings
 from app.models import AttendanceSession, Mentor, MentorSession
+
+
+def _link_payloads(text: str) -> list[dict]:
+    signer = URLSafeTimedSerializer(settings.sso_secret, salt="mw-sso-link")
+    return [
+        signer.loads(t) for t in re.findall(r"/sso/link\?token=([^|>\s]+)", text)
+    ]
 
 
 async def _no_signature_check(request):
@@ -34,7 +47,10 @@ async def test_student_hours_includes_dashboard_link(client, db, team, make_stud
     resp = await client.post("/slack/command", data={"command": "/hours", "user_id": "USTU"})
 
     assert resp.status_code == 200
-    assert "/enter?member=ada00001" in resp.text
+    assert any(
+        p["member_code"] == "ada00001" and p["return_to"].endswith("/me")
+        for p in _link_payloads(resp.text)
+    )
     assert "Open my dashboard" in resp.text
 
 
@@ -53,7 +69,10 @@ async def test_mentor_hours_includes_dashboard_link(client, db, monkeypatch):
     resp = await client.post("/slack/command", data={"command": "/hours", "user_id": "UMENTOR"})
 
     assert resp.status_code == 200
-    assert "/enter?member=mnt00001" in resp.text
+    assert any(
+        p["member_code"] == "mnt00001" and p["return_to"].endswith("/me")
+        for p in _link_payloads(resp.text)
+    )
     assert "Open my dashboard" in resp.text
 
 
