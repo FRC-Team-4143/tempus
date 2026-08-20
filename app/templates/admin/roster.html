@@ -80,10 +80,12 @@
   {{ mentors|length }} mentor{{ 's' if mentors|length != 1 else '' }}
 </p>
 
-<div class="table-responsive">
-  <table class="table table-sm align-middle" data-filter-sort data-empty-text="No members match the current filters.">
-    <thead>
-      <tr>
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle" data-filter-sort data-empty-text="No members match the current filters.">
+      <thead class="table-light">
+        <tr>
         <th class="fs-th" data-col="name" data-sortable="true" data-sort-type="text" data-filter="none">
           <span class="th-inner d-inline-flex align-items-center"><span class="th-label">Name</span></span>
         </th>
@@ -120,7 +122,9 @@
       <tr><td colspan="6" class="text-muted text-center">No members. Run a sync.</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+    </table>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
