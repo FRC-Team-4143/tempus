@@ -128,8 +128,6 @@ async def send_qr_dm(slack_user_id: str, code: str, name: str) -> bool:
         comment += (
             "\n\n📲 *Even better — add it to your phone's wallet:* "
             + " · ".join(wallet_links)
-            + "\nA wallet pass turns your screen brightness up automatically, so the "
-            "kiosk scanner reads it on the first try."
         )
 
     client = get_slack_client()
