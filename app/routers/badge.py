@@ -15,9 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import Mentor, Student
 from app.services.badge import compute_badge_id, effective_code, qr_png_response
+from app.services.wallet import apple_wallet_configured, google_wallet_configured
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+# Config-only (not per-`badge_id`), so the badge page's HTML shape stays identical for a
+# real vs. unmatched id — the "Add to Wallet" buttons render the same way regardless.
+templates.env.globals["apple_wallet_enabled"] = apple_wallet_configured
+templates.env.globals["google_wallet_enabled"] = google_wallet_configured
 
 
 async def _resolve_code(db: AsyncSession, badge_id: str) -> str:

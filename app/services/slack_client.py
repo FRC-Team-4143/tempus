@@ -96,6 +96,7 @@ async def send_qr_dm(slack_user_id: str, code: str, name: str) -> bool:
     import logging
     import qrcode
     from app.services.badge import compute_badge_id
+    from app.services.wallet import apple_wallet_configured, google_wallet_configured
     log = logging.getLogger(__name__)
 
     img = qrcode.make(code)
@@ -103,7 +104,33 @@ async def send_qr_dm(slack_user_id: str, code: str, name: str) -> bool:
     img.save(buf, format="PNG")
     buf.seek(0)
 
-    badge_url = f"{settings.base_url}/badge/{compute_badge_id(code)}"
+    badge_id = compute_badge_id(code)
+    badge_url = f"{settings.base_url}/badge/{badge_id}"
+
+    comment = (
+        f"Hi {name.split()[0]}! Here's your QR badge for the shop kiosk. "
+        "Screenshot or save this and scan it to sign in and out.\n\n"
+        f"You can also just bookmark <{badge_url}|your QR badge page> — it doesn't require a Legion "
+        "login, so if you'd rather not save the image to your camera roll, favorite that page or add "
+        "it to your phone's home screen as a shortcut instead."
+    )
+
+    wallet_links = []
+    if apple_wallet_configured():
+        wallet_links.append(
+            f"<{settings.base_url}/wallet/apple/{badge_id}.pkpass|Add to Apple Wallet>"
+        )
+    if google_wallet_configured():
+        wallet_links.append(
+            f"<{settings.base_url}/wallet/google/{badge_id}|Add to Google Wallet>"
+        )
+    if wallet_links:
+        comment += (
+            "\n\n📲 *Even better — add it to your phone's wallet:* "
+            + " · ".join(wallet_links)
+            + "\nA wallet pass turns your screen brightness up automatically, so the "
+            "kiosk scanner reads it on the first try."
+        )
 
     client = get_slack_client()
     try:
@@ -114,13 +141,7 @@ async def send_qr_dm(slack_user_id: str, code: str, name: str) -> bool:
             content=buf.read(),
             filename=f"{name.replace(' ', '_')}_qr.png",
             title=f"QR Badge — {name}",
-            initial_comment=(
-                f"Hi {name.split()[0]}! Here's your QR badge for the shop kiosk. "
-                "Screenshot or save this and scan it to sign in and out.\n\n"
-                f"You can also just bookmark <{badge_url}|your QR badge page> — it doesn't require a Legion "
-                "login, so if you'd rather not save the image to your camera roll, favorite that page or add "
-                "it to your phone's home screen as a shortcut instead."
-            ),
+            initial_comment=comment,
         )
         return True
     except Exception as e:
