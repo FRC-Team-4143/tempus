@@ -4,6 +4,12 @@
 .env.*.bak
 *.bak
 
+# Wallet pass signing material — keep certs/keys out of the repo (mount them in prod)
+*.p12
+*.pem
+/secrets/*
+!/secrets/README.md
+
 # Database
 *.db
 *.db-shm

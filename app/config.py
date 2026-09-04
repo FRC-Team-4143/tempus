@@ -61,5 +61,27 @@ class Settings(BaseSettings):
     # Global toggle for all automated updates (Slack messages, memes, scheduled jobs)
     updates_enabled: bool = True
 
+    # ── Apple Wallet / Google Wallet passes (optional) ───────────────────────────
+    # When configured, the /badge page and the /qr Slack DM offer "Add to Apple/Google
+    # Wallet". A wallet pass carries the same kiosk QR but makes the phone max its screen
+    # brightness automatically when shown, so the scanner reads it first try. Passes are
+    # signed/built entirely in-process — no third-party pass service. Blank = disabled
+    # (the /wallet/* routes 404 and no buttons render). Keep cert files outside the repo.
+    #
+    # Apple: needs a paid Apple Developer account -> a Pass Type ID + its certificate,
+    # exported from Keychain as .p12, plus Apple's WWDR G4 intermediate (PEM or DER/.cer).
+    apple_wallet_p12_path: str = ""
+    apple_wallet_p12_password: str = ""
+    apple_wallet_wwdr_path: str = ""
+    apple_wallet_pass_type_id: str = ""   # e.g. "pass.org.marswars.tempus"
+    apple_wallet_team_id: str = ""        # the 10-char Apple Developer Team ID
+    apple_wallet_org_name: str = "Tempus"  # shown on the pass as the issuer
+    #
+    # Google: a Google Cloud project with the Google Wallet API enabled, a service-account
+    # key (JSON), and your Wallet API issuer ID. The "Add to Google Wallet" link is a
+    # locally-signed JWT — Tempus never calls the Wallet REST API.
+    google_wallet_service_account_path: str = ""
+    google_wallet_issuer_id: str = ""
+
 
 settings = Settings()
