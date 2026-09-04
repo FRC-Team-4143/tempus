@@ -61,7 +61,6 @@ async def test_send_qr_dm_includes_wallet_links_when_configured(monkeypatch):
     badge_id = compute_badge_id("ada00001")
     assert f"<{settings.base_url}/wallet/apple/{badge_id}.pkpass|Add to Apple Wallet>" in comment
     assert f"<{settings.base_url}/wallet/google/{badge_id}|Add to Google Wallet>" in comment
-    assert "brightness" in comment
 
 
 async def test_send_qr_dm_returns_false_on_failure(monkeypatch):

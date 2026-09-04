@@ -11,7 +11,7 @@
 
       {% if apple_wallet_enabled() or google_wallet_enabled() %}
       <div class="mt-4">
-        <div class="text-muted small mb-2">Add it to your phone's wallet &mdash; the pass turns your screen brightness up automatically, so the scanner reads it first try.</div>
+        <div class="text-muted small mb-2">Add it to your phone's wallet.</div>
         <div class="d-flex flex-wrap align-items-center justify-content-center gap-2">
           {% if apple_wallet_enabled() %}
           <a href="/wallet/apple/{{ badge_id }}.pkpass" class="d-inline-block">
