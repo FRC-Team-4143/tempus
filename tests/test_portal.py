@@ -169,6 +169,41 @@ async def test_portal_navbar_hides_legion_link_when_unconfigured(client, db, mak
         settings.legion_base_url = original
 
 
+async def test_magic_link_session_sees_the_stepup_banner(client, db, make_student):
+    """A `via="link"` session (Slack quick link) gets a visible offer to step up to a
+    full sign-in — without signing out first."""
+    from app.config import settings
+    original = settings.legion_base_url
+    try:
+        settings.legion_base_url = "https://legion.example.org"
+        await make_student(code="ada00001")
+        client.cookies.set(
+            SSO_COOKIE,
+            make_sso_cookie(groups=(), member_code="ada00001", role="student", via="link"),
+        )
+        resp = await client.get("/me")
+        assert resp.status_code == 200
+        assert "https://legion.example.org/sso/stepup?app=tempus" in resp.text
+        assert "quick link" in resp.text
+    finally:
+        settings.legion_base_url = original
+
+
+async def test_normal_session_has_no_stepup_banner(client, db, make_student):
+    from app.config import settings
+    original = settings.legion_base_url
+    try:
+        settings.legion_base_url = "https://legion.example.org"
+        await make_student(code="ada00001")
+        client.cookies.set(
+            SSO_COOKIE, make_sso_cookie(groups=(), member_code="ada00001", role="student")
+        )
+        resp = await client.get("/me")
+        assert "/sso/stepup" not in resp.text
+    finally:
+        settings.legion_base_url = original
+
+
 async def test_dashboard_shows_admin_card_for_staff(client, db, make_student):
     await make_student(code="ada00001")
     client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=["tempus-admin"], member_code="ada00001", role="student"))

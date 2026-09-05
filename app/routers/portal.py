@@ -30,7 +30,7 @@ from app.services.reports import (
     default_report_range, drop_zero_requirement_weeks, week_starts_in_range, weekly_attendance_report,
     weekly_mentor_hours,
 )
-from app.services.sso import logout_url, make_authorize_url, sso_identity
+from app.services.sso import logout_url, make_authorize_url, sso_identity, stepup_url
 from app.utils import utc_to_local
 
 router = APIRouter()
@@ -54,6 +54,7 @@ def _session_role(request: Request) -> Optional[str]:
 
 templates.env.globals["session_role"] = _session_role
 templates.env.globals["session_identity"] = sso_identity
+templates.env.globals["stepup_url"] = stepup_url
 templates.env.globals["legion_base_url"] = lambda: settings.legion_base_url
 templates.env.globals["badge_url"] = lambda person: f"/badge/{compute_badge_id(effective_code(person))}"
 

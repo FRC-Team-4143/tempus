@@ -46,6 +46,26 @@ def make_authorize_url(request: Request) -> str:
     return f"{settings.legion_base_url}/sso/authorize?app=tempus&return_to={return_to}"
 
 
+def stepup_url(request: Request, *, return_to: Optional[str] = None) -> str:
+    """Step a magic-link session up to a full one: Legion's `/sso/stepup` re-mints
+    `mw_sso` WITH groups via a fresh Slack Approve/Deny — no sign-out first.
+
+    Same shape as `make_authorize_url`, but a distinct Legion endpoint on purpose: a
+    `via="link"` cookie that lands on `/sso/authorize` counts as "already signed in" and
+    is bounced straight back, which — since the admin gate sends link identities here —
+    would loop. `return_to` defaults to the current URL; pass a bare Tempus path to come
+    back to that page instead (made absolute so Legion's redirect resolves against
+    Tempus's host, not Legion's)."""
+    from urllib.parse import quote
+    if return_to is None:
+        target = str(request.url)
+    elif urlparse(return_to).netloc:
+        target = return_to
+    else:
+        target = f"{request.url.scheme}://{request.url.netloc}{return_to}"
+    return f"{settings.legion_base_url}/sso/stepup?app=tempus&return_to={quote(target, safe='')}"
+
+
 def logout_url(request: Request, *, return_to: str = "/admin") -> str:
     """Legion's single-logout endpoint, returning to `return_to` (default: Tempus's
     /admin) afterward."""
