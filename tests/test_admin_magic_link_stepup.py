@@ -3,20 +3,21 @@
 Legion mints link-borne cookies with `groups: []` and `via: "link"` (see its
 `services/sso.make_link_sso_token`) precisely because a link is a bearer credential —
 anyone who can read the Slack message holding it can redeem it. `/admin` therefore
-bounces such an identity to a real sign-in rather than serving it, and rather than
+bounces such an identity to `/sso/stepup` (a fresh Approve/Deny that re-mints the cookie
+*with* groups, landing back on the same page) rather than serving it, and rather than
 403ing it, since the person may genuinely be an admin who just arrived from Slack.
 """
 from app.services.sso import SSO_COOKIE
 from tests.conftest import make_sso_cookie
 
 
-async def test_admin_redirects_a_magic_link_identity_to_sign_in(client):
+async def test_admin_redirects_a_magic_link_identity_to_stepup(client):
     client.cookies.set(SSO_COOKIE, make_sso_cookie(groups=(), via="link"))
 
     resp = await client.get("/admin", follow_redirects=False)
 
     assert resp.status_code == 303
-    assert "sso/authorize" in resp.headers["location"]
+    assert "/sso/stepup?app=tempus" in resp.headers["location"]
 
 
 async def test_admin_still_refuses_a_link_identity_that_somehow_carries_groups(client):
@@ -27,7 +28,7 @@ async def test_admin_still_refuses_a_link_identity_that_somehow_carries_groups(c
     resp = await client.get("/admin", follow_redirects=False)
 
     assert resp.status_code == 303
-    assert "sso/authorize" in resp.headers["location"]
+    assert "/sso/stepup" in resp.headers["location"]
 
 
 async def test_a_normal_admin_cookie_still_gets_in(client):
