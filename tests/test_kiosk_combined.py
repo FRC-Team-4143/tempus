@@ -73,12 +73,12 @@ async def test_hold_duration_is_never_hardcoded(paired_client):
     assert f"const HOLD_MS = {settings.kiosk_mentor_hold_seconds} * 1000;" in resp.text
 
 
-def test_hold_duration_defaults_to_two_minutes():
+def test_hold_duration_defaults_to_one_minute():
     """The default belongs to the Settings class, so check it there — reading it
     off a rendered page would just be reading back whatever .env happens to say."""
     from app.config import Settings
 
-    assert Settings.model_fields["kiosk_mentor_hold_seconds"].default == 120
+    assert Settings.model_fields["kiosk_mentor_hold_seconds"].default == 60
 
 
 @pytest.mark.parametrize("path,expect_board,reject_board", [

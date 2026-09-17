@@ -1308,7 +1308,7 @@ async def admin_settings_post(
     backup_time: str = Form(...),
     backup_keep: int = Form(...),
     timezone: str = Form(...),
-    kiosk_mentor_hold_seconds: int = Form(120),
+    kiosk_mentor_hold_seconds: int = Form(60),
     slack_announce_channel: str = Form(""),
     updates_enabled: bool = Form(False),
     roast_enabled: bool = Form(False),

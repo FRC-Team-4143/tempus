@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     # How long the combined kiosk display holds on the mentor board after a mentor
     # badge scan before returning to students. Any student scan cuts it short.
-    kiosk_mentor_hold_seconds: int = 120
+    kiosk_mentor_hold_seconds: int = 60
 
     timezone: str = "America/New_York"
 
