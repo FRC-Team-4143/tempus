@@ -97,11 +97,10 @@ async def test_unpaired_display_reports_is_mentor_false(client):
     assert data["is_mentor"] is False
 
 
-async def test_debounced_mentor_scan_reports_its_own_message(paired_client, db):
-    """Regression test: kiosk_signin()'s final fallback used to return the stale
-    student-lookup failure ("Badge not recognized") even when a mentor badge was
-    the one that matched but got debounced — discarding the mentor lookup's real
-    "Duplicate scan ignored" message."""
+async def test_immediate_mentor_re_scan_self_checks_out(paired_client, db):
+    """No server-side debounce window: a mentor badge scanned again seconds after
+    sign-in toggles straight to sign-out. Rapid duplicate scans are suppressed by
+    the kiosk camera (SCAN_DEBOUNCE_MS), never by /kiosk/signin."""
     mentor = Mentor(name="Grace Hopper", slack_user_id="U_MENTOR_1", member_code="mbadge001")
     db.add(mentor)
     await db.commit()
@@ -112,15 +111,15 @@ async def test_debounced_mentor_scan_reports_its_own_message(paired_client, db):
     resp = await paired_client.post("/kiosk/signin", json={"name": "mbadge001"})
 
     data = resp.json()
-    assert data["success"] is False
-    assert "Duplicate scan ignored" in data["message"]
+    assert data["success"] is True
+    assert data["is_mentor"] is True
+    assert data["is_sign_out"] is True
+    assert "Signed out" in data["message"]
 
 
-async def test_debounced_student_scan_reports_its_own_message(paired_client, db, make_student):
-    """Mirror of the mentor regression above: a student badge that matched but got
-    debounced used to fall through to a mentor lookup for the same code (which
-    naturally finds no mentor) and surface *that* lookup's "Badge not recognized"
-    instead of the student lookup's own "Duplicate scan ignored"."""
+async def test_immediate_student_re_scan_self_checks_out(paired_client, db, make_student):
+    """Mirror of the mentor case: a student badge scanned again right after
+    sign-in self-checks-out, with no "still signed in" grace window."""
     student = await make_student(code="badge001")
     db.add(AttendanceSession(student_id=student.id, sign_in_time=datetime.utcnow()))
     await db.commit()
@@ -128,5 +127,7 @@ async def test_debounced_student_scan_reports_its_own_message(paired_client, db,
     resp = await paired_client.post("/kiosk/signin", json={"name": "badge001"})
 
     data = resp.json()
-    assert data["success"] is False
-    assert "Duplicate scan ignored" in data["message"]
+    assert data["success"] is True
+    assert data["is_mentor"] is False
+    assert data["is_sign_out"] is True
+    assert "Signed out" in data["message"]

@@ -38,9 +38,12 @@ async def test_unknown_badge_is_rejected(db, make_student):
     assert is_sign_out is False
 
 
-async def test_second_scan_within_60s_is_debounced(db, make_student):
+async def test_immediate_second_scan_self_checks_out(db, make_student):
+    """There is no server-side debounce window: badging again toggles to
+    sign-out however soon it lands. Suppressing rapid duplicate scans is the
+    kiosk camera's job (SCAN_DEBOUNCE_MS), not this function's."""
     student = await make_student(code="badge001")
-    # First scan opens a session 10 seconds ago.
+    # First scan opened a session just 10 seconds ago.
     db.add(AttendanceSession(
         student_id=student.id,
         sign_in_time=datetime.utcnow() - timedelta(seconds=10),
@@ -49,16 +52,13 @@ async def test_second_scan_within_60s_is_debounced(db, make_student):
 
     ok, msg, returned, is_sign_out = await sign_in(db, "badge001")
 
-    assert ok is False
-    assert "Duplicate" in msg
-    assert is_sign_out is False
-    # Still exactly one, still open.
-    open_session = await get_open_session(db, student.id)
-    assert open_session is not None
-    assert open_session.sign_out_time is None
+    assert ok is True
+    assert "Signed out" in msg
+    assert is_sign_out is True
+    assert await get_open_session(db, student.id) is None  # no open session remains
 
 
-async def test_second_scan_after_60s_self_checks_out(db, make_student):
+async def test_second_scan_after_a_long_session_self_checks_out(db, make_student):
     student = await make_student(code="badge001")
     db.add(AttendanceSession(
         student_id=student.id,

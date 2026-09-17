@@ -55,14 +55,10 @@ async def sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optional[Stude
 
     open_session = await get_open_session(db, student.id)
     if open_session:
-        elapsed_seconds = (datetime.utcnow() - open_session.sign_in_time).total_seconds()
-        if elapsed_seconds < 60:
-            # Debounce: QR scanner fired twice in quick succession — ignore. Still
-            # returns the matched student (not None) so the caller can tell this
-            # apart from a genuinely unrecognized badge — see kiosk_signin's use
-            # of this to decide whether to fall through to a mentor lookup.
-            return False, f"Duplicate scan ignored — {student.name} is still signed in.", student, False
-        # Self-checkout: sign them out with auto status
+        # Self-checkout: badging again while signed in toggles to sign-out.
+        # Rapid duplicate scans are debounced by the kiosk camera itself
+        # (SCAN_DEBOUNCE_MS in kiosk-boards.js) — there is no server-side grace
+        # window, so whatever scan reaches here flips the toggle.
         now = datetime.utcnow()
         elapsed_hours = (now - open_session.sign_in_time).total_seconds() / 3600.0
         open_session.sign_out_time = now
@@ -228,11 +224,7 @@ async def mentor_sign_in(db: AsyncSession, uid: str) -> tuple[bool, str, Optiona
     )
     open_session = open_result.scalars().first()
     if open_session:
-        elapsed_seconds = (datetime.utcnow() - open_session.sign_in_time).total_seconds()
-        if elapsed_seconds < 60:
-            # Debounce: QR scanner fired twice in quick succession — ignore
-            return False, f"Duplicate scan ignored — {mentor.name} is still signed in.", None, False
-        # Self-checkout
+        # Self-checkout — see sign_in() on why rapid re-scans aren't debounced here.
         now = datetime.utcnow()
         open_session.sign_out_time = now
         open_session.hours_counted = round((now - open_session.sign_in_time).total_seconds() / 3600.0, 4)

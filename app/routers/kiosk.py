@@ -304,11 +304,12 @@ async def kiosk_signin(
             is_sign_out=is_sign_out,
         )
 
-    # student is None only when the code matched no one — that's the only case
-    # worth trying a mentor lookup for (silently — mentors don't appear on the
-    # student board). A matched-but-failed student (e.g. a debounced duplicate
-    # scan) must report its own message below rather than getting a mentor
-    # lookup's "Badge not recognized" for a code that was never a mentor's.
+    # A failed student lookup means the code matched no student — fall through to
+    # a mentor lookup (silently — mentors don't appear on the student board).
+    # sign_in() only ever fails with student=None now; the `is not None` guard
+    # below stays as a safety net so a future matched-but-failed student would
+    # still report its own message rather than a mentor lookup's "Badge not
+    # recognized" for a code that was never a mentor's.
     if student is None:
         m_success, m_message, mentor, m_is_sign_out = await mentor_sign_in(db, body.name.strip())
         if m_success:

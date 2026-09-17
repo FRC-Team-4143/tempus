@@ -396,13 +396,18 @@ window.Kiosk = (function () {
   // A code counts again only after it has been *out of the camera's view* for
   // this long. Not "N seconds since the last submit": the camera re-decodes the
   // same badge every frame it is visible, so a fixed cooldown would fire again
-  // the moment it expired. With a badge propped in front of the lens that means
-  // sign-in → (60s server debounce) → sign-out → sign-in → …, manufacturing a
-  // fake session every minute. Refreshing the timestamp on *every* sighting
-  // makes the gate un-openable until the badge physically leaves, so one
-  // showing is exactly one action — and a sign-out is not followed by an
-  // instant re-sign-in, which sign_in()'s toggle would otherwise happily do.
-  const SCAN_DEBOUNCE_MS = 4000;
+  // the moment it expired. With a badge propped in front of the lens that would
+  // toggle sign-in → sign-out → sign-in each time it lapsed, manufacturing a
+  // fake session on a timer. Refreshing the timestamp on *every* sighting makes
+  // the gate un-openable until the badge physically leaves, so one showing is
+  // exactly one action — and a sign-out is not followed by an instant
+  // re-sign-in, which sign_in()'s toggle would otherwise happily do.
+  //
+  // This is now the only duplicate-scan guard: sign_in() toggles on whatever
+  // scan reaches it, with no server-side "still signed in" grace window. Keep it
+  // long enough to cover a student lowering their phone and raising it again to
+  // check the board caught them.
+  const SCAN_DEBOUNCE_MS = 15000;
 
   // Field-tested: throttling below the library's own default (25) made pickup
   // feel sluggish with a line of people moving through, and decoding happens in
