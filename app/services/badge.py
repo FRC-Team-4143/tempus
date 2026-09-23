@@ -53,7 +53,11 @@ def compute_badge_id(code: str) -> str:
     ).hexdigest()[:_BADGE_ID_LENGTH]
 
 
-def qr_png_response(code: str) -> Response:
+def render_qr_png_bytes(code: str) -> bytes:
+    """Render `code` as a QR PNG at the fixed version/box-size/border above, so every QR
+    Tempus generates for a member (badge page, wallet passes, Slack DM) comes out the same
+    pixel size regardless of code length — see the module docstring for why the badge page
+    itself relies on that being fixed rather than auto-fit."""
     qr = qrcode.QRCode(
         version=_QR_VERSION,
         error_correction=_QR_ERROR_CORRECTION,
@@ -65,4 +69,8 @@ def qr_png_response(code: str) -> Response:
     img = qr.make_image()
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    return Response(content=buf.getvalue(), media_type="image/png")
+    return buf.getvalue()
+
+
+def qr_png_response(code: str) -> Response:
+    return Response(content=render_qr_png_bytes(code), media_type="image/png")
