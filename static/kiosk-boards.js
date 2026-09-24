@@ -350,8 +350,15 @@ window.Kiosk = (function () {
       });
       const data = await resp.json();
       showFeedback(data.success, data.message);
-      playBeep(!data.success ? 'error' : (data.is_sign_out ? 'out' : 'in'));
+      // Fire the board swap before the beep, not after: onResult (the combined
+      // page's mentor-board transition) must never sit behind playBeep on the
+      // call stack. The easter-egg/warmup clips are much bigger than the plain
+      // beeps, and starting one can cost real time on the kiosk hardware (see
+      // KEEPALIVE_SOUND above) before playBeep's call even returns — with the
+      // old order that delay landed in front of the transition, freezing it
+      // until the sound got going.
       if (onResult) onResult(data);
+      playBeep(!data.success ? 'error' : (data.is_sign_out ? 'out' : 'in'));
     } catch (err) {
       showFeedback(false, 'Connection error. Please try again.');
       playBeep('error');
