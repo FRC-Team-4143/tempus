@@ -94,15 +94,11 @@ async def send_qr_dm(slack_user_id: str, code: str, name: str) -> bool:
     to saving the image for anyone who'd rather not clutter their camera roll."""
     import io as _io
     import logging
-    import qrcode
-    from app.services.badge import compute_badge_id
+    from app.services.badge import compute_badge_id, render_qr_png_bytes
     from app.services.wallet import apple_wallet_configured, google_wallet_configured
     log = logging.getLogger(__name__)
 
-    img = qrcode.make(code)
-    buf = _io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
+    buf = _io.BytesIO(render_qr_png_bytes(code))
 
     badge_id = compute_badge_id(code)
     badge_url = f"{settings.base_url}/badge/{badge_id}"
