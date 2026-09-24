@@ -96,7 +96,7 @@ async def _post_wall_of_shame(closed: list) -> None:
                 settings.slack_announce_channel,
                 img,
                 f"{first_name.lower()}_wall_of_shame.png",
-                comment=f"🚨 {mention} forgot to sign out today 😅",
+                comment=f"🚨 {mention} forgot to sign out 😅",
             )
             log.info("Posted Wall of Shame meme for %s", first_name)
         except Exception as e:
