@@ -5,39 +5,59 @@ Every test runs against a fresh in-memory SQLite database. We use a StaticPool s
 the single in-memory connection is shared across the session (in-memory DBs are
 otherwise per-connection and would appear empty).
 """
+import os
+
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.database import Base, get_db
-from app.models import Student, Team
+# Pinned *before* the first `app` import: `Settings()` is built at import, and
+# services/sso.py + services/legion_auth.py build their itsdangerous signers from
+# `sso_secret` right then, while `make_sso_cookie` below signs with `settings.sso_secret`
+# on every call. A fixed value keeps the two in step whatever the developer's shell or
+# `.env` holds (an env var beats the dotenv file), and keeps a real production secret
+# out of the test run.
+_TEST_SSO_SECRET = "test-sso-secret"
+os.environ["SSO_SECRET"] = _TEST_SSO_SECRET
+
+from app.database import Base, get_db  # noqa: E402
+from app.models import Student, Team  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def _isolate_base_url_from_dotenv():
-    """Pin `base_url` to a plain-http default so tests don't depend on the developer's
-    `.env`.
+def _isolate_settings_from_dotenv():
+    """The suite must not depend on the developer's `.env` or shell environment: reset
+    every setting to its class default before each test, then restore the real values.
 
-    `services/kiosk_device.issue_cookie` marks the device cookie `Secure` when
-    `base_url` is https, which any real `.env` sets. The test client speaks plain http,
-    so httpx then correctly refuses to send the cookie back and every request looks like
-    a brand-new device — which made the kiosk pairing tests fail locally while passing
-    in CI, where no `.env` exists.
+    A test that needs something else layers its own override on top (monkeypatch, or a
+    fixture like test_wallet's `apple_wallet`); those run after this one and unwind
+    before it.
 
-    Deliberately narrow rather than resetting every setting the way Legion's
-    `_isolate_settings_from_dotenv` does: `services/sso.py` builds its itsdangerous
-    signer at *import* time from `sso_secret` (see CLAUDE.md), so blanking that setting
-    afterward desynchronizes it from `tests/conftest.make_sso_cookie`, which builds its
-    signer per call — every SSO-authenticated test then fails. Widen this only alongside
-    a fix for that.
+    The defaults come straight from the field definitions rather than from
+    `Settings(_env_file=None)`, which would still pick up exported env vars. The one
+    exception is `sso_secret`, which is set to the test value pinned at the top of this
+    file rather than blanked — the import-time signers already hold that value.
+
+    Why this is global rather than just `base_url`: `services/kiosk_device.issue_cookie`
+    marks the device cookie `Secure` when `base_url` is https, which any real `.env`
+    sets, so httpx refused to send it back over the test client's plain http and the
+    kiosk pairing tests failed locally while passing in CI, where no `.env` exists. The
+    hours-multiplier tests broke the same way.
     """
     from app.config import Settings, settings
 
-    original = settings.base_url
-    settings.base_url = Settings.model_fields["base_url"].default
+    defaults = {
+        name: field.get_default(call_default_factory=True)
+        for name, field in Settings.model_fields.items()
+    }
+    defaults["sso_secret"] = _TEST_SSO_SECRET
+    original = {name: getattr(settings, name) for name in Settings.model_fields}
+    for name, value in defaults.items():
+        setattr(settings, name, value)
     yield
-    settings.base_url = original
+    for name, value in original.items():
+        setattr(settings, name, value)
 
 
 @pytest_asyncio.fixture

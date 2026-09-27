@@ -24,20 +24,12 @@ from app.services.badge import compute_badge_id
 from app.services.wallet import Badgeholder, build_pkpass, google_save_url
 
 
-_WALLET_SETTINGS = (
-    "apple_wallet_p12_path", "apple_wallet_p12_password", "apple_wallet_wwdr_path",
-    "apple_wallet_pass_type_id", "apple_wallet_team_id",
-    "google_wallet_service_account_path", "google_wallet_issuer_id",
-)
-
-
 @pytest.fixture(autouse=True)
-def _wallet_unconfigured(monkeypatch):
-    """Start every test with the feature OFF regardless of the dev's real .env; the
-    `apple_wallet` / `google_wallet` fixtures opt back in with throwaway creds."""
-    for name in _WALLET_SETTINGS:
-        monkeypatch.setattr(settings, name, "")
-    monkeypatch.setattr(settings, "apple_wallet_org_name", "Tempus")
+def _clear_wallet_credential_caches():
+    """Every test starts with the feature OFF — the suite-wide settings reset leaves
+    every wallet setting blank — and the `apple_wallet` / `google_wallet` fixtures opt
+    back in with throwaway creds. The credential loaders are `lru_cache`d, which that
+    reset doesn't touch, so a previous test's creds are dropped here."""
     wallet_mod._load_apple_credentials.cache_clear()
     wallet_mod._load_service_account.cache_clear()
 

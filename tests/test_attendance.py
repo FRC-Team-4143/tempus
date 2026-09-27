@@ -80,15 +80,19 @@ async def test_second_scan_after_a_long_session_self_checks_out(db, make_student
     assert sess.hours_counted == pytest.approx(2.0 * settings.contributor_multiplier, abs=0.01)
 
 
+# The setting is looked up by name inside the test: reading `settings.*` here would
+# run at collection time, before the per-test defaults reset, and pin the developer's
+# `.env` values into the expected results.
 @pytest.mark.parametrize(
-    "status,multiplier",
+    "status,multiplier_setting",
     [
-        (SessionStatus.contributor, settings.contributor_multiplier),
-        (SessionStatus.present, settings.present_multiplier),
-        (SessionStatus.distraction, settings.distraction_multiplier),
+        (SessionStatus.contributor, "contributor_multiplier"),
+        (SessionStatus.present, "present_multiplier"),
+        (SessionStatus.distraction, "distraction_multiplier"),
     ],
 )
-async def test_sign_out_applies_status_multiplier(db, make_student, status, multiplier):
+async def test_sign_out_applies_status_multiplier(db, make_student, status, multiplier_setting):
+    multiplier = getattr(settings, multiplier_setting)
     student = await make_student(code="badge001")
     sess = AttendanceSession(
         student_id=student.id,

@@ -39,9 +39,7 @@ async def test_send_qr_dm_includes_badge_page_link(monkeypatch):
 
 async def test_send_qr_dm_omits_wallet_links_when_unconfigured(monkeypatch):
     fake = _stub_client(monkeypatch)
-    # Don't depend on the dev's real .env — force the feature off.
-    monkeypatch.setattr("app.services.wallet.apple_wallet_configured", lambda: False)
-    monkeypatch.setattr("app.services.wallet.google_wallet_configured", lambda: False)
+    # The wallet settings default to blank, so the real *_configured() checks are False.
 
     await slack_client_mod.send_qr_dm("USTU", "ada00001", "Ada Lovelace")
 
