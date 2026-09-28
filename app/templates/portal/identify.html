@@ -3,10 +3,10 @@
 {% block nav %}{% endblock %}
 
 {% block content %}
-<div class="d-flex align-items-center justify-content-center" style="min-height: 70vh;">
-  <div class="card" style="width: 360px;">
+<div class="mw-signin">
+  <div class="card mw-signin-card">
     <div class="card-body p-4 text-center">
-      <h1 class="mb-1" style="color:#cc2200; font-style:italic; font-weight:700;">Tempus</h1>
+      <h1 class="mw-app-title mb-1">Tempus</h1>
       <p class="text-muted mb-4">Sign in with your Legion account.</p>
       {% if not_synced %}
       <div class="alert alert-danger py-2 text-start">

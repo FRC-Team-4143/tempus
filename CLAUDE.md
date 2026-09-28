@@ -210,6 +210,13 @@ a change to the export route itself. The member search page deliberately has no 
 No Alembic. Add a `def _migration_name(conn)` function to `database.py` and call it from `init_db()`. Pattern: check if column/table exists, then apply the change. SQLite 3.35+ `DROP COLUMN` is supported.
 
 ## UI Conventions
+**Shared design (read first):** the look shared by every MARS/WARS app — palette, admin
+and portal shells, the sign-in card, tables, icons — is defined in
+`apps-infra/design/README.md`. `static/css/marswars.css` and
+`static/js/table-filter-sort.js` are vendored from `apps-infra/design/` — never edit
+them here; change the canonical copy and run `apps-infra/design/sync.sh`. App-only
+styles go in the base template's own `<style>` block, after the `marswars.css` link.
+
 
 Two visual styles — keep them separate:
 
