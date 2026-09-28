@@ -19,6 +19,8 @@ pytest
 
 Uses in-memory SQLite with async fixtures via `pytest-asyncio`. **Do not mock the database** — tests hit a real (in-memory) DB to catch query bugs.
 
+The suite doesn't depend on your `.env`: an autouse fixture in `tests/conftest.py` resets every setting to its class default before each test (and `SSO_SECRET` is pinned to a test value before `app` is imported). Override a setting inside a test with `monkeypatch.setattr(settings, ...)`. Never read `settings.*` at import/collection time (e.g. in a `parametrize` list) — that runs before the reset and captures the `.env` value; look it up inside the test instead.
+
 ## Manual / visual verification (screenshots)
 
 This sandboxed environment has no seeded dev database and blocks outbound access to

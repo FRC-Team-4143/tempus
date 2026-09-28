@@ -400,21 +400,19 @@ window.Kiosk = (function () {
   // Library: nimiq/qr-scanner 1.4.2 (MIT), vendored under
   // /static/vendor/qr-scanner/ — see that directory's LICENSE.
 
-  // A code counts again only after it has been *out of the camera's view* for
-  // this long. Not "N seconds since the last submit": the camera re-decodes the
-  // same badge every frame it is visible, so a fixed cooldown would fire again
-  // the moment it expired. With a badge propped in front of the lens that would
-  // toggle sign-in → sign-out → sign-in each time it lapsed, manufacturing a
-  // fake session on a timer. Refreshing the timestamp on *every* sighting makes
-  // the gate un-openable until the badge physically leaves, so one showing is
-  // exactly one action — and a sign-out is not followed by an instant
-  // re-sign-in, which sign_in()'s toggle would otherwise happily do.
+  // Once a code has been submitted, further sightings of it are ignored for this
+  // long, counted from that submit — not from the last frame it was visible in.
+  // The camera re-decodes a badge on every frame it stays in view, so those
+  // frames fall inside the window and are dropped without extending it. Once it
+  // lapses, a badge still in front of the lens counts again: a badge held or
+  // propped in view past this long toggles sign-in → sign-out → sign-in, one
+  // action per window. That is the trade-off for a short, predictable cooldown.
   //
-  // This is now the only duplicate-scan guard: sign_in() toggles on whatever
-  // scan reaches it, with no server-side "still signed in" grace window. Keep it
-  // long enough to cover a student lowering their phone and raising it again to
-  // check the board caught them.
-  const SCAN_DEBOUNCE_MS = 15000;
+  // This is the only duplicate-scan guard: sign_in() toggles on whatever scan
+  // reaches it, with no server-side "still signed in" grace window. Keep it long
+  // enough to cover a student lowering their phone and raising it again to check
+  // the board caught them.
+  const SCAN_DEBOUNCE_MS = 5000;
 
   // Field-tested: throttling below the library's own default (25) made pickup
   // feel sluggish with a line of people moving through, and decoding happens in
@@ -448,8 +446,8 @@ window.Kiosk = (function () {
       return null;
     }
 
-    // decoded text -> ms timestamp of its most recent sighting
-    const lastSeen = new Map();
+    // decoded text -> ms timestamp of the sighting that was last submitted
+    const lastSubmitted = new Map();
 
     function onDecode(result) {
       // returnDetailedScanResult gives { data, cornerPoints }; the QR encodes a
@@ -457,12 +455,12 @@ window.Kiosk = (function () {
       const code = String((result && result.data) || '').trim();
       if (!code) return;
       const now = Date.now();
-      const seenAt = lastSeen.get(code) || 0;
-      lastSeen.set(code, now);                       // refresh on EVERY frame
-      if (now - seenAt < SCAN_DEBOUNCE_MS) return;   // still in view / just left
-      if (lastSeen.size > 200) {                     // a display runs for weeks
-        for (const [c, t] of lastSeen) {
-          if (now - t > SCAN_DEBOUNCE_MS * 10) lastSeen.delete(c);
+      const submittedAt = lastSubmitted.get(code) || 0;
+      if (now - submittedAt < SCAN_DEBOUNCE_MS) return;  // inside the window
+      lastSubmitted.set(code, now);                      // only a submit starts it
+      if (lastSubmitted.size > 200) {                    // a display runs for weeks
+        for (const [c, t] of lastSubmitted) {
+          if (now - t >= SCAN_DEBOUNCE_MS) lastSubmitted.delete(c);  // expired
         }
       }
       submitBadge(code, onResult);

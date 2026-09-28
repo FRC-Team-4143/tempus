@@ -4,7 +4,7 @@ A web-based attendance tracking system for FIRST Robotics Competition teams **41
 
 ## Features
 
-- **Kiosk sign-in / self sign-out** — QR badge scan signs students in; a second scan signs them out (with a 60-second debounce to prevent accidental double-scans)
+- **Kiosk sign-in / self sign-out** — QR badge scan signs students in; a second scan signs them out (the kiosk camera ignores a badge for 5 seconds after submitting it, to prevent accidental double-scans)
 - **Slack integration** — mentors edit session ratings via `/edit`, query the current roster with `/shop`, students check their hours with `/hours`, anyone can grab a replacement badge with `/qr`, and mentors can mass sign-out everyone still signed in with `/gtfo`
 - **Automated sign-out** — nightly auto sign-out at a configurable time
 - **Weekly Slack DMs** — automatic hour-summary messages to students (and mentors if a student is falling behind)
