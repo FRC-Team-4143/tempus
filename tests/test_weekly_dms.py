@@ -1,8 +1,9 @@
 """The scheduled weekly hours-update DM (services/scheduler.job_weekly_dms):
 skips students whose team/subteam has no hours requirement this week, since a
 "0.0 / 0.0 hrs" update carries no useful information."""
-from datetime import date, timedelta
+from datetime import timedelta
 
+from app.utils import today_local
 from app.models import WeeklyRequirement
 from app.services import scheduler
 
@@ -43,7 +44,7 @@ async def test_weekly_dm_skips_student_with_zero_requirement(
     db.add(student)
     await db.commit()
 
-    today = date.today()
+    today = today_local()
     week_start = today - timedelta(days=today.weekday())
     db.add(WeeklyRequirement(team_id=student.team_id, subteam_slug=None, week_start=week_start, required_hours=0.0))
     await db.commit()
