@@ -6,13 +6,39 @@
  * `data-empty-text` on the `<table>` to customize the "no rows match" placeholder
  * shown when filters exclude every row. See CLAUDE.md / the roster/report pages for
  * the full markup contract.
+ *
+ * A column sorts and filters on the same `data-value` by default (e.g. a name, or a
+ * category like "met"/"not_met"). A numeric column that should filter on a derived
+ * category instead of enumerating every distinct number — e.g. "Approved" hours,
+ * sortable numerically but filtered as ahead-of-requirement/not — sets
+ * `data-filter-value`/`data-filter-label` on the `<td>` too; when present these are
+ * used for filtering (funnel + visibility) while `data-value` still drives sorting.
+ *
+ * A cell that can belong to several filter categories at once (e.g. "missing these
+ * required opportunities", a list of names) sets `data-filter-values` instead — a
+ * comma-separated list. The funnel then lists every distinct name across all rows,
+ * each name is its own filter option (no `data-filter-label` needed — the name is the
+ * label), an empty list is treated as the `(none)` option, and a row matches if it's
+ * still `d-none`-eligible under every column, but *within* this one column a row is
+ * visible if it has ANY of the checked values (OR, not AND) — matches how "pick which
+ * tags to include" reads. Optionally set `data-filter-sort-type="text"` on the `<th>`
+ * to alphabetize the funnel list separately from a numeric row `data-sort-type`.
+ *
+ * Set `data-show-count="true"` on a `<th>` to append a live "(N)" after its label — how
+ * many rows the current filter combination leaves visible across every column, not just
+ * this one. Updates alongside the rows on every filter/sort change.
+ *
+ * A `<th>` marked `data-count="true"` has its own server-rendered `.fs-count` element
+ * kept in sync the same way (as "(N)").
+ *
+ * Each table's sort and filters are saved in sessionStorage per page + table position,
+ * so a full-page reload (every admin form submit redirects back) restores them.
  */
 (function () {
   'use strict';
 
   var NONE_VALUE = ' none ';
   var NONE_LABEL = '(none)';
-  var DEFAULT_EMPTY_TEXT = 'No rows match the current filters.';
 
   function compareText(a, b) {
     return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
@@ -25,27 +51,110 @@
     return numeric ? (parseFloat(a) || 0) - (parseFloat(b) || 0) : compareText(a, b);
   }
 
+  // Sort value: always `data-value` — a numeric column needs its real number here.
   function cellValue(td) {
     var v = td ? td.getAttribute('data-value') : null;
     return v === null || v === '' ? NONE_VALUE : v;
   }
 
+  // Filter value: `data-filter-value` when the cell sets one (a derived category),
+  // otherwise falls back to the same `data-value` sorting uses.
+  function cellFilterValue(td) {
+    var v = td ? td.getAttribute('data-filter-value') : null;
+    if (v === null) return cellValue(td);
+    return v === '' ? NONE_VALUE : v;
+  }
+
+  // Filter values (plural): `data-filter-values` when the cell sets one — a
+  // comma-separated list, e.g. several missing opportunity names — otherwise a
+  // single-element array wrapping cellFilterValue() so every other column's existing
+  // single-value behavior is unchanged.
+  function cellFilterValues(td) {
+    if (!td) return [NONE_VALUE];
+    var raw = td.getAttribute('data-filter-values');
+    if (raw === null) return [cellFilterValue(td)];
+    var parts = raw.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s !== ''; });
+    return parts.length ? parts : [NONE_VALUE];
+  }
+
   function cellLabel(td, value) {
     if (value === NONE_VALUE) return NONE_LABEL;
-    var label = td.getAttribute('data-label');
+    // A data-filter-values cell has no per-cell label to read — each value (e.g. an
+    // opportunity name) is already human-readable and is its own label.
+    if (td.getAttribute('data-filter-values') !== null) return value;
+    var label = td.getAttribute('data-filter-label') || td.getAttribute('data-label');
     if (label !== null && label !== '') return label;
     return (td.textContent || '').trim();
   }
 
-  function TableController(table) {
+  function TableController(table, idx) {
     this.table = table;
     this.thead = table.querySelector('thead');
     this.tbody = table.querySelector('tbody');
     this.columns = [];
     this.sortState = null; // { index, dir: 'asc'|'desc' }
     this.emptyRow = null;
+    this.countEls = [];
+    // Scoped per page + table position so a full-page reload (every admin form
+    // submit redirects back here) can restore what the user had set instead of
+    // silently dropping it.
+    this.storageKey = 'fs-state:' + location.pathname + ':' + (idx || 0);
     this.build();
   }
+
+  TableController.prototype.loadState = function () {
+    try {
+      var raw = sessionStorage.getItem(this.storageKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  TableController.prototype.saveState = function () {
+    try {
+      var filters = {};
+      this.columns.forEach(function (col) {
+        if (col.selected) filters[col.key] = col.selected.values;
+      });
+      sessionStorage.setItem(this.storageKey, JSON.stringify({ sortState: this.sortState, filters: filters }));
+    } catch (e) {
+      // Private-mode / quota errors just mean filters won't survive a reload.
+    }
+  };
+
+  TableController.prototype.applySavedState = function (saved) {
+    var self = this;
+    if (saved.filters) {
+      this.columns.forEach(function (col) {
+        if (col.filterable && Object.prototype.hasOwnProperty.call(saved.filters, col.key)) {
+          col.selected = { values: saved.filters[col.key] };
+          self.updateFunnel(col);
+        }
+      });
+    }
+    if (saved.sortState) {
+      var target = this.columns.filter(function (c) { return c.sortable && c.key === saved.sortState.key; })[0];
+      if (target) {
+        this.sortState = { key: saved.sortState.key, dir: saved.sortState.dir };
+        this.updateSortIcons();
+      }
+    }
+  };
+
+  TableController.prototype.updateSortIcons = function () {
+    var self = this;
+    this.columns.forEach(function (c) {
+      if (!c.sortable) return;
+      var icon = c.th.querySelector('.sort-icon');
+      if (!icon) return;
+      if (self.sortState && c.key === self.sortState.key) {
+        icon.className = 'sort-icon bi ' + (self.sortState.dir === 'asc' ? 'bi-caret-up-fill' : 'bi-caret-down-fill') + ' ms-1 text-danger';
+      } else {
+        icon.className = 'sort-icon bi bi-caret-down-fill opacity-25 ms-1';
+      }
+    });
+  };
 
   TableController.prototype.build = function () {
     var self = this;
@@ -53,11 +162,10 @@
     if (!headerRow) return;
     var ths = Array.prototype.slice.call(headerRow.children);
 
-    var emptyText = this.table.getAttribute('data-empty-text') || DEFAULT_EMPTY_TEXT;
     var emptyCell = document.createElement('td');
     emptyCell.colSpan = ths.length;
     emptyCell.className = 'text-center text-muted py-4';
-    emptyCell.textContent = emptyText;
+    emptyCell.textContent = 'No members match the current filters.';
     this.emptyRow = document.createElement('tr');
     this.emptyRow.className = 'fs-empty-row d-none';
     this.emptyRow.appendChild(emptyCell);
@@ -68,12 +176,36 @@
 
       var sortable = th.getAttribute('data-sortable') === 'true';
       var sortType = th.getAttribute('data-sort-type') || 'text';
+      // The funnel's own value list can order itself differently than row sorting does
+      // — e.g. a numeric row sort by missing-count next to an alphabetized name list.
+      var filterSortType = th.getAttribute('data-filter-sort-type') || sortType;
       var filterable = th.getAttribute('data-filter') !== 'none';
-      var def = { key: col, index: index, th: th, sortable: sortable, sortType: sortType, filterable: filterable, selected: null };
+      var def = {
+        key: col, index: index, th: th, sortable: sortable, sortType: sortType,
+        filterSortType: filterSortType, filterable: filterable, selected: null,
+      };
       self.columns.push(def);
 
       th.classList.add('fs-th');
       var inner = th.querySelector('.th-inner') || th;
+
+      if (th.getAttribute('data-show-count') === 'true') {
+        var countEl = document.createElement('span');
+        countEl.className = 'fs-count';
+        countEl.setAttribute('data-fs-prefix', ' ');
+        var labelEl = inner.querySelector('.th-label');
+        if (labelEl && labelEl.parentNode) {
+          labelEl.parentNode.insertBefore(countEl, labelEl.nextSibling);
+        } else {
+          inner.appendChild(countEl);
+        }
+        self.countEls.push(countEl);
+      }
+
+      if (th.getAttribute('data-count') === 'true') {
+        var existing = inner.querySelector('.fs-count');
+        if (existing) self.countEls.push(existing);
+      }
 
       if (sortable) {
         var caret = document.createElement('i');
@@ -95,7 +227,12 @@
 
     this.tbody.appendChild(this.emptyRow);
 
-    this.applyDefaults();
+    var saved = this.loadState();
+    if (saved) {
+      this.applySavedState(saved);
+    } else {
+      this.applyDefaults();
+    }
     this.render();
   };
 
@@ -128,12 +265,13 @@
     var out = [];
     this.rows().forEach(function (tr) {
       var td = tr.children[col.index];
-      var value = cellValue(td);
-      if (seen.hasOwnProperty(value)) return;
-      seen[value] = true;
-      out.push({ value: value, label: cellLabel(td, value) });
+      cellFilterValues(td).forEach(function (value) {
+        if (seen.hasOwnProperty(value)) return;
+        seen[value] = true;
+        out.push({ value: value, label: cellLabel(td, value) });
+      });
     });
-    var numeric = col.sortType === 'num';
+    var numeric = col.filterSortType === 'num';
     out.sort(function (a, b) { return compareValues(a.value, b.value, numeric); });
     return out;
   };
@@ -294,18 +432,7 @@
   TableController.prototype.toggleSort = function (col) {
     var dir = this.sortState && this.sortState.key === col.key && this.sortState.dir === 'asc' ? 'desc' : 'asc';
     this.sortState = { key: col.key, dir: dir };
-
-    this.columns.forEach(function (c) {
-      if (!c.sortable) return;
-      var icon = c.th.querySelector('.sort-icon');
-      if (!icon) return;
-      if (c.key === col.key) {
-        icon.className = 'sort-icon bi ' + (dir === 'asc' ? 'bi-caret-up-fill' : 'bi-caret-down-fill') + ' ms-1 text-danger';
-      } else {
-        icon.className = 'sort-icon bi bi-caret-down-fill opacity-25 ms-1';
-      }
-    });
-
+    this.updateSortIcons();
     this.render();
   };
 
@@ -318,11 +445,15 @@
       var visible = self.columns.every(function (col) {
         if (!col.selected) return true;
         var td = tr.children[col.index];
-        return col.selected.values.indexOf(cellValue(td)) !== -1;
+        // A single-value cell is just a 1-element array here, so this is a plain
+        // membership check for every other column — only a data-filter-values cell
+        // (several categories at once) makes this a real "has any checked one" test.
+        return cellFilterValues(td).some(function (v) { return col.selected.values.indexOf(v) !== -1; });
       });
       tr.classList.toggle('d-none', !visible);
       if (visible) visibleCount++;
     });
+
 
     if (this.sortState) {
       var sortKey = this.sortState.key;
@@ -345,14 +476,19 @@
       this.emptyRow.classList.toggle('d-none', !(rows.length > 0 && visibleCount === 0));
       this.tbody.appendChild(this.emptyRow);
     }
+
+    this.countEls.forEach(function (el) {
+      el.textContent = (el.getAttribute('data-fs-prefix') || '') + '(' + visibleCount + ')';
+    });
+    this.saveState();
   };
 
-  function init(tableEl) {
-    return new TableController(tableEl);
+  function init(tableEl, idx) {
+    return new TableController(tableEl, idx);
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('table[data-filter-sort]').forEach(function (t) { init(t); });
+    document.querySelectorAll('table[data-filter-sort]').forEach(function (t, idx) { init(t, idx); });
   });
 
   window.TableFilterSort = { init: init };
